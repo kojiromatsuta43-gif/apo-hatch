@@ -13,6 +13,10 @@ export type FieldInfo = {
   options: { value: string; text: string }[];
   checked: boolean;
   formIndex: number;
+  maxlength: number;
+  placeholder: string;
+  inputmode: string;
+  pattern: string;
 };
 
 export type Category =
@@ -137,7 +141,7 @@ const COLLECT_SCRIPT = `
     const sig = own + ' || ' + labelText(el).replace(/\\s+/g, ' ').slice(0, 200);
     const required = el.required || el.getAttribute('aria-required') === 'true' || /必須|required|\\*/.test(labelText(el).slice(0, 60)) || /required|必須/i.test(el.className);
     const options = el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({ value: o.value, text: (o.textContent || '').trim() })) : [];
-    out.push({ idx: i, tag: el.tagName.toLowerCase(), type, name: el.getAttribute('name') || '', id: el.id || '', sig, required, options, checked: !!el.checked, formIndex: forms.indexOf(el.closest('form')) });
+    out.push({ idx: i, tag: el.tagName.toLowerCase(), type, name: el.getAttribute('name') || '', id: el.id || '', sig, required, options, checked: !!el.checked, formIndex: forms.indexOf(el.closest('form')), maxlength: Number(el.getAttribute('maxlength') || 0), placeholder: el.getAttribute('placeholder') || '', inputmode: el.getAttribute('inputmode') || '', pattern: el.getAttribute('pattern') || '' });
     i++;
   }
   return out;
@@ -182,6 +186,24 @@ function prefectureOf(address: string): string {
 }
 
 export type FillReport = { filled: string[]; unfilled: string[]; hasMessage: boolean; log: string[] };
+
+/** 電話・郵便番号を「ハイフン無しの数字だけ」で入れるべき欄か（maxlength / pattern / inputmode / placeholder / ラベルから判断） */
+function wantsDigitsOnly(f: FieldInfo, hyphenLen: number): boolean {
+  if (f.placeholder.includes("-") || f.placeholder.includes("－")) return false;
+  if (f.maxlength > 0 && f.maxlength < hyphenLen) return true;
+  if (f.inputmode === "numeric" || f.inputmode === "tel" && f.maxlength > 0 && f.maxlength < hyphenLen) return true;
+  if (f.pattern && /^\^?\[?0-9\]?[\d\\{},+*]*\$?$/.test(f.pattern) && !f.pattern.includes("-")) return true;
+  if (/(半角数字のみ|ハイフンなし|ハイフン無し|ハイフン不要|数字のみ)/.test(f.sig)) return true;
+  return false;
+}
+
+/** textarea の maxlength に収まるように、段落の切れ目で短くする */
+function fitMessage(message: string, max: number): string {
+  if (!max || message.length <= max) return message;
+  const cut = message.slice(0, max);
+  const at = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf("。"));
+  return (at > max * 0.5 ? cut.slice(0, at + 1) : cut).trim();
+}
 
 /** 収集した項目に値を入れる。戻り値は入力レポート */
 export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean } = {}): Promise<FillReport> {
@@ -253,7 +275,11 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
       }
     } else {
       switch (cat) {
-        case "message": ok = await setText(f, v.message); if (ok) report.hasMessage = true; break;
+        case "message": {
+          const msg = fitMessage(v.message, f.maxlength);
+          if (msg.length < v.message.length) report.log.push(`本文を${f.maxlength}文字に短縮`);
+          ok = await setText(f, msg); if (ok) report.hasMessage = true; break;
+        }
         case "subject": ok = await setText(f, v.subject); break;
         case "company": ok = await setText(f, s.company); break;
         case "department": ok = await setText(f, "営業部"); break;
@@ -265,8 +291,16 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
         case "kana_last": ok = await setText(f, lastKana || lastName); break;
         case "kana_first": ok = await setText(f, firstKana || firstName); break;
         case "email": case "email_confirm": ok = await setText(f, email); break;
-        case "tel": ok = await setText(f, tels.length > 1 && countOf(scoped, "tel") >= 3 ? tels[nth - 1] ?? "" : s.tel); break;
-        case "postal": ok = await setText(f, countOf(scoped, "postal") >= 2 ? postals[nth - 1] ?? "" : s.postal); break;
+        case "tel": {
+          const split = tels.length > 1 && countOf(scoped, "tel") >= 3;
+          const val = split ? tels[nth - 1] ?? "" : wantsDigitsOnly(f, s.tel.length) ? s.tel.replace(/[^\d]/g, "") : s.tel;
+          ok = await setText(f, val); break;
+        }
+        case "postal": {
+          const split = countOf(scoped, "postal") >= 2;
+          const val = split ? postals[nth - 1] ?? "" : wantsDigitsOnly(f, s.postal.length) ? s.postal.replace(/[^\d]/g, "") : s.postal;
+          ok = await setText(f, val); break;
+        }
         case "prefecture": ok = await setText(f, prefectureOf(s.address)); break;
         case "address": ok = await setText(f, nth === 1 ? s.address : ""); break;
         case "url": ok = await setText(f, s.url); break;
@@ -367,7 +401,15 @@ const ERROR_RE = /(入力してください|必須項目|未入力|正しく入�
 
 export type Outcome = { status: "sent" | "failed" | "unsure"; detail: string };
 
-export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSubmit = true): Promise<Outcome> {
+export async function pageText(page: Page): Promise<string> {
+  const texts: string[] = [];
+  for (const fr of page.frames()) {
+    try { texts.push(await fr.evaluate(() => document.body?.innerText ?? "")); } catch { /* cross-origin */ }
+  }
+  return texts.join("\n");
+}
+
+export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSubmit = true, beforeText = ""): Promise<Outcome> {
   // 本体＋埋め込みフレームの文章をまとめて見る（完了文言が iframe の中に出ることがある）
   const texts: string[] = [];
   for (const fr of page.frames()) {
@@ -380,7 +422,10 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
   const text = texts.join("\n");
   const compact = text.replace(/\s+/g, "");
   const url = page.url();
-  if (SUCCESS_RE.test(compact) || SUCCESS_RE.test(text)) return { status: "sent", detail: "完了文言を検知" };
+  // 送信前から同じ完了っぽい文言があるページ（「お問い合わせありがとうございます。下記フォームから…」）は、文言だけでは完了とみなさない
+  const beforeCompact = beforeText.replace(/\s+/g, "");
+  const hadBefore = beforeCompact && (SUCCESS_RE.test(beforeCompact) || SUCCESS_RE.test(beforeText));
+  if ((SUCCESS_RE.test(compact) || SUCCESS_RE.test(text)) && !hadBefore) return { status: "sent", detail: "完了文言を検知" };
   if (SUCCESS_URL_RE.test(new URL(url).pathname)) return { status: "sent", detail: `完了URLへ遷移 (${url})` };
   // エラー表示の抽出（表示中のものだけ）
   const visibleErrors: string[] = await page.evaluate(() => {

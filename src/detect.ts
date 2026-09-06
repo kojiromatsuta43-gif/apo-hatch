@@ -19,6 +19,9 @@ export function detectRefusal(text: string): string | null {
   return null;
 }
 
+/** Cloudflare 等の「ブラウザ確認」ページ（自動アクセスの遮断）。CAPTCHA 扱いでスキップ */
+export const CHALLENGE_RE = /(Checking your browser|Verify you are human|Just a moment|ブラウザを確認しています|あなたが人間であることを確認|Attention Required|Access denied|アクセスが拒否)/i;
+
 export const CAPTCHA_SELECTORS = [
   "iframe[src*='recaptcha/api2/anchor']", // reCAPTCHA v2 checkbox（人が押す必要がある）
   ".g-recaptcha[data-size='normal']",

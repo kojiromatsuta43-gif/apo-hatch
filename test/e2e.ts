@@ -158,6 +158,17 @@ const server = http.createServer(async (req, res) => {
     <div id="cookie" style="position:fixed;left:0;right:0;bottom:0;height:120px;background:#333;color:#fff;z-index:9999">Cookieを使用しています <button type="button" onclick="this.parentNode.remove()">OK</button></div>`));
   if (p === "/overlay" && req.method === "POST") { received.overlay = await parseBody(req); return send(page("完了", `<h1>送信完了しました</h1>`)); }
 
+
+  // 13. 電話は半角数字のみ（maxlength=11）、本文は maxlength=120、フォームページに「ありがとうございます」が最初からある
+  if (p === "/strictnum" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p>いつもご利用ありがとうございます。お問い合わせは下記フォームからお願いします。</p><form method="post" action="/strictnum">
+    <p>会社名 <input name="company"></p><p>お名前 <input name="name"></p><p>メール <input name="email"></p>
+    <p>電話番号（半角数字のみ） <input name="tel" maxlength="11" inputmode="numeric"></p>
+    <p>内容 <textarea name="msg" maxlength="120"></textarea></p><button>送信</button></form>`));
+  if (p === "/strictnum" && req.method === "POST") { const b = await parseBody(req); if (!/^\d+$/.test(b.tel ?? "")) return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p>いつもご利用ありがとうございます。</p><p class="error">電話番号は半角数字で入力してください</p>`)); received.strictnum = b; return send(page("完了", `<h1>送信完了</h1>`)); }
+
+  // 14. Cloudflare 風のブラウザ確認ページ
+  if (p === "/challenge") return send(`<!doctype html><html><head><meta charset="utf-8"><title>Just a moment...</title></head><body><h1>Checking your browser before accessing the site.</h1><form><textarea name="x"></textarea><input name="y"><button>Continue</button></form></body></html>`);
+
   if (p === "/company") return send(page("会社概要", `<h1>会社概要</h1>`));
   if (p === "/recruit") return send(page("採用情報", `<h1>採用情報</h1><form method="post" action="/recruit"><input name="name"><textarea name="pr"></textarea><button>応募する</button></form>`));
   send(page("404", "<h1>Not Found</h1>"), 404);
@@ -188,16 +199,18 @@ const rows: import("../src/csv.js").CompanyRow[] = [
   { company_name: "EN Corp", form_url: "", site_url: `${base}/en`, email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "マルチ選択社", form_url: `${base}/multi`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "オーバーレイ社", form_url: `${base}/overlay`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "半角数字社", form_url: `${base}/strictnum`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "チャレンジ社", form_url: `${base}/challenge`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
 ];
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
 const alias = (i: number, host: string) => { rows[i].form_url = rows[i].form_url.replace("127.0.0.1", host); };
 alias(1, "127.0.0.2"); alias(2, "127.0.0.3"); alias(3, "127.0.0.4"); alias(4, "127.0.0.5");
-alias(7, "127.0.0.7"); alias(8, "127.0.0.8"); alias(9, "127.0.0.9"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "127.0.0.10"); alias(11, "127.0.0.11"); alias(12, "127.0.0.12");
+alias(7, "127.0.0.7"); alias(8, "127.0.0.8"); alias(9, "127.0.0.9"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "127.0.0.10"); alias(11, "127.0.0.11"); alias(12, "127.0.0.12"); alias(13, "127.0.0.13"); alias(14, "127.0.0.14");
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
-assert.equal(summary.added, 12);
+assert.equal(summary.added, 14);
 assert.equal(summary.excluded, 1);
 
 const browser = await launchBrowser();
@@ -263,6 +276,11 @@ assert.equal(received.multi.pref, "東京都"); assert.ok(received.multi["kind[]
 
 assert.equal(results["オーバーレイ社"], "sent", "input本文 + image送信 + invisible reCAPTCHA + Cookieバナー");
 assert.ok(received.overlay.naiyo.includes("オーバーレイ社"), "本文がinputでも入る");
+
+assert.equal(results["半角数字社"], "sent", "半角数字のみの電話 + maxlength本文");
+assert.equal(received.strictnum.tel, "0312345678");
+assert.ok(received.strictnum.msg.length <= 120 && received.strictnum.msg.length > 40, "本文がmaxlengthに収まる");
+assert.equal(results["チャレンジ社"], "skip_captcha", "ブラウザ確認ページはスキップ");
 
 // 事前チェック（フォーム探索・お断り・メール発見）
 {

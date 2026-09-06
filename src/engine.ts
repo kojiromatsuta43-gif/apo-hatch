@@ -2,9 +2,9 @@
 import { chromium, type Browser, type BrowserContext, type Page, type Frame } from "playwright";
 import path from "node:path";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
-import { detectRefusal, CAPTCHA_CHECK_SCRIPT } from "./detect.js";
+import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText } from "./formFiller.js";
 
 export type SubmitInput = {
   jobId: number;
@@ -62,8 +62,9 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (!formPage) return done("skip_no_form", "問い合わせフォームが見つからない");
     log.push(`form: ${formPage}`);
 
-    const pageText: string = await page.evaluate(() => document.body?.innerText ?? "").catch(() => "");
-    const refusal = detectRefusal(pageText);
+    const textBefore = await pageText(page);
+    if (CHALLENGE_RE.test(textBefore.slice(0, 3000))) return done("skip_captcha", "ブラウザ確認ページ（自動アクセス遮断）");
+    const refusal = detectRefusal(textBefore);
     if (refusal) return done("skip_refused", `営業お断り文言: 「${refusal}」`);
 
     const captcha = await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null);
@@ -107,7 +108,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       // 確認画面で CAPTCHA が出る場合
       const cap2 = await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null);
       if (cap2) return done("skip_captcha", `確認画面にCAPTCHA (${cap2})`);
-      const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit");
+      const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit", textBefore);
       log.push(`judge[${round}]: ${outcome.status} ${outcome.detail}`);
       if (outcome.status === "sent") return done("sent", outcome.detail);
       if (outcome.status === "failed") return done("failed", outcome.detail);
@@ -123,7 +124,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       }
       // submit を押したのに判定不能 → もう一度だけ待って判定
       await page.waitForTimeout(3000);
-      const again = await judgeOutcome(page, fieldCountBefore);
+      const again = await judgeOutcome(page, fieldCountBefore, true, textBefore);
       if (again.status === "sent") return done("sent", again.detail);
       return done("failed", `送信後の判定不能: ${again.detail}`);
     }
