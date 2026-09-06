@@ -1,0 +1,47 @@
+// 営業お断り文言・CAPTCHA の検知。ここに引っかかったら突破せずスキップする。
+export const REFUSAL_PATTERNS: RegExp[] = [
+  /営業(目的|活動|のご案内|のお問い?合わ?せ|に関するお問い?合わ?せ|・?勧誘|等)?(は|の)?(固く|一切|、)?(お断り|ご遠慮|お控え)/,
+  /セールス(目的|のお問い?合わ?せ|・?勧誘)?(は|の)?(固く|一切)?(お断り|ご遠慮|お控え)/,
+  /勧誘(目的|等)?(のお問い?合わ?せ)?(は|の)?(固く|一切)?(お断り|ご遠慮|お控え)/,
+  /売り?込み(のご連絡|等)?(は|の)?(固く|一切)?(お断り|ご遠慮)/,
+  /(営業|セールス|勧誘|売り込み)[^。\n]{0,20}(お断り|ご遠慮|お控え)/,
+  /(お断り|ご遠慮)[^。\n]{0,12}(営業|セールス|勧誘|売り込み)/,
+  /自動(送信|入力)(ツール|プログラム)?[^。\n]{0,15}(禁止|お断り|ご遠慮)/,
+  /(no|not)\s+(sales|solicitation|marketing)/i,
+];
+
+export function detectRefusal(text: string): string | null {
+  const t = text.replace(/\s+/g, "");
+  for (const re of REFUSAL_PATTERNS) {
+    const m = t.match(re);
+    if (m) return m[0].slice(0, 60);
+  }
+  return null;
+}
+
+export const CAPTCHA_SELECTORS = [
+  "iframe[src*='recaptcha/api2/anchor']", // reCAPTCHA v2 checkbox（人が押す必要がある）
+  ".g-recaptcha[data-size='normal']",
+  ".g-recaptcha:not([data-size='invisible'])",
+  "iframe[src*='hcaptcha.com']",
+  ".h-captcha",
+  "iframe[src*='challenges.cloudflare.com']",
+  ".cf-turnstile",
+  "img[src*='captcha']",
+  "input[name*='captcha' i]",
+  "input[name*='securimage' i]",
+];
+
+/** 目に見える（=人の操作を要求する）CAPTCHAがあるか。reCAPTCHA v3 / invisible は送信者に負担が無いので許容 */
+export const CAPTCHA_CHECK_SCRIPT = `
+(() => {
+  const sels = ${JSON.stringify(CAPTCHA_SELECTORS)};
+  for (const s of sels) {
+    for (const el of document.querySelectorAll(s)) {
+      const r = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      if (r.width > 20 && r.height > 20 && style.visibility !== 'hidden' && style.display !== 'none') return s;
+    }
+  }
+  return null;
+})()`;

@@ -1,0 +1,246 @@
+// SQLite 永続層。BRIDGE HATCH 本体（better-sqlite3 / DATA_DIR）と同じ流儀にしてある。
+// 組み込み時はこのファイルのテーブル定義を本体の schema に足し、getDb() を本体の db に差し替えるだけ。
+import Database from "better-sqlite3";
+import fs from "node:fs";
+import path from "node:path";
+
+export const DATA_DIR = process.env.DATA_DIR ?? path.resolve(process.cwd(), "data");
+export const SCREENSHOT_DIR = path.join(DATA_DIR, "screenshots");
+
+let _db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (_db) return _db;
+  fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  _db = new Database(path.join(DATA_DIR, "form-outreach.db"));
+  _db.pragma("journal_mode = WAL");
+  _db.pragma("foreign_keys = ON");
+  migrate(_db);
+  return _db;
+}
+
+function migrate(db: Database.Database) {
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  -- 送信者プロフィール（社内用 / クライアントごと）。owner_user_id は本体組み込み時に users.id を入れる
+  CREATE TABLE IF NOT EXISTS sender_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user_id INTEGER,
+    label TEXT NOT NULL,
+    company TEXT NOT NULL,
+    industry TEXT DEFAULT '',
+    person TEXT NOT NULL,
+    person_kana TEXT DEFAULT '',
+    email TEXT NOT NULL,
+    reply_email TEXT DEFAULT '',      -- フォームで返信を受けるメール（emailと分ける場合）
+    tel TEXT DEFAULT '',
+    postal TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    url TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS form_campaigns (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user_id INTEGER,
+    name TEXT NOT NULL,
+    sender_id INTEGER NOT NULL REFERENCES sender_profiles(id),
+    mode TEXT NOT NULL DEFAULT 'hybrid',      -- template | ai | hybrid
+    subject_text TEXT NOT NULL DEFAULT '',
+    template_text TEXT NOT NULL DEFAULT '',
+    ai_instruction TEXT NOT NULL DEFAULT '',
+    daily_limit INTEGER NOT NULL DEFAULT 300,
+    send_window_start INTEGER NOT NULL DEFAULT 9,
+    send_window_end INTEGER NOT NULL DEFAULT 18,
+    weekdays_only INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'draft',     -- draft | running | paused | done
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS form_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL REFERENCES form_campaigns(id) ON DELETE CASCADE,
+    company_name TEXT NOT NULL,
+    form_url TEXT DEFAULT '',
+    site_url TEXT DEFAULT '',
+    industry TEXT DEFAULT '',
+    sub_industry TEXT DEFAULT '',
+    prefecture TEXT DEFAULT '',
+    representative TEXT DEFAULT '',
+    domain TEXT DEFAULT '',
+    is_test INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'queued',
+      -- queued | sending | sent | skip_no_form | skip_refused | skip_captcha | skip_suppressed | skip_duplicate | failed
+    message_used TEXT DEFAULT '',
+    result_text TEXT DEFAULT '',
+    screenshot_path TEXT DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    sent_at TEXT,
+    updated_at TEXT DEFAULT (datetime('now')),
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_form_jobs_campaign ON form_jobs(campaign_id, status);
+  CREATE INDEX IF NOT EXISTS idx_form_jobs_domain ON form_jobs(domain, status);
+
+  -- 全キャンペーン横断の除外リスト（お断り検知・返信で停止希望・手動DNC）
+  CREATE TABLE IF NOT EXISTS form_suppressions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL UNIQUE,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  -- 企業HPの本文キャッシュ（AI個別化用。1社1回だけ取得）
+  CREATE TABLE IF NOT EXISTS email_optouts (
+    email TEXT PRIMARY KEY,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS site_cache (
+    domain TEXT PRIMARY KEY,
+    title TEXT DEFAULT '',
+    text TEXT DEFAULT '',
+    fetched_at TEXT DEFAULT (datetime('now'))
+  );
+  `);
+  const addCol = (table: string, col: string, def: string) => {
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+  };
+  addCol("form_campaigns", "channel", "TEXT NOT NULL DEFAULT 'both'");
+  addCol("form_campaigns", "email_daily_limit", "INTEGER NOT NULL DEFAULT 100");
+  addCol("form_jobs", "channel", "TEXT NOT NULL DEFAULT 'form'");
+  addCol("form_jobs", "email", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_jobs", "scanned_at", "TEXT");
+  addCol("form_jobs", "scan_note", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_jobs", "outcome", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_jobs", "outcome_note", "TEXT NOT NULL DEFAULT ''");
+  addCol("sender_profiles", "from_email", "TEXT NOT NULL DEFAULT ''");
+  addCol("sender_profiles", "smtp_host", "TEXT NOT NULL DEFAULT 'smtp.gmail.com'");
+  addCol("sender_profiles", "smtp_port", "INTEGER NOT NULL DEFAULT 465");
+  addCol("sender_profiles", "smtp_user", "TEXT NOT NULL DEFAULT ''");
+  addCol("sender_profiles", "smtp_pass", "TEXT NOT NULL DEFAULT ''");
+}
+
+export type Channel = "form" | "email" | "both";
+
+export type SenderProfile = {
+  id: number;
+  owner_user_id: number | null;
+  label: string;
+  company: string;
+  industry: string;
+  person: string;
+  person_kana: string;
+  email: string;
+  reply_email: string;
+  tel: string;
+  postal: string;
+  address: string;
+  url: string;
+  from_email: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_user: string;
+  smtp_pass: string;
+};
+
+export type Campaign = {
+  id: number;
+  owner_user_id: number | null;
+  name: string;
+  sender_id: number;
+  mode: "template" | "ai" | "hybrid";
+  subject_text: string;
+  template_text: string;
+  ai_instruction: string;
+  daily_limit: number;
+  send_window_start: number;
+  send_window_end: number;
+  weekdays_only: number;
+  channel: Channel;
+  email_daily_limit: number;
+  status: "draft" | "running" | "paused" | "done";
+};
+
+export type JobStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "skip_no_form"
+  | "skip_refused"
+  | "skip_captcha"
+  | "skip_suppressed"
+  | "skip_duplicate"
+  | "skip_optout"
+  | "failed";
+
+export type Job = {
+  id: number;
+  campaign_id: number;
+  company_name: string;
+  form_url: string;
+  site_url: string;
+  industry: string;
+  sub_industry: string;
+  prefecture: string;
+  representative: string;
+  domain: string;
+  is_test: number;
+  channel: "form" | "email";
+  email: string;
+  scanned_at: string | null;
+  scan_note: string;
+  outcome: string;
+  outcome_note: string;
+  status: JobStatus;
+  message_used: string;
+  result_text: string;
+  screenshot_path: string;
+  attempts: number;
+  sent_at: string | null;
+};
+
+export const STATUS_LABEL: Record<JobStatus, string> = {
+  queued: "待機中",
+  sending: "送信中",
+  sent: "送信済み",
+  skip_no_form: "フォーム無し",
+  skip_refused: "営業お断り",
+  skip_captcha: "CAPTCHA",
+  skip_suppressed: "除外リスト",
+  skip_duplicate: "90日以内に送信済",
+  skip_optout: "配信停止済",
+  failed: "失敗",
+};
+
+export function domainOf(url: string): string {
+  try {
+    const u = new URL(url.startsWith("http") ? url : `https://${url}`);
+    return u.hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+// 官公庁・学校・医療機関など既定で除外するドメイン
+export const EXCLUDED_DOMAIN_SUFFIXES = [".go.jp", ".lg.jp", ".ac.jp", ".ed.jp"];
+
+export function isExcludedDomain(domain: string): boolean {
+  return EXCLUDED_DOMAIN_SUFFIXES.some((s) => domain.endsWith(s));
+}
+
+export function getSetting(key: string, fallback = ""): string {
+  const row = getDb().prepare("SELECT value FROM settings WHERE key=?").get(key) as { value: string } | undefined;
+  return row?.value ?? fallback;
+}
+export function setSetting(key: string, value: string) {
+  getDb().prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, value);
+}
+
+export const OUTCOME_LABEL: Record<string, string> = { "": "—", replied: "返信あり", appointment: "アポ獲得", declined: "断り・不要" };
