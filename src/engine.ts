@@ -14,6 +14,7 @@ export type SubmitInput = {
   subject: string;
   message: string;
   dryRun?: boolean; // 入力だけしてスクショを撮り、送信はしない
+  ignoreRefusal?: boolean; // 営業お断り文言があっても送る（キャンペーン設定）
 };
 
 export type SubmitResult = {
@@ -65,7 +66,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     const textBefore = await pageText(page);
     if (CHALLENGE_RE.test(textBefore.slice(0, 3000))) return done("skip_captcha", "ブラウザ確認ページ（自動アクセス遮断）");
     const refusal = detectRefusal(textBefore);
-    if (refusal) return done("skip_refused", `営業お断り文言: 「${refusal}」`);
+    if (refusal && !input.ignoreRefusal) return done("skip_refused", `営業お断り文言: 「${refusal}」`);
 
     const captcha = await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null);
     if (captcha) return done("skip_captcha", `CAPTCHAあり (${captcha})`);

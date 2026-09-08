@@ -118,6 +118,8 @@ function migrate(db: Database.Database) {
   addCol("form_jobs", "email", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "scanned_at", "TEXT");
   addCol("form_jobs", "scan_note", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_campaigns", "resend_days", "INTEGER NOT NULL DEFAULT 90");   // 同じ会社への再送禁止期間（0=制限なし）
+  addCol("form_campaigns", "ignore_refusal", "INTEGER NOT NULL DEFAULT 0"); // 1=営業お断りのサイトにも送る（非推奨）
   addCol("form_jobs", "outcome", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "outcome_note", "TEXT NOT NULL DEFAULT ''");
   addCol("sender_profiles", "from_email", "TEXT NOT NULL DEFAULT ''");
@@ -165,6 +167,8 @@ export type Campaign = {
   weekdays_only: number;
   channel: Channel;
   email_daily_limit: number;
+  resend_days: number;
+  ignore_refusal: number;
   status: "draft" | "running" | "paused" | "done";
 };
 

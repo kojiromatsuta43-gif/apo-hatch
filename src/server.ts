@@ -45,8 +45,8 @@ app.get("/campaigns/new", (req, res) => {
 app.post("/campaigns", (req, res) => {
   const b = req.body;
   const channel = ["form", "email", "both"].includes(b.channel) ? b.channel : "both";
-  const r = db.prepare(`INSERT INTO form_campaigns(name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100);
+  const r = db.prepare(`INSERT INTO form_campaigns(name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0);
   redirectWith(res, `/campaigns/${r.lastInsertRowid}`, "キャンペーンを作成しました。CSVを取り込んでください。");
 });
 
@@ -194,6 +194,26 @@ app.get("/campaigns/:id/export.csv", (req, res) => {
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename=campaign-${id}.csv`);
   res.send("﻿" + lines.join("\n"));
+});
+
+/** 手動送信リスト: CAPTCHA等で自動送信できなかった会社を、人が送るためのURL＋文面つきで書き出す */
+app.get("/campaigns/:id/manual.csv", async (req, res) => {
+  const id = Number(req.params.id);
+  const c = loadCampaignFull(id);
+  if (!c) return res.status(404).send("not found");
+  const jobs = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status IN ('skip_captcha','failed','skip_no_form') ORDER BY id").all(id) as Job[];
+  const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const lines = ["企業名,理由,フォームURL,企業URL,メール,件名,本文"];
+  for (const j of jobs) {
+    let message = j.message_used, subject = c.subject_text;
+    if (!message) {
+      try { const comp = await composeMessage(j, c.sender, { ...c, mode: "template" }, { title: "", text: "" }); message = comp.message; subject = comp.subject; } catch { message = ""; }
+    }
+    lines.push([j.company_name, (j.result_text || "").split("\n")[0], j.form_url, j.site_url, j.email, subject, message].map(q).join(","));
+  }
+  res.setHeader("content-type", "text/csv; charset=utf-8");
+  res.setHeader("content-disposition", `attachment; filename=manual-${id}.csv`);
+  res.send("\ufeff" + lines.join("\n"));
 });
 
 // ---- jobs ----

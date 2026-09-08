@@ -87,6 +87,7 @@ ${provider === "none" ? '<p class="muted">AIのAPIキーが無いので、ハイ
 <textarea name="template_text" style="min-height:320px">${d("template_text")}</textarea>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
 <div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1">はい</option><option value="0">土日も送る</option></select></div></div>
+<div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0">送らない（推奨）</option><option value="1">送る（クレームの恐れあり）</option></select></div><div></div></div>
 <p><button class="btn">作成する</button></p></form>`;
 }
 
@@ -117,7 +118,7 @@ ${c.channel !== "form" ? `<form method="post" action="/campaigns/${c.id}/test"><
 
 <div class="card"><h2 style="margin-top:0">4. 本送信</h2>
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline"><button class="btn">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
-<a class="btn sub" href="/campaigns/${c.id}/export.csv">結果をCSVで書き出す</a>
+<a class="btn sub" href="/campaigns/${c.id}/export.csv">結果をCSVで書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
 <p class="muted">このページは実行中10秒ごとに自動更新されます。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
 
 <h2>送信一覧（最新200件）</h2>

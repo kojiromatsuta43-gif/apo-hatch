@@ -60,7 +60,8 @@ export type ImportSummary = { added: number; addedForm: number; addedEmail: numb
 /** 企業行をキャンペーンのジョブとして登録。チャネル（フォーム／メール）を振り分け、除外・重複は理由を残す */
 export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): ImportSummary {
   const db = getDb();
-  const campaign = db.prepare("SELECT channel FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string } | undefined;
+  const campaign = db.prepare("SELECT channel, resend_days FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number } | undefined;
+  const resendDays = campaign?.resend_days ?? 90;
   const mode = (campaign?.channel ?? "both") as "form" | "email" | "both";
   const summary: ImportSummary = { added: 0, addedForm: 0, addedEmail: 0, excluded: 0, suppressed: 0, duplicated: 0, noUrl: 0 };
   const insert = db.prepare(`
@@ -68,7 +69,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): Im
     VALUES(@campaign_id, @company_name, @form_url, @site_url, @industry, @sub_industry, @prefecture, @representative, @domain, @channel, @email, @status, @result_text)`);
   const isSuppressed = db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?");
   const isOptedOut = db.prepare("SELECT 1 FROM email_optouts WHERE email=?");
-  const recentlySent = db.prepare("SELECT 1 FROM form_jobs WHERE domain=? AND status='sent' AND is_test=0 AND sent_at > datetime('now','-90 days')");
+  const recentlySent = db.prepare("SELECT 1 FROM form_jobs WHERE sent_at > datetime('now', ?) AND domain=? AND status='sent' AND is_test=0");
   const seen = new Set<string>();
 
   const tx = db.transaction(() => {
@@ -89,7 +90,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): Im
       if (isExcludedDomain(domain)) { status = "skip_suppressed"; reason = "官公庁・学校等のドメインは既定で除外"; summary.excluded++; }
       else if (isSuppressed.get(domain)) { status = "skip_suppressed"; reason = "除外リストに登録済み"; summary.suppressed++; }
       else if (channel === "email" && isOptedOut.get(r.email)) { status = "skip_optout"; reason = "配信停止済みのアドレス"; summary.suppressed++; }
-      else if (recentlySent.get(domain)) { status = "skip_duplicate"; reason = "90日以内に送信済み"; summary.duplicated++; }
+      else if (resendDays > 0 && recentlySent.get(`-${resendDays} days`, domain)) { status = "skip_duplicate"; reason = `${resendDays}日以内に送信済み`; summary.duplicated++; }
       else { summary.added++; if (channel === "form") summary.addedForm++; else summary.addedEmail++; }
       insert.run({ ...r, campaign_id: campaignId, domain, channel, email: hasEmail ? r.email : "", status, result_text: reason });
     }

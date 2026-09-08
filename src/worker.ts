@@ -106,9 +106,9 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     }
   }
 
-  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun });
+  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal) });
   const detail = [r.detail, ...r.log].join("\n");
-  if (r.status === "skip_refused" && job.domain) {
+  if (r.status === "skip_refused" && job.domain && !campaign.ignore_refusal) {
     db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（自動）");
   }
   const status: JobStatus = opts.dryRun ? "queued" : r.status;
@@ -188,7 +188,7 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
       let status: JobStatus = "queued";
       let note = "";
       let channel: "form" | "email" = "form";
-      if (r.refused) {
+      if (r.refused && !campaign.ignore_refusal) {
         status = "skip_refused"; note = `営業お断り文言: 「${r.refused}」`;
         db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（事前チェック）");
       } else if (r.captcha) { status = "skip_captcha"; note = `CAPTCHAあり (${r.captcha})`; }
