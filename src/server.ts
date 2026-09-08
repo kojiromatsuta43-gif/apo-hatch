@@ -5,7 +5,7 @@ import path from "node:path";
 import { getDb, SCREENSHOT_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, importRowsToCampaign } from "./csv.js";
 import { composeMessage, activeProvider, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
-import { optOut, testSmtp } from "./email.js";
+import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
 import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, type NavUser } from "./views.js";
@@ -293,10 +293,12 @@ app.post("/senders/:id/test", async (req, res) => {
   if (!s) return res.status(404).send("not found");
   try {
     if (!s.smtp_user || !s.smtp_pass) throw new Error("送信用メールアカウントが未設定です");
+    const bad = checkSmtpPassword(s);
+    if (bad) throw new Error(bad);
     await testSmtp(s);
     redirectWith(res, `/senders/${s.id}`, `メール送信OK（${s.smtp_user}）`);
   } catch (e) {
-    redirectWith(res, `/senders/${s.id}`, `接続できませんでした: ${String((e as Error).message).slice(0, 150)}`);
+    redirectWith(res, `/senders/${s.id}`, `接続できませんでした: ${explainSmtpError(e, s)}`);
   }
 });
 

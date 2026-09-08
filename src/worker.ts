@@ -4,7 +4,7 @@ import type { Browser } from "playwright";
 import { getDb, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
-import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk } from "./email.js";
+import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
 
 const running = new Map<number, { stop: boolean }>();
 const CONCURRENCY = Number(process.env.FO_CONCURRENCY ?? 2);
@@ -102,7 +102,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
       await sendEmail(sender, { from: chk.from, to: job.email, subject, ...body });
       return finish("sent", `メール送信（${job.email}）`, { message_used: message });
     } catch (e) {
-      return finish("failed", `メール送信エラー: ${String((e as Error).message ?? e).slice(0, 150)}`, { message_used: message });
+      return finish("failed", `メール送信エラー: ${explainSmtpError(e, sender)}`, { message_used: message });
     }
   }
 
