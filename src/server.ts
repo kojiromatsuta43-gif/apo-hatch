@@ -8,7 +8,8 @@ import { composeMessage, activeProvider, DEFAULT_TEMPLATE, loadNgWords, lintMess
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, type NavUser } from "./views.js";
+import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -34,6 +35,11 @@ function me(req: express.Request) {
   if (!u) throw new Error("not authenticated");
   return u;
 }
+let updateReady = false;
+function refreshUpdateFlag() {
+  checkUpdate().then((st) => { updateReady = st.available; }).catch(() => {});
+}
+
 function navUser(req: express.Request): NavUser {
   const u = (req as AuthedRequest).user;
   return u ? { username: u.username, display_name: u.display_name, role: u.role } : null;
@@ -87,7 +93,7 @@ app.get("/logout", (req, res) => {
 });
 
 // ---- パスワード変更（本人）----
-app.get("/password", (req, res) => res.send(layout("パスワードの変更", passwordView(Boolean(me(req).must_change)), takeFlash(req), navUser(req))));
+app.get("/password", (req, res) => res.send(layout("パスワードの変更", passwordView(Boolean(me(req).must_change)), takeFlash(req), navUser(req), updateReady)));
 app.post("/password", (req, res) => {
   const u = me(req);
   const cur = String(req.body.current ?? "");
@@ -107,7 +113,7 @@ const issuedOnce = new Map<number, { username: string; password: string }>();
 app.get("/users", requireAdmin, (req, res) => {
   const issued = issuedOnce.get(me(req).id);
   issuedOnce.delete(me(req).id);
-  res.send(layout("ユーザー管理", usersView(listUsers(), issued), takeFlash(req), navUser(req)));
+  res.send(layout("ユーザー管理", usersView(listUsers(), issued), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/users", requireAdmin, (req, res) => {
   const password = String(req.body.password ?? "").trim() || randomPassword();
@@ -148,13 +154,13 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') sent,
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='queued') queued
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.id DESC`).all(...scope(req).args) as any[];
-  res.send(layout("キャンペーン", campaignListView(rows, activeProvider()), takeFlash(req), navUser(req)));
+  res.send(layout("キャンペーン", campaignListView(rows, activeProvider()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
   const sc = scope(req);
   const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider()), takeFlash(req), navUser(req)));
+  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns", (req, res) => {
@@ -187,7 +193,7 @@ app.get("/campaigns/:id", (req, res) => {
   const outcomes: Record<string, number> = {};
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, outcomes }), takeFlash(req), navUser(req)));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, outcomes }), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns/:id/import", upload.single("csv"), (req, res) => {
@@ -346,7 +352,7 @@ app.get("/jobs/:id", (req, res) => {
   const j = ownedJob(req, Number(req.params.id));
   if (!j) return res.status(404).send("not found");
   const c = db.prepare("SELECT * FROM form_campaigns WHERE id=?").get(j.campaign_id) as Campaign;
-  res.send(layout(j.company_name, jobView(j, c), takeFlash(req), navUser(req)));
+  res.send(layout(j.company_name, jobView(j, c), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/jobs/:id/retry", async (req, res) => {
   const id = Number(req.params.id);
@@ -364,12 +370,12 @@ app.post("/jobs/:id/retry", async (req, res) => {
 app.get("/senders", (req, res) => {
   const sc = scope(req);
   const list = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout("送信者", sendersView(list), takeFlash(req), navUser(req)));
+  res.send(layout("送信者", sendersView(list), takeFlash(req), navUser(req), updateReady));
 });
 app.get("/senders/:id", (req, res) => {
   const s = ownedSender(req, Number(req.params.id));
   if (!s) return res.status(404).send("not found");
-  res.send(layout("送信者を編集", `<h1>送信者を編集</h1><div class="card">${senderForm(s)}</div>`, takeFlash(req), navUser(req)));
+  res.send(layout("送信者を編集", `<h1>送信者を編集</h1><div class="card">${senderForm(s)}</div>`, takeFlash(req), navUser(req), updateReady));
 });
 const SENDER_COLS = ["label", "company", "industry", "person", "person_kana", "email", "reply_email", "tel", "postal", "address", "url", "from_email", "smtp_user", "smtp_host", "smtp_port"];
 app.post("/senders", (req, res) => {
@@ -390,7 +396,7 @@ app.get("/suppressions", (req, res) => {
   const sc = scope(req);
   const rows = db.prepare(`SELECT * FROM form_suppressions WHERE ${sc.sql} ORDER BY id DESC`).all(...sc.args) as any[];
   const optouts = db.prepare(`SELECT * FROM email_optouts WHERE ${sc.sql} ORDER BY created_at DESC LIMIT 500`).all(...sc.args) as any[];
-  res.send(layout("除外リスト", suppressionsView(rows, optouts), takeFlash(req), navUser(req)));
+  res.send(layout("除外リスト", suppressionsView(rows, optouts), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/suppressions", (req, res) => {
   const raw = String(req.body.domain ?? "").trim();
@@ -404,11 +410,35 @@ app.post("/suppressions/:id/delete", (req, res) => {
   db.prepare(`DELETE FROM form_suppressions WHERE id=? AND ${sc.sql}`).run(Number(req.params.id), ...sc.args);
   redirectWith(res, "/suppressions", "削除しました");
 });
-app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeProvider()), takeFlash(req), navUser(req))));
+app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeProvider()), takeFlash(req), navUser(req), updateReady)));
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   db.prepare("INSERT INTO settings(key,value) VALUES('ng_words',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(words));
   redirectWith(res, "/settings", "保存しました");
+});
+
+// ---- アップデート（管理者のみ）----
+const updateResults = new Map<number, Awaited<ReturnType<typeof applyUpdate>>>();
+app.get("/update", requireAdmin, async (req, res) => {
+  const st = await checkUpdate();
+  updateReady = st.available;
+  const result = updateResults.get(me(req).id);
+  updateResults.delete(me(req).id);
+  res.send(layout("アップデート", updateView(st, result), takeFlash(req), navUser(req), updateReady));
+});
+app.post("/update/check", requireAdmin, async (req, res) => {
+  const st = await checkUpdate(true);
+  updateReady = st.available;
+  redirectWith(res, "/update", st.available ? `v${st.latest} が公開されています` : st.error ?? "最新版です");
+});
+app.post("/update", requireAdmin, async (req, res) => {
+  const r = await applyUpdate();
+  updateResults.set(me(req).id, r);
+  if (r.ok) {
+    updateReady = false;
+    requestRestart();   // npm start で起動していれば自動で立ち上がり直す
+  }
+  res.redirect("/update");
 });
 
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
@@ -418,6 +448,8 @@ setInterval(() => {
 }, 60000);
 
 setInterval(cleanupSessions, 24 * 60 * 60 * 1000);
+refreshUpdateFlag();
+setInterval(refreshUpdateFlag, 6 * 60 * 60 * 1000);
 
 const first = ensureFirstAdmin();
 const PORT = Number(process.env.PORT ?? 3210);
@@ -430,5 +462,5 @@ app.listen(PORT, () => {
     console.log("  ※ 初回ログイン後にパスワード変更の画面が出ます");
     console.log("============================================================\n");
   }
-  console.log(`【フォーム＆メール】アポハッチくん: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`);
+  console.log(`【フォーム＆メール】アポハッチくん v${currentVersion()}: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`);
 });

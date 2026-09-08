@@ -1,0 +1,4 @@
+{
+  "_comment": "配布したアポハッチくんが更新を確認しに行く先。配布前にここを自分のGitHubリポジトリに書き換えてください。",
+  "manifest_url": "https://raw.githubusercontent.com/CHANGE-ME/apo-hatch/main/release.json"
+}

@@ -4,6 +4,13 @@
 
 営業リスト（CSV）の会社へ、お問い合わせフォームまたはメールで営業文を自動送信する。BRIDGE HATCH 本体に同じ機能が組み込まれている。
 
+## 2026-09-08 の更新（その3）: 自動アップデート
+- 配布したあとでも、**画面のボタン1つで最新版に更新**できます（管理者のみ）
+- 起動時と6時間ごとに新しい版を確認し、あればヘッダーに「新しい版があります」と出ます
+- 更新しても **data/（営業リスト・送信履歴・アカウント・スクリーンショット）はそのまま**
+- 更新に失敗したら自動で元のバージョンに戻ります
+- 起動は `npm start` を使ってください（更新後に自動で再起動します。`npm run dev` だと手動で起動し直しが必要）
+
 ## 2026-09-08 の更新（その2）: ログイン機能
 - **ログインが必須**になりました。初回起動時に管理者アカウントが自動で作られ、ID・パスワードがターミナルに表示されます
 - 管理者は「ユーザー管理」から**アカウントを発行**できます（初期パスワードは自動生成、本人が初回ログイン時に変更）
@@ -54,13 +61,37 @@
 ADMIN_USER=matsuta ADMIN_PASSWORD=好きなパスワード npm run dev
 ```
 
+## 更新版を配る（配布元の作業）
+
+配布した全員に更新を届ける手順です。GitHubの公開リポジトリを1つ使います。
+
+**最初の1回だけ**
+
+1. GitHubで公開リポジトリを作る（例: `apo-hatch`）
+2. `update.json` の `manifest_url` を自分のリポジトリに書き換える
+   ```json
+   { "manifest_url": "https://raw.githubusercontent.com/あなたのID/apo-hatch/main/release.json" }
+   ```
+3. このフォルダをそのリポジトリにpush（`data/` と `node_modules/` は含めない）
+4. この状態でzipを作って配る → 配った先が更新を受け取れるようになります
+
+**更新版を出すたび**
+
+```bash
+npm version patch                    # 0.2.0 → 0.2.1
+npm run release -- "直した内容を一言"   # release.json を書き出す
+git add -A && git commit -m "v0.2.1" && git push
+```
+
+これだけで、各PCの「アップデート」画面に新しい版が出ます。
+
 ## 起動
 
 ```bash
 cd form-outreach          # zipを解凍したフォルダ
 npm install
 npx playwright install chromium     # 初回のみ（ブラウザ本体）
-npm run dev                          # → http://localhost:3210
+npm start                            # → http://localhost:3210
 ```
 
 AIで文面を個別化する場合は環境変数を付ける（無ければテンプレートのみで動く）:
@@ -95,6 +126,9 @@ src/db.ts          テーブル定義（sender_profiles / form_campaigns / form_
 src/csv.ts         CSV取り込み（列名の別名対応・振り分け）
 src/formFinder.ts  フォームページ探索（DBのURL → トップのリンク → /contact 等）
 src/auth.ts        ログイン・ユーザー管理（単体版のみ。BRIDGE HATCH組み込み時は不要）
+src/update.ts      配布後の自動アップデート
+scripts/run.mjs    起動役（更新後に自動再起動）
+scripts/release.mjs 更新版を出すための release.json 生成
 src/detect.ts      営業お断り・CAPTCHA 検知
 src/formFiller.ts  項目の判定と入力・確認画面・送信・結果判定
 src/engine.ts      1社分の送信フロー（Playwright）
@@ -120,6 +154,7 @@ test/e2e.ts        ダミーサイトでの通しテスト（npm test）
 | ADMIN_USER | admin | 初回起動時に作る管理者のログインID |
 | ADMIN_PASSWORD | 自動生成 | 初回起動時に作る管理者のパスワード |
 | COOKIE_SECURE | 0 | 1にするとhttpsでのみCookieを送る（サーバー公開時） |
+| UPDATE_URL | update.json の値 | 更新確認先のrelease.jsonのURL |
 | DATA_DIR | ./data | DB・スクショの保存先 |
 | HEADLESS | 1 | 0 でブラウザを表示して動かす（デバッグ用） |
 | FO_CONCURRENCY | 2 | 同時送信数 |
