@@ -288,4 +288,4 @@ setInterval(() => {
 }, 60000);
 
 const PORT = Number(process.env.PORT ?? 3210);
-app.listen(PORT, () => console.log(`フォーム営業ツール: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`));
+app.listen(PORT, () => console.log(`【フォーム＆メール】アポハッチくん: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`));

@@ -1,8 +1,8 @@
 {
-  "name": "form-outreach",
+  "name": "apo-hatch",
   "version": "0.1.0",
   "private": true,
-  "description": "お問い合わせフォーム営業ツール（BRIDGE HATCH 組み込み前提の単体版）",
+  "description": "【フォーム＆メール】アポハッチくん — 問い合わせフォーム／メール営業の自動送信ツール（単体版）",
   "type": "module",
   "scripts": {
     "dev": "tsx src/server.ts",
