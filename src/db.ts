@@ -120,6 +120,31 @@ function migrate(db: Database.Database) {
   addCol("form_jobs", "scan_note", "TEXT NOT NULL DEFAULT ''");
   addCol("form_campaigns", "resend_days", "INTEGER NOT NULL DEFAULT 90");   // 同じ会社への再送禁止期間（0=制限なし）
   addCol("form_campaigns", "ignore_refusal", "INTEGER NOT NULL DEFAULT 0"); // 1=営業お断りのサイトにも送る（非推奨）
+
+  // ---- ログイン（単体版）----
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    display_name TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',   -- admin | user
+    active INTEGER NOT NULL DEFAULT 1,
+    must_change INTEGER NOT NULL DEFAULT 0,
+    last_login_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  `);
+  // 誰が登録したか（一覧表示の出し分け用。突合そのものは全体共通のまま＝安全側）
+  addCol("form_suppressions", "owner_user_id", "INTEGER");
+  addCol("email_optouts", "owner_user_id", "INTEGER");
   addCol("form_jobs", "outcome", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "outcome_note", "TEXT NOT NULL DEFAULT ''");
   addCol("sender_profiles", "from_email", "TEXT NOT NULL DEFAULT ''");
@@ -150,6 +175,18 @@ export type SenderProfile = {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
+};
+
+export type User = {
+  id: number;
+  username: string;
+  display_name: string;
+  password_hash: string;
+  role: "admin" | "user";
+  active: number;
+  must_change: number;
+  last_login_at: string | null;
+  created_at: string;
 };
 
 export type Campaign = {

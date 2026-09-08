@@ -19,9 +19,9 @@ export async function testSmtp(sender: SenderProfile): Promise<void> {
 export function isOptedOut(email: string): boolean {
   return Boolean(getDb().prepare("SELECT 1 FROM email_optouts WHERE email=?").get(email.trim().toLowerCase()));
 }
-export function optOut(email: string, reason: string) {
+export function optOut(email: string, reason: string, ownerUserId?: number) {
   const e = email.trim().toLowerCase();
-  if (e) getDb().prepare("INSERT OR IGNORE INTO email_optouts (email, reason) VALUES (?,?)").run(e, reason);
+  if (e) getDb().prepare("INSERT OR IGNORE INTO email_optouts (email, reason, owner_user_id) VALUES (?,?,?)").run(e, reason, ownerUserId ?? null);
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
