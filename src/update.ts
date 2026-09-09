@@ -69,7 +69,11 @@ export async function checkUpdate(force = false): Promise<UpdateStatus> {
     };
     return cached;
   } catch (e) {
-    return { current, available: false, configured: true, checkedAt: new Date().toISOString(), error: `更新の確認に失敗しました: ${String((e as Error).message ?? e).slice(0, 120)}` };
+    const raw = String((e as Error).message ?? e);
+    const msg = /HTTP 404/.test(raw)
+      ? "更新情報がまだ公開されていません（配布元が公開すると、ここに新しい版が出ます）"
+      : `更新の確認に失敗しました: ${raw.slice(0, 120)}`;
+    return { current, available: false, configured: true, checkedAt: new Date().toISOString(), error: msg };
   }
 }
 

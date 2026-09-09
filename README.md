@@ -65,25 +65,32 @@ ADMIN_USER=matsuta ADMIN_PASSWORD=好きなパスワード npm run dev
 
 配布した全員に更新を届ける手順です。GitHubの公開リポジトリを1つ使います。
 
-**最初の1回だけ**
+配布元は **https://github.com/kojiromatsuta43-gif/apo-hatch**（Public）です。
+このリポジトリの `release.json` を、配布した全PCが見に行きます。
 
-1. GitHubで公開リポジトリを作る（例: `apo-hatch`）
-2. `update.json` の `manifest_url` を自分のリポジトリに書き換える
-   ```json
-   { "manifest_url": "https://raw.githubusercontent.com/あなたのID/apo-hatch/main/release.json" }
-   ```
-3. このフォルダをそのリポジトリにpush（`data/` と `node_modules/` は含めない）
-4. この状態でzipを作って配る → 配った先が更新を受け取れるようになります
-
-**更新版を出すたび**
+**更新版を出す手順**
 
 ```bash
-npm version patch                    # 0.2.0 → 0.2.1
-npm run release -- "直した内容を一言"   # release.json を書き出す
-git add -A && git commit -m "v0.2.1" && git push
+cd ~/bridge-hatch/form-outreach
+npm version patch                     # 0.2.0 → 0.2.1
+npm run release -- "直した内容を一言"    # release.json を書き出す
+
+cd ~/bridge-hatch
+git add -A && git commit -m "アポハッチくん v0.2.1" && git push
+git subtree push --prefix=form-outreach apohatch main
 ```
 
-これだけで、各PCの「アップデート」画面に新しい版が出ます。
+最後の1行で、`form-outreach` フォルダだけが apo-hatch リポジトリのトップとして送られます。
+これで各PCの「アップデート」画面に新しい版が出ます。
+
+**最初の1回だけ必要な設定**（もう済んでいれば不要）
+
+```bash
+cd ~/bridge-hatch
+git remote add apohatch https://github.com/kojiromatsuta43-gif/apo-hatch.git
+```
+
+配布元を変える場合は `update.json` の `manifest_url` を書き換えてから配り直してください。
 
 ## 起動
 
