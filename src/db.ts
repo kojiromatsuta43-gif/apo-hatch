@@ -144,6 +144,31 @@ function migrate(db: Database.Database) {
   `);
   // 誰が登録したか（一覧表示の出し分け用。突合そのものは全体共通のまま＝安全側）
   addCol("form_suppressions", "owner_user_id", "INTEGER");
+
+  // 除外リストに会社名・メール・電話を持たせる（ドメイン不明でメールだけ、という登録もあるため作り直す）
+  {
+    const cols = (db.prepare("PRAGMA table_info(form_suppressions)").all() as { name: string }[]).map((c) => c.name);
+    if (!cols.includes("company_name")) {
+      db.exec(`
+        CREATE TABLE form_suppressions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          company_name TEXT NOT NULL DEFAULT '',
+          domain TEXT,
+          email TEXT,
+          tel TEXT NOT NULL DEFAULT '',
+          reason TEXT NOT NULL DEFAULT '',
+          owner_user_id INTEGER,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO form_suppressions_new(id, domain, reason, owner_user_id, created_at)
+          SELECT id, NULLIF(domain,''), reason, owner_user_id, created_at FROM form_suppressions;
+        DROP TABLE form_suppressions;
+        ALTER TABLE form_suppressions_new RENAME TO form_suppressions;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_supp_domain ON form_suppressions(domain) WHERE domain IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_supp_email ON form_suppressions(email);
+      `);
+    }
+  }
   addCol("email_optouts", "owner_user_id", "INTEGER");
   addCol("form_jobs", "outcome", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "outcome_note", "TEXT NOT NULL DEFAULT ''");

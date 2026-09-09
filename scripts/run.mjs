@@ -6,6 +6,13 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RESTART = 75;
 
+// ターミナルのタブ名を「アポハッチくん」にする。どのタブでツールが動いているか一目で分かるように。
+function setTabTitle(title) {
+  if (!process.stdout.isTTY) return;          // ログファイルに書き出す場合は何もしない
+  process.stdout.write(`\x1b]1;${title}\x07\x1b]2;${title}\x07`);
+}
+setTabTitle("🐝 アポハッチくん");
+
 function start() {
   const p = spawn(process.platform === "win32" ? "npx.cmd" : "npx", ["tsx", "src/server.ts"], {
     cwd: root,
@@ -21,7 +28,7 @@ function start() {
       process.exit(code ?? 0);
     }
   });
-  const stop = () => p.kill("SIGINT");
+  const stop = () => { setTabTitle(""); p.kill("SIGINT"); };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 }

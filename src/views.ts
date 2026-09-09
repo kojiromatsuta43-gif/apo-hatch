@@ -36,6 +36,7 @@ export function statusTag(s: JobStatus) {
 
 export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number })[], provider: string) {
   return `<h1>キャンペーン</h1>
+<p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
@@ -94,7 +95,17 @@ ${provider === "none" ? '<p class="muted">AIのAPIキーが無いので、ハイ
 <p><button class="btn">作成する</button></p></form>`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; outcomes: Record<string, number> }) {
+/** CSV取込の結果。何件入ったかだけでなく、除外された会社名まで出す */
+function importReport(r: import("./csv.js").ImportSummary): string {
+  const skipped = r.excludedRows;
+  return `<div class="flash" style="margin-top:12px">登録 <b>${r.added}</b>件（フォーム${r.addedForm}・メール${r.addedEmail}） / 送らない <b>${r.excluded + r.suppressed + r.duplicated + r.noUrl}</b>件</div>
+${skipped.length ? `<details open style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">送らない会社 ${skipped.length}件の内訳</summary>
+<table style="margin-top:6px"><tr><th>会社名</th><th>理由</th><th>送信先</th></tr>
+${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.reason)}</td><td class="small">${esc((x.where || "").slice(0, 60))}</td></tr>`).join("")}
+</table></details>` : ""}`;
+}
+
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
   const cnt = (s: string) => counts[s] ?? 0;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""}</h1>
@@ -103,7 +114,8 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
 
 <div class="card"><h2 style="margin-top:0">1. リストを取り込む</h2>
 <form method="post" action="/campaigns/${c.id}/import" enctype="multipart/form-data"><input type="file" name="csv" accept=".csv,text/csv" required> <button class="btn sub">CSVを取り込む</button>
-<p class="muted">企業DBの書き出し（企業名 / 問い合わせフォーム / 企業URL / 大業界 / 小業界 / 都道府県 / 代表者名）をそのまま読めます。同一ドメイン・90日以内送信済み・除外リスト・官公庁等は自動で振り分けます。</p></form></div>
+<p class="muted">企業DBの書き出し（企業名 / 問い合わせフォーム / 企業URL / 大業界 / 小業界 / 都道府県 / 代表者名）をそのまま読めます。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p></form>
+${extra.lastImport ? importReport(extra.lastImport) : ""}</div>
 
 <div class="card"><h2 style="margin-top:0">1-b. 事前チェック（送る前に連絡先を確認）${extra.scanning ? '<span class="tag sending">チェック中</span>' : ""}</h2>
 <p class="muted">送らずに各社のサイトを見て、フォームの有無・営業お断り・CAPTCHAを先に判定し、サイトのメールアドレスを拾います。フォームが無い会社はメールに自動で切り替わります（チャネルが「フォーム優先＋メール」のとき）。1社5〜10秒。</p>
@@ -143,10 +155,27 @@ ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jo
 <div class="card"><h2 style="margin-top:0">スクリーンショット</h2>${j.screenshot_path ? `<img src="/screenshots/${esc(j.screenshot_path.split("/").pop())}" style="max-width:100%;border:1px solid #ddd">` : '<p class="muted">なし</p>'}</div></div>`;
 }
 
-export function suppressionsView(rows: { id: number; domain: string; reason: string; created_at: string }[], optouts: { email: string; reason: string; created_at: string }[] = []) {
-  return `<h1>除外リスト</h1><p class="muted">ここにあるドメインには全キャンペーンで送りません。営業お断りを検知したものは自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
-<div class="card"><form method="post" action="/suppressions"><div class="row"><div><label>ドメイン（例: example.co.jp）</label><input type="text" name="domain" required></div><div><label>理由</label><input type="text" name="reason"></div></div><p><button class="btn">追加</button></p></form></div>
-<table><tr><th>ドメイン</th><th>理由</th><th>登録</th><th></th></tr>${rows.map((r) => `<tr><td>${esc(r.domain)}</td><td>${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td><td><form method="post" action="/suppressions/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("")}</table>
+export function suppressionsView(
+  rows: { id: number; company_name: string; domain: string | null; email: string | null; tel: string; reason: string; created_at: string }[],
+  optouts: { email: string; reason: string; created_at: string }[] = [],
+  imported?: { added: number; already: number; noKey: number; noKeyNames: string[] }
+) {
+  return `<h1>除外リスト</h1><p class="muted">ここに登録した会社には、全キャンペーンで送りません。営業お断りを検知した先は自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
+${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.added}件 / 登録済み ${imported.already}件${imported.noKey ? ` / 登録できず ${imported.noKey}件（ドメインもメールも無いため）: ${esc(imported.noKeyNames.join("、"))}` : ""}</div>` : ""}
+<div class="card"><h2 style="margin-top:0">1件ずつ追加</h2>
+<form method="post" action="/suppressions"><div class="row3">
+<div><label>会社名</label><input type="text" name="company_name" placeholder="株式会社○○"></div>
+<div><label>ドメイン または メールアドレス</label><input type="text" name="domain" placeholder="example.co.jp / info@example.co.jp" required></div>
+<div><label>理由</label><input type="text" name="reason" placeholder="先方より連絡不要のご依頼"></div>
+</div><p><button class="btn">追加</button></p></form></div>
+
+<div class="card"><h2 style="margin-top:0">CSVでまとめて追加</h2>
+<p class="muted">列は <b>会社名</b>（必須）と、<b>メール</b>・<b>ドメイン（企業URL）</b>・<b>電話番号</b>（いずれも任意・あれば拾います）。1行1社。<br>ドメインもメールも無い行は、送信を止める手がかりが無いため登録できません（その場合は会社名を一覧で出します）。</p>
+<form method="post" action="/suppressions/import" enctype="multipart/form-data">
+<div class="row"><div><label>CSVファイル</label><input type="file" name="csv" accept=".csv" required></div><div><label>理由（CSVに理由列が無い行に付けます）</label><input type="text" name="reason" placeholder="取引先のため送信対象外"></div></div>
+<p><button class="btn">取り込む</button></p></form></div>
+
+<table><tr><th>会社名</th><th>ドメイン</th><th>メール</th><th>電話</th><th>理由</th><th>登録</th><th></th></tr>${rows.length ? rows.map((r) => `<tr><td>${esc(r.company_name || "―")}</td><td>${esc(r.domain ?? "―")}</td><td class="small">${esc(r.email ?? "―")}</td><td class="small">${esc(r.tel || "―")}</td><td class="small">${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td><td><form method="post" action="/suppressions/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("") : `<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>`}</table>
 <h2>メール配信停止（アドレス単位）</h2><p class="muted">上の欄にメールアドレスを入れて追加すると、そのアドレス宛てのメールを停止します。返信で「配信停止」と言われた相手は必ず入れてください。</p>
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td></tr>`).join("")}</table>`;
 }

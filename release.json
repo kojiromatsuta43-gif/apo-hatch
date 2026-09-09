@@ -1,6 +1,6 @@
 {
-  "version": "0.2.1",
-  "notes": "直した内容",
+  "version": "0.3.0",
+  "notes": "除外リストをCSVで一括登録できるように。取り込み時に「送らない会社」を理由つきで一覧表示。ターミナルのタブ名を自動表示",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-09T03:09:08.048Z"
+  "published_at": "2026-09-09T03:23:55.689Z"
 }

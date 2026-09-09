@@ -3,7 +3,7 @@ import express from "express";
 import multer from "multer";
 import path from "node:path";
 import { getDb, SCREENSHOT_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
-import { parseCompanyCsv, importRowsToCampaign } from "./csv.js";
+import { parseCompanyCsv, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
 import { composeMessage, activeProvider, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
@@ -179,6 +179,7 @@ function loadCampaignFull(req: express.Request, id: number) {
   return { ...c, sender };
 }
 
+const lastImports = new Map<number, ImportSummary>();
 const previews = new Map<number, { job: Job; subject: string; message: string; aiUsed: boolean; lint?: import("./message.js").Lint[] }>();
 
 app.get("/campaigns/:id", (req, res) => {
@@ -190,10 +191,12 @@ app.get("/campaigns/:id", (req, res) => {
   for (const r of db.prepare("SELECT status, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY status").all(id) as { status: string; n: number }[]) counts[r.status] = r.n;
   const preview = previews.get(id) ?? null;
   previews.delete(id);
+  const consumedImport = lastImports.get(id) ?? null;
+  lastImports.delete(id);
   const outcomes: Record<string, number> = {};
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, outcomes }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns/:id/import", upload.single("csv"), (req, res) => {
@@ -203,7 +206,8 @@ app.post("/campaigns/:id/import", upload.single("csv"), (req, res) => {
   try {
     const rows = parseCompanyCsv(req.file.buffer);
     const s = importRowsToCampaign(id, rows);
-    redirectWith(res, `/campaigns/${id}`, `取り込み完了: 登録 ${s.added}件（フォーム${s.addedForm}・メール${s.addedEmail}） / 除外 ${s.excluded + s.suppressed} / 重複・90日以内 ${s.duplicated} / 連絡先無し ${s.noUrl}（CSV ${rows.length}行）`);
+    lastImports.set(id, s);
+    redirectWith(res, `/campaigns/${id}`, `CSV ${rows.length}行を読み込みました`);
   } catch (e) {
     redirectWith(res, `/campaigns/${id}`, `取り込みエラー: ${String((e as Error).message)}`);
   }
@@ -392,18 +396,45 @@ app.post("/senders/:id", (req, res) => {
 });
 
 // ---- suppressions / settings ----
+const suppImports = new Map<number, ReturnType<typeof importSuppressions>>();
 app.get("/suppressions", (req, res) => {
   const sc = scope(req);
-  const rows = db.prepare(`SELECT * FROM form_suppressions WHERE ${sc.sql} ORDER BY id DESC`).all(...sc.args) as any[];
+  const rows = db.prepare(`SELECT * FROM form_suppressions WHERE ${sc.sql} ORDER BY id DESC LIMIT 1000`).all(...sc.args) as any[];
   const optouts = db.prepare(`SELECT * FROM email_optouts WHERE ${sc.sql} ORDER BY created_at DESC LIMIT 500`).all(...sc.args) as any[];
-  res.send(layout("除外リスト", suppressionsView(rows, optouts), takeFlash(req), navUser(req), updateReady));
+  const imported = suppImports.get(me(req).id);
+  suppImports.delete(me(req).id);
+  res.send(layout("除外リスト", suppressionsView(rows, optouts, imported), takeFlash(req), navUser(req), updateReady));
+});
+
+/** 除外リストをCSVでまとめて追加 */
+app.post("/suppressions/import", upload.single("csv"), (req, res) => {
+  if (!req.file) return redirectWith(res, "/suppressions", "CSVが選択されていません");
+  try {
+    const rows = parseSuppressionCsv(req.file.buffer);
+    if (!rows.length) return redirectWith(res, "/suppressions", "会社名の列が見つかりませんでした（列名を「会社名」または「企業名」にしてください）");
+    const r = importSuppressions(rows, me(req).id, String(req.body.reason ?? "").trim() || "CSVで一括登録");
+    suppImports.set(me(req).id, r);
+    res.redirect("/suppressions");
+  } catch (e) {
+    redirectWith(res, "/suppressions", `取り込みエラー: ${String((e as Error).message)}`);
+  }
 });
 app.post("/suppressions", (req, res) => {
   const raw = String(req.body.domain ?? "").trim();
-  if (raw.includes("@")) { optOut(raw, String(req.body.reason ?? "") || "手動", me(req).id); return redirectWith(res, "/suppressions", `${raw} を配信停止に追加しました`); }
+  const company = String(req.body.company_name ?? "").trim();
+  const reason = String(req.body.reason ?? "").trim() || "手動で追加";
+  if (raw.includes("@")) {
+    const email = raw.toLowerCase();
+    optOut(email, company ? `${company}（${reason}）` : reason, me(req).id);
+    db.prepare("INSERT INTO form_suppressions(company_name, domain, email, reason, owner_user_id) VALUES(?,NULL,?,?,?)").run(company, email, reason, me(req).id);
+    return redirectWith(res, "/suppressions", `${company || email} を除外リストに追加しました`);
+  }
   const domain = domainOf(raw) || raw.toLowerCase();
-  if (domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason, owner_user_id) VALUES(?,?,?)").run(domain, String(req.body.reason ?? ""), me(req).id);
-  redirectWith(res, "/suppressions", `${domain} を除外リストに追加しました`);
+  if (!domain) return redirectWith(res, "/suppressions", "ドメインかメールアドレスを入れてください");
+  const dup = db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?").get(domain);
+  if (dup) return redirectWith(res, "/suppressions", `${domain} はすでに登録されています`);
+  db.prepare("INSERT INTO form_suppressions(company_name, domain, reason, owner_user_id) VALUES(?,?,?,?)").run(company, domain, reason, me(req).id);
+  redirectWith(res, "/suppressions", `${company || domain} を除外リストに追加しました`);
 });
 app.post("/suppressions/:id/delete", (req, res) => {
   const sc = scope(req);
