@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "notes": "除外リストをCSVで一括登録できるように。取り込み時に「送らない会社」を理由つきで一覧表示。ターミナルのタブ名を自動表示",
+  "version": "0.3.1",
+  "notes": "事前チェックと送信に進捗バーが付き、終わると自動で画面が更新されるようになりました。テスト送信は専用ページに移動しました。",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-09T03:23:55.689Z"
+  "published_at": "2026-09-10T08:04:20.347Z"
 }
