@@ -1,8 +1,8 @@
 # 【フォーム＆メール】アポハッチくん
 
-問い合わせフォームとメールへの営業送信を自動化するツール（BRIDGE HATCH 単体版 / 内部コード名 form-outreach）
+問い合わせフォームとメールへの営業送信を自動化するツール。各自のパソコンにインストールして使います。
 
-営業リスト（CSV）の会社へ、お問い合わせフォームまたはメールで営業文を自動送信する。BRIDGE HATCH 本体に同じ機能が組み込まれている。
+開発する方は `CLAUDE.md` を先に読んでください。
 
 ## 2026-09-09 の更新
 - **除外リストをCSVで一括登録**できるように（会社名が必須、メール・ドメイン・電話は任意）
@@ -69,39 +69,30 @@ ADMIN_USER=matsuta ADMIN_PASSWORD=好きなパスワード npm run dev
 
 ## 更新版を配る（配布元の作業）
 
-配布した全員に更新を届ける手順です。GitHubの公開リポジトリを1つ使います。
-
-配布元は **https://github.com/kojiromatsuta43-gif/apo-hatch**（Public）です。
-このリポジトリの `release.json` を、配布した全PCが見に行きます。
+このリポジトリが開発の正であり、配布元でもあります。配布した各PCは
+`https://raw.githubusercontent.com/kojiromatsuta43-gif/apo-hatch/main/release.json` を見に来ます。
 
 **更新版を出す手順**
 
 ```bash
-cd ~/bridge-hatch/form-outreach
-npm version patch                     # 0.2.0 → 0.2.1
-npm run release -- "直した内容を一言"    # release.json を書き出す
-
-cd ~/bridge-hatch
-git add -A && git commit -m "アポハッチくん v0.2.1" && git push
-git subtree push --prefix=form-outreach apohatch main
+git pull                              # 先に他の人の変更を取り込む
+npx tsc --noEmit && npm test          # 型チェックと送信の通しテスト
+npm version patch                     # 0.3.1 → 0.3.2
+npm run release -- "直した内容を一言"    # release.json を書き出す（この文言が利用者の画面に出ます）
+git add -A && git commit -m "アポハッチくん v0.3.2" && git push
 ```
 
-最後の1行で、`form-outreach` フォルダだけが apo-hatch リポジトリのトップとして送られます。
-これで各PCの「アップデート」画面に新しい版が出ます。
+`git push` はこの1回だけです。これで各PCの「アップデート」画面に新しい版が出ます。
 
-**最初の1回だけ必要な設定**（もう済んでいれば不要）
-
-```bash
-cd ~/bridge-hatch
-git remote add apohatch https://github.com/kojiromatsuta43-gif/apo-hatch.git
-```
+**バージョンを上げずに push した場合**は、コードはGitHubに入りますが誰にも配られません。
+開発中の細かい修正はそれでよく、区切りがついたところでリリースする、という使い分けで構いません。
 
 配布元を変える場合は `update.json` の `manifest_url` を書き換えてから配り直してください。
 
 ## 起動
 
 ```bash
-cd form-outreach          # zipを解凍したフォルダ
+cd apo-hatch          # zipを解凍したフォルダ
 npm install
 npx playwright install chromium     # 初回のみ（ブラウザ本体）
 npm start                            # → http://localhost:3210
@@ -139,7 +130,7 @@ GEMINI_API_KEY=...       npm run dev     # Gemini（既定 gemini-3.6-flash）
 src/db.ts          テーブル定義（sender_profiles / form_campaigns / form_jobs / form_suppressions / site_cache）
 src/csv.ts         CSV取り込み（列名の別名対応・振り分け）
 src/formFinder.ts  フォームページ探索（DBのURL → トップのリンク → /contact 等）
-src/auth.ts        ログイン・ユーザー管理（単体版のみ。BRIDGE HATCH組み込み時は不要）
+src/auth.ts        ログイン・ユーザー管理
 src/update.ts      配布後の自動アップデート
 scripts/run.mjs    起動役（更新後に自動再起動）
 scripts/release.mjs 更新版を出すための release.json 生成
@@ -152,26 +143,6 @@ src/server.ts      管理画面（Express）
 test/e2e.ts        ダミーサイトでの通しテスト（npm test）
 ```
 
-## BRIDGE HATCH への組み込み方（Phase 2）
+## 経緯
 
-- `db.ts` のテーブルを本体の schema に追加し、`getDb()` を本体の DB に差し替える
-- `message.ts` の `llm()` を本体の `src/lib/server/llm.ts` に置き換える
-- `server.ts` のルートを Next.js の API Route / 画面に移す（営業リスト画面に「フォーム営業を作成」ボタン）
-- `worker.ts` は Railway の別サービス（Chromium 入り Docker）として常駐させ、`form_campaigns.status='running'` を拾う
-- 課金: admin は無料、クライアントは送信件数でハニー消費（単価は未決）
-
-## 環境変数
-
-| 変数 | 既定 | 用途 |
-|---|---|---|
-| PORT | 3210 | 管理画面のポート |
-| ADMIN_USER | admin | 初回起動時に作る管理者のログインID |
-| ADMIN_PASSWORD | 自動生成 | 初回起動時に作る管理者のパスワード |
-| COOKIE_SECURE | 0 | 1にするとhttpsでのみCookieを送る（サーバー公開時） |
-| UPDATE_URL | update.json の値 | 更新確認先のrelease.jsonのURL |
-| DATA_DIR | ./data | DB・スクショの保存先 |
-| HEADLESS | 1 | 0 でブラウザを表示して動かす（デバッグ用） |
-| FO_CONCURRENCY | 2 | 同時送信数 |
-| FO_MIN_WAIT_MS / FO_MAX_WAIT_MS | 8000 / 15000 | 送信間隔 |
-| ANTHROPIC_API_KEY / GEMINI_API_KEY | — | AI個別化 |
-| ANTHROPIC_MODEL / GEMINI_MODEL | claude-haiku-4-5 / gemini-3.6-flash | モデル |
+もともと BRIDGE HATCH 本体（`create-works`）の `form-outreach/` で開発し、この apo-hatch リポジトリへコピーを送って配布していました。2026-09-10 に二重管理をやめ、このリポジトリ単独での開発・配布に移行しています。
