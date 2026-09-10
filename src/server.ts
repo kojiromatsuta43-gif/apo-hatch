@@ -9,7 +9,7 @@ import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.j
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -196,7 +196,29 @@ app.get("/campaigns/:id", (req, res) => {
   const outcomes: Record<string, number> = {};
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+  const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+});
+
+// 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
+app.get("/campaigns/:id/progress", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).json({ error: "denied" });
+  const n = (sql: string) => (db.prepare(sql).get(id) as { n: number }).n;
+  const unscanned = n("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL");
+  const scanDone = n("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL");
+  const total = n("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0");
+  const queued = n("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0");
+  res.json({ scanning: isScanning(id), running: isRunning(id), scanDone, scanTotal: scanDone + unscanned, total, processed: total - queued });
+});
+
+// テスト送信の専用ページ（入力と履歴をキャンペーン画面から分離）
+app.get("/campaigns/:id/test", (req, res) => {
+  const id = Number(req.params.id);
+  const c = loadCampaignFull(req, id);
+  if (!c) return res.status(404).send("not found");
+  const tests = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND is_test=1 ORDER BY id DESC LIMIT 20").all(id) as Job[];
+  res.send(layout(`テスト送信 | ${c.name}`, testView(c, tests), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns/:id/import", upload.single("csv"), (req, res) => {
@@ -246,7 +268,7 @@ app.post("/campaigns/:id/test", async (req, res) => {
   const email = String(req.body.email ?? "").trim().toLowerCase();
   const dry = req.body.dry === "1";
   const company = String(req.body.company || "テスト株式会社");
-  if (!url && !email) return redirectWith(res, `/campaigns/${id}`, "テスト先のフォームURLか、自分のメールアドレスを入れてください");
+  if (!url && !email) return redirectWith(res, `/campaigns/${id}/test`, "テスト先のフォームURLか、自分のメールアドレスを入れてください");
   const r = email
     ? db.prepare("INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, domain, is_test, channel, email) VALUES(?,?,?,?,?,?,1,'email',?)").run(id, company, "", "", "テスト業種", email.split("@")[1] ?? "", email)
     : db.prepare("INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, domain, is_test) VALUES(?,?,?,?,?,?,1)").run(id, company, url, url, "テスト業種", domainOf(url));
@@ -255,7 +277,7 @@ app.post("/campaigns/:id/test", async (req, res) => {
     const j = await processJob(browser, Number(r.lastInsertRowid), { dryRun: dry });
     redirectWith(res, `/jobs/${j.id}`, dry ? "入力テストが終わりました。スクリーンショットで入力内容を確認してください" : `テスト送信の結果: ${j.status}`);
   } catch (e) {
-    redirectWith(res, `/campaigns/${id}`, `テスト送信エラー: ${String((e as Error).message)}`);
+    redirectWith(res, `/campaigns/${id}/test`, `テスト送信エラー: ${String((e as Error).message)}`);
   } finally {
     await browser.close().catch(() => {});
   }

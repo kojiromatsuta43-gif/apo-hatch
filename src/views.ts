@@ -24,6 +24,9 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{border-bottom:1p
 .stats{display:flex;gap:10px;flex-wrap:wrap}.stat{background:#fff;border:1px solid var(--hive-200);border-radius:10px;padding:10px 14px;min-width:110px}.stat b{display:block;font-size:22px}
 .flash{background:var(--honey-100);padding:10px 14px;border-radius:8px;margin-bottom:14px}.muted{color:var(--hive-600);font-size:12px}pre{white-space:pre-wrap;background:#faf7ef;padding:10px;border-radius:8px;font-size:12px}
 .inline{display:inline}.small{font-size:12px}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid #90CAF9;border-top-color:#1565C0;border-radius:50%;animation:sp .9s linear infinite;vertical-align:-1px;margin-right:5px}@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:16px;background:var(--honey-50);border:1px solid var(--hive-200);border-radius:999px;overflow:hidden;margin:8px 0 4px;max-width:560px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--honey),#7CB342);border-radius:999px;transition:width .6s ease}
+tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--honey)}
 </style></head><body>
 <header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main></body></html>`;
@@ -105,9 +108,14 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
   const cnt = (s: string) => counts[s] ?? 0;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  // 進捗バー用: 事前チェックは「チェック済み/対象」、本送信は「処理済み/全件」
+  const scanTotal = extra.scanned + extra.unscanned;
+  const scanPct = scanTotal ? Math.round((extra.scanned / scanTotal) * 100) : 0;
+  const processed = total - cnt("queued");
+  const sendPct = total ? Math.round((processed / total) * 100) : 0;
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""}</h1>
 <p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${c.channel === "both" ? "フォーム優先＋メール" : c.channel === "email" ? "メールのみ" : "フォームのみ"} / モード: ${c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 <div class="stats"><div class="stat">全件<b>${total}</b></div><div class="stat">待機<b>${cnt("queued")}</b></div><div class="stat">送信済<b style="color:var(--ok)">${cnt("sent")}</b></div><div class="stat">失敗<b style="color:var(--ng)">${cnt("failed")}</b></div><div class="stat">フォーム無し<b>${cnt("skip_no_form")}</b></div><div class="stat">お断り<b>${cnt("skip_refused")}</b></div><div class="stat">CAPTCHA<b>${cnt("skip_captcha")}</b></div><div class="stat">除外/重複<b>${cnt("skip_suppressed") + cnt("skip_duplicate") + cnt("skip_optout")}</b></div><div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>
@@ -117,8 +125,9 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
 <p class="muted">企業DBの書き出し（企業名 / 問い合わせフォーム / 企業URL / 大業界 / 小業界 / 都道府県 / 代表者名）をそのまま読めます。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p></form>
 ${extra.lastImport ? importReport(extra.lastImport) : ""}</div>
 
-<div class="card"><h2 style="margin-top:0">1-b. 事前チェック（送る前に連絡先を確認）${extra.scanning ? '<span class="tag sending">チェック中</span>' : ""}</h2>
+<div class="card"><h2 style="margin-top:0">1-b. 事前チェック（送る前に連絡先を確認）${extra.scanning ? '<span class="tag sending"><span class="spin"></span>チェック中</span>' : extra.unscanned === 0 && extra.scanned > 0 ? '<span class="tag sent">チェック完了</span>' : ""}</h2>
 <p class="muted">送らずに各社のサイトを見て、フォームの有無・営業お断り・CAPTCHAを先に判定し、サイトのメールアドレスを拾います。フォームが無い会社はメールに自動で切り替わります（チャネルが「フォーム優先＋メール」のとき）。1社5〜10秒。</p>
+${scanTotal > 0 ? `<div class="bar"><i id="scanfill" style="width:${scanPct}%"></i></div><div class="small muted" id="scantext">${extra.scanned} / ${scanTotal} 社チェック済み（${scanPct}%）</div>` : ""}
 ${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" class="inline"><button class="btn danger">チェックを止める</button></form>` : `<form method="post" action="/campaigns/${c.id}/scan" class="inline"><button class="btn sub" ${extra.unscanned === 0 || running ? "disabled" : ""}>事前チェックを実行（未チェック ${extra.unscanned}社）</button></form>`}</div>
 
 <div class="card"><h2 style="margin-top:0">2. 文面を確認する</h2>
@@ -127,20 +136,57 @@ ${extra.preview ? `<p class="muted">${esc(extra.preview.job.company_name)}（${e
 </div>
 
 <div class="card"><h2 style="margin-top:0">3. テスト送信（自社のフォームに送って動作確認）</h2>
+<p class="muted">テストの入力欄と履歴は専用ページに分けました。テスト送信は本送信の件数には含まれません。</p>
+<a class="btn sub" href="/campaigns/${c.id}/test">テスト送信ページを開く</a></div>
+
+<div class="card"><h2 style="margin-top:0">4. 本送信</h2>
+${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}
+${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline"><button class="btn">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
+<a class="btn sub" href="/campaigns/${c.id}/export.csv">結果をCSVで書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
+<p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
+
+<h2>送信一覧（最新200件）</h2>
+<p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。</p>
+<table><tr><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
+${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<form method="post" action="/jobs/${j.id}/retry" class="inline"><button class="btn sub small">再試行</button></form>` : ""}</td></tr>`).join("")}
+</table>
+<script>
+// 前回表示から更新された行をハイライト（ブラウザごとに localStorage で覚える）
+(()=>{try{
+  const key="fo_seen_${c.id}";const last=localStorage.getItem(key)||"";let max=last;
+  document.querySelectorAll("tr[data-u]").forEach(tr=>{const u=tr.getAttribute("data-u")||"";if(u>max)max=u;if(last&&u>last)tr.classList.add("hl");});
+  if(max)localStorage.setItem(key,max);
+}catch(e){}})();
+</script>
+${extra.scanning || running ? `<script>
+// 実行中: 2.5秒ごとに進捗を取り、バーを動かす。状態が変わったら（完了・停止）ページを更新する。
+const wasScanning=${extra.scanning},wasRunning=${running};
+async function foPoll(){try{
+  const r=await fetch("/campaigns/${c.id}/progress");if(!r.ok)return;const p=await r.json();
+  const sf=document.getElementById("scanfill"),st=document.getElementById("scantext");
+  if(sf&&p.scanTotal){const pct=Math.round(p.scanDone/p.scanTotal*100);sf.style.width=pct+"%";if(st)st.textContent=p.scanDone+" / "+p.scanTotal+" 社チェック済み（"+pct+"%）";}
+  const ef=document.getElementById("sendfill"),et=document.getElementById("sendtext");
+  if(ef&&p.total){const pct=Math.round(p.processed/p.total*100);ef.style.width=pct+"%";if(et)et.textContent="処理済み "+p.processed+" / "+p.total+" 社（"+pct+"%）";}
+  if(p.scanning!==wasScanning||p.running!==wasRunning)location.reload();
+}catch(e){}}
+setInterval(foPoll,2500);
+setTimeout(()=>location.reload(),15000); // 一覧の中身も15秒ごとに更新
+</script>` : ""}`;
+}
+
+/** テスト送信の専用ページ。自社フォーム宛ての動作確認と、テスト履歴 */
+export function testView(c: Campaign & { sender: SenderProfile }, tests: Job[]) {
+  return `<h1>テスト送信 <span class="tag">${esc(c.name)}</span></h1>
+<p><a href="/campaigns/${c.id}">← キャンペーンに戻る</a></p>
+<div class="card"><h2 style="margin-top:0">自社のフォームに送って動作確認</h2>
+<p class="muted">実在の他社には送らないでください。テスト送信は本送信の件数・履歴とは別に記録されます。</p>
 <form method="post" action="/campaigns/${c.id}/test"><div class="row"><div><label>テスト先フォームURL</label><input type="url" name="url" required placeholder="https://自社サイト/contact/"></div><div><label>会社名（差し込み確認用）</label><input type="text" name="company" value="テスト株式会社"></div></div>
 <p><button class="btn sub" name="dry" value="1">入力だけ試す（送信しない）</button> <button class="btn">実際に送信する</button></p></form>
 ${c.channel !== "form" ? `<form method="post" action="/campaigns/${c.id}/test"><label>メールのテスト（自分のアドレスに1通送る）</label><div class="row"><input type="email" name="email" placeholder="自分のメールアドレス"><button class="btn">テストメールを送る</button></div></form>` : ""}</div>
-
-<div class="card"><h2 style="margin-top:0">4. 本送信</h2>
-${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline"><button class="btn">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
-<a class="btn sub" href="/campaigns/${c.id}/export.csv">結果をCSVで書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
-<p class="muted">このページは実行中10秒ごとに自動更新されます。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
-
-<h2>送信一覧（最新200件）</h2>
-<table><tr><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
-${jobs.map((j) => `<tr><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<form method="post" action="/jobs/${j.id}/retry" class="inline"><button class="btn sub small">再試行</button></form>` : ""}</td></tr>`).join("")}
-</table>
-${running ? "<script>setTimeout(()=>location.reload(),10000)</script>" : ""}`;
+<h2>テスト履歴（最新20件）</h2>
+${tests.length ? `<table><tr><th>ID</th><th>宛先</th><th>送り方</th><th>状態</th><th>結果</th><th>日時</th></tr>
+${tests.map((j) => `<tr><td><a href="/jobs/${j.id}">${j.id}</a></td><td>${esc(j.company_name)}<br><span class="muted small">${esc(j.form_url || j.email)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${esc(j.updated_at ?? "")}</td></tr>`).join("")}
+</table>` : '<p class="muted">まだテストしていません。</p>'}`;
 }
 
 export function jobView(j: Job, c: Campaign) {

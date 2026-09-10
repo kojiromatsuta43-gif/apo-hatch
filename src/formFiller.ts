@@ -440,6 +440,11 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
   if (visibleErrors.length && visibleErrors.some((e) => ERROR_RE.test(e))) return { status: "failed", detail: `入力エラー: ${visibleErrors.join(" / ")}` };
   const fieldsNow = (await collectFields(page)).length;
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
-  if (ERROR_RE.test(text)) return { status: "failed", detail: "エラー文言を検知" };
+  // エラー語の前後を切り出して見せる（「エラー文言を検知」だけでは、利用者がどの欄を直せばいいか分からない）
+  const m = ERROR_RE.exec(text);
+  if (m) {
+    const around = text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 80).replace(/\s+/g, " ").trim();
+    return { status: "failed", detail: `エラー文言を検知: 「${around}」\nスクリーンショットで該当の入力欄を確認してください` };
+  }
   return { status: "unsure", detail: "完了もエラーも検知できず" };
 }

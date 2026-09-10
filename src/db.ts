@@ -270,6 +270,7 @@ export type Job = {
   screenshot_path: string;
   attempts: number;
   sent_at: string | null;
+  updated_at: string;
 };
 
 export const STATUS_LABEL: Record<JobStatus, string> = {
