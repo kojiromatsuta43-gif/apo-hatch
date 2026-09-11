@@ -291,6 +291,26 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
   failed: "失敗",
 };
 
+// 配信チャネルの4モード。旧値（both/form/email）も受け取れるように正規化する。
+export type ChannelMode = "form_first" | "email_first" | "email_only" | "form_only";
+export function channelMode(raw: string | null | undefined): ChannelMode {
+  switch (raw) {
+    case "form_first": case "both": return "form_first";
+    case "email_first": return "email_first";
+    case "email_only": case "email": return "email_only";
+    case "form_only": case "form": return "form_only";
+    default: return "form_first";
+  }
+}
+export const CHANNEL_LABEL: Record<ChannelMode, string> = {
+  form_first: "フォーム優先（無ければメール）",
+  email_first: "メール優先（無ければフォーム）",
+  email_only: "メールのみ",
+  form_only: "フォームのみ",
+};
+/** このモードで、フォームが無い会社をメールに切り替えてよいか（事前チェックで使う） */
+export const allowsEmailFallback = (raw: string) => { const m = channelMode(raw); return m === "form_first" || m === "email_first"; };
+
 export function domainOf(url: string): string {
   try {
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);

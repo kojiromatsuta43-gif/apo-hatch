@@ -1,7 +1,7 @@
 // キューを回すワーカー。server.ts から同一プロセスで呼ぶことも、`npm run worker` で単独起動もできる。
 // 本体組み込み時は Railway の別サービス（form-worker）としてこのファイルを動かし、DBだけ共有／APIで取りに行く。
 import type { Browser } from "playwright";
-import { getDb, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
+import { getDb, allowsEmailFallback, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
@@ -198,7 +198,7 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
         db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（事前チェック）");
       } else if (r.captcha) { status = "skip_captcha"; note = `CAPTCHAあり (${r.captcha})`; }
       else if (r.formUrl) note = `フォームあり${r.emails.length ? `・メール発見 ${r.emails[0]}` : ""}`;
-      else if (campaign.channel === "both" && email && !isOptedOut(email)) { channel = "email"; note = `フォーム無し → メールに切替（${email}）`; }
+      else if (allowsEmailFallback(campaign.channel) && email && !isOptedOut(email)) { channel = "email"; note = `フォーム無し → メールに切替（${email}）`; }
       else { status = "skip_no_form"; note = r.note || "フォームが見つからない"; }
       db.prepare("UPDATE form_jobs SET status=?, channel=?, email=?, form_url=?, scan_note=?, result_text=?, updated_at=datetime('now') WHERE id=?")
         .run(status, channel, email, r.formUrl ?? job.form_url, note, status === "queued" ? `事前チェック: ${note}` : note, job.id);

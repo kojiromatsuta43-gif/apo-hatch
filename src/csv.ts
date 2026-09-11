@@ -1,6 +1,6 @@
 // 企業DB（COMPANY_DB.md の列名）や任意のCSVを取り込む。列名の別名に対応。
 import { parse } from "csv-parse/sync";
-import { domainOf, getDb, isExcludedDomain } from "./db.js";
+import { domainOf, getDb, isExcludedDomain, channelMode } from "./db.js";
 
 export type CompanyRow = {
   company_name: string;
@@ -63,7 +63,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): Im
   const db = getDb();
   const campaign = db.prepare("SELECT channel, resend_days FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number } | undefined;
   const resendDays = campaign?.resend_days ?? 90;
-  const mode = (campaign?.channel ?? "both") as "form" | "email" | "both";
+  const mode = channelMode(campaign?.channel);
   const summary: ImportSummary = { added: 0, addedForm: 0, addedEmail: 0, excluded: 0, suppressed: 0, duplicated: 0, noUrl: 0, excludedRows: [] };
   const insert = db.prepare(`
     INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, sub_industry, prefecture, representative, domain, channel, email, status, result_text)
@@ -78,9 +78,10 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): Im
       const hasForm = Boolean(r.form_url || r.site_url);
       const hasEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(r.email);
       let channel: "form" | "email" | null = null;
-      if (mode === "form" && hasForm) channel = "form";
-      else if (mode === "email" && hasEmail) channel = "email";
-      else if (mode === "both") channel = hasForm ? "form" : hasEmail ? "email" : null;
+      if (mode === "form_only") channel = hasForm ? "form" : null;
+      else if (mode === "email_only") channel = hasEmail ? "email" : null;
+      else if (mode === "form_first") channel = hasForm ? "form" : hasEmail ? "email" : null;
+      else if (mode === "email_first") channel = hasEmail ? "email" : hasForm ? "form" : null;
       const note = (reason: string) => { if (summary.excludedRows.length < 300) summary.excludedRows.push({ company: r.company_name, reason, where: r.form_url || r.site_url || r.email }); };
       if (!channel) { summary.noUrl++; note("送信先（フォームURL・企業URL・メール）が無い"); continue; }
       const domain = channel === "form" ? domainOf(r.form_url || r.site_url) : domainOf(r.site_url) || r.email.split("@")[1];
