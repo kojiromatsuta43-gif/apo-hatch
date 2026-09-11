@@ -103,6 +103,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (input.dryRun) return done("queued", "テスト入力のみ（送信していない）");
 
     const fieldCountBefore = fields.length;
+    let refilled = false; // 入力エラー後の埋め直しは1回だけ
     for (let round = 0; round < 3; round++) {
       const kind = await clickNextButton(target, page, log);
       if (kind === "none") return done("failed", "送信ボタンが見つからない");
@@ -112,7 +113,19 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit", textBefore);
       log.push(`judge[${round}]: ${outcome.status} ${outcome.detail}`);
       if (outcome.status === "sent") return done("sent", outcome.detail);
-      if (outcome.status === "failed") return done("failed", outcome.detail);
+      if (outcome.status === "failed") {
+        // バリデーションエラーなら、ページが再描画されている前提で項目を集め直し、埋め直して1回だけ再送する
+        if (!refilled && round < 2 && /入力エラー|エラー文言/.test(outcome.detail)) {
+          refilled = true;
+          const again = await collectFields(target);
+          if (again.length) {
+            const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message });
+            log.push(`エラー後の埋め直し: ${r3.filled.join(",") || "なし"}${r3.unfilled.length ? ` / 未入力: ${r3.unfilled.join(",")}` : ""}`);
+            if (r3.filled.length) continue;
+          }
+        }
+        return done("failed", outcome.detail);
+      }
       // 確認画面なら次のラウンドで送信ボタンを押す。確認画面の項目は再収集
       if (kind === "confirm") {
         // 確認画面に未入力の必須項目（同意チェック等）が残っていれば埋める

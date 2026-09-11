@@ -352,12 +352,14 @@ const BACK_RE = /(戻る|修正|back|edit|訂正|キャンセル|cancel|リセ�
 const BUTTONS_SCRIPT = `
 (() => {
   document.querySelectorAll('[data-fo-btn]').forEach((e) => e.removeAttribute('data-fo-btn'));
-  const els = Array.from(document.querySelectorAll('button, input[type=submit], input[type=button], input[type=image], a[role=button], [class*="submit"], [id*="submit"]'));
+  const els = Array.from(new Set(Array.from(document.querySelectorAll('button, input[type=submit], input[type=button], input[type=image], a[role=button], [role=button], [onclick], [class*="submit"], [id*="submit"], [class*="btn"]'))));
   const out = [];
   let i = 0;
   for (const el of els) {
     const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
     if (r.width === 0 || r.height === 0 || st.display === 'none' || st.visibility === 'hidden') continue;
+    // div等をボタン扱いするのは、テキストが短い（=ボタンらしい）ものだけ。大きなコンテナを誤クリックしない
+    if (!/^(BUTTON|INPUT|A)$/.test(el.tagName) && ((el.innerText || '').trim().length > 40 || el.querySelector('input,textarea,select'))) continue;
     const text = (el.innerText || el.value || el.getAttribute('alt') || el.getAttribute('aria-label') || el.getAttribute('title') || el.className || '').trim().replace(/\\s+/g,' ').slice(0, 60);
     el.setAttribute('data-fo-btn', String(i));
     out.push({ idx: i, text, type: (el.getAttribute('type') || el.tagName).toLowerCase(), inForm: !!el.closest('form'), disabled: !!el.disabled });
@@ -374,7 +376,22 @@ export async function clickNextButton(target: Page | Frame, page: Page, log: str
   const confirm = usable.find((b) => CONFIRM_RE.test(b.text) && !SUBMIT_RE.test(b.text));
   const submit = usable.find((b) => SUBMIT_RE.test(b.text)) ?? usable.find((b) => b.type === "submit" && b.inForm);
   const target_ = confirm ?? submit;
-  if (!target_) return "none";
+  if (!target_) {
+    // ボタンが見つからないとき: 入力済みフォームを JS で直接 submit する（SPA やアイコンだけのボタンへの最後の手段）
+    const ok = await target.evaluate(() => {
+      const f = document.querySelector("[data-fo-idx]")?.closest("form");
+      if (!f) return false;
+      if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      return true;
+    }).catch(() => false);
+    if (ok) {
+      log.push("送信ボタン不検出 → form.requestSubmit() で送信");
+      await page.waitForTimeout(2500);
+      await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+      return "submit";
+    }
+    return "none";
+  }
   const kind = confirm ? "confirm" : "submit";
   log.push(`click[${kind}] "${target_.text}"`);
   const before = page.url();
@@ -440,9 +457,13 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
   if (visibleErrors.length && visibleErrors.some((e) => ERROR_RE.test(e))) return { status: "failed", detail: `入力エラー: ${visibleErrors.join(" / ")}` };
   const fieldsNow = (await collectFields(page)).length;
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
-  // エラー語の前後を切り出して見せる（「エラー文言を検知」だけでは、利用者がどの欄を直せばいいか分からない）
-  const m = ERROR_RE.exec(text);
-  if (m) {
+  // エラー語の前後を切り出して見せる（「エラー文言を検知」だけでは、利用者がどの欄を直せばいいか分からない）。
+  // ただし送信前から同じ文言があるものは、フォームの説明文（「※は必須項目です」「必須項目をご入力ください」等）なので無視する
+  const errG = new RegExp(ERROR_RE.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = errG.exec(text))) {
+    const key = text.slice(Math.max(0, m.index - 20), m.index + m[0].length + 20).replace(/\s+/g, "");
+    if (beforeCompact && key && beforeCompact.includes(key)) continue;
     const around = text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 80).replace(/\s+/g, " ").trim();
     return { status: "failed", detail: `エラー文言を検知: 「${around}」\nスクリーンショットで該当の入力欄を確認してください` };
   }

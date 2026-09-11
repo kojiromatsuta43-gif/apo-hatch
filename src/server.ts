@@ -9,7 +9,7 @@ import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.j
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -186,7 +186,10 @@ app.get("/campaigns/:id", (req, res) => {
   const id = Number(req.params.id);
   const c = loadCampaignFull(req, id);
   if (!c) return res.status(404).send("not found");
-  const jobs = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? ORDER BY updated_at DESC, id DESC LIMIT 200").all(id) as Job[];
+  const statusFilter = typeof req.query.status === "string" && req.query.status in STATUS_LABEL ? req.query.status : "";
+  const jobs = (statusFilter
+    ? db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND status=? ORDER BY updated_at DESC, id DESC LIMIT 200").all(id, statusFilter)
+    : db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? ORDER BY updated_at DESC, id DESC LIMIT 200").all(id)) as Job[];
   const counts: Record<string, number> = {};
   for (const r of db.prepare("SELECT status, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY status").all(id) as { status: string; n: number }[]) counts[r.status] = r.n;
   const preview = previews.get(id) ?? null;
@@ -197,7 +200,7 @@ app.get("/campaigns/:id", (req, res) => {
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -366,7 +369,7 @@ app.get("/campaigns/:id/manual.csv", async (req, res) => {
     if (!message) {
       try { const comp = await composeMessage(j, c.sender, { ...c, mode: "template" }, { title: "", text: "" }); message = comp.message; subject = comp.subject; } catch { message = ""; }
     }
-    lines.push([j.company_name, (j.result_text || "").split("\n")[0], j.form_url, j.site_url, j.email, subject, message].map(q).join(","));
+    lines.push([j.company_name, (errKind(j) ? errKind(j) + ": " : "") + (j.result_text || "").split("\n")[0], j.form_url, j.site_url, j.email, subject, message].map(q).join(","));
   }
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename=manual-${id}.csv`);
@@ -380,6 +383,30 @@ app.get("/jobs/:id", (req, res) => {
   const c = db.prepare("SELECT * FROM form_campaigns WHERE id=?").get(j.campaign_id) as Campaign;
   res.send(layout(j.company_name, jobView(j, c), takeFlash(req), navUser(req), updateReady));
 });
+// 失敗ジョブの宛先・会社名を直して、その場で送り直す（一覧・詳細の「修正して再送信」）
+app.post("/jobs/:id/fix", async (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  const formUrl = String(req.body.form_url ?? "").trim();
+  const siteUrl = String(req.body.site_url ?? "").trim();
+  const company = String(req.body.company_name ?? "").trim() || j.company_name;
+  const email = String(req.body.email ?? "").trim().toLowerCase();
+  const channel = !formUrl && email ? "email" : j.channel === "email" && formUrl ? "form" : j.channel;
+  const domain = domainOf(formUrl || siteUrl) || (email ? email.split("@")[1] ?? j.domain : j.domain);
+  db.prepare("UPDATE form_jobs SET form_url=?, site_url=?, company_name=?, email=?, channel=?, domain=?, status='queued', result_text='', updated_at=datetime('now') WHERE id=?")
+    .run(formUrl, siteUrl, company, email, channel, domain, id);
+  const browser = await launchBrowser();
+  try {
+    const r = await processJob(browser, id);
+    redirectWith(res, `/jobs/${id}`, `修正して再送信した結果: ${STATUS_LABEL[r.status] ?? r.status}`);
+  } catch (e) {
+    redirectWith(res, `/jobs/${id}`, `再送信エラー: ${String((e as Error).message)}`);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+});
+
 app.post("/jobs/:id/retry", async (req, res) => {
   const id = Number(req.params.id);
   if (!ownedJob(req, id)) return res.status(403).send(DENIED);

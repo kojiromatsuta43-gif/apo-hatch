@@ -1,6 +1,6 @@
 {
   "name": "apo-hatch",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "【フォーム＆メール】アポハッチくん — 問い合わせフォーム／メール営業の自動送信ツール（単体版）",
   "type": "module",
@@ -17,7 +17,7 @@
     "@types/adm-zip": "^0.5.8",
     "@types/nodemailer": "^8.0.1",
     "adm-zip": "^0.6.0",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.11.1",
     "csv-parse": "^5.6.0",
     "express": "^4.21.2",
     "multer": "^1.4.5-lts.1",

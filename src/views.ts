@@ -25,16 +25,58 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{border-bottom:1p
 .flash{background:var(--honey-100);padding:10px 14px;border-radius:8px;margin-bottom:14px}.muted{color:var(--hive-600);font-size:12px}pre{white-space:pre-wrap;background:#faf7ef;padding:10px;border-radius:8px;font-size:12px}
 .inline{display:inline}.small{font-size:12px}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid #90CAF9;border-top-color:#1565C0;border-radius:50%;animation:sp .9s linear infinite;vertical-align:-1px;margin-right:5px}@keyframes sp{to{transform:rotate(360deg)}}
-.bar{height:16px;background:var(--honey-50);border:1px solid var(--hive-200);border-radius:999px;overflow:hidden;margin:8px 0 4px;max-width:560px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--honey),#7CB342);border-radius:999px;transition:width .6s ease}
+.bar{height:16px;background:var(--honey-50);border:1px solid var(--hive-200);border-radius:999px;overflow:hidden;margin:8px 0 4px;max-width:560px}.bar i{display:block;height:100%;background:var(--honey);border-radius:999px;transition:width .6s ease}
 tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--honey)}
+.card.testcard{background:var(--honey-50);border-color:var(--honey)}
+.errkind{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:#FFF3E0;color:#B26A00;margin-right:4px;white-space:nowrap}
+#fo-chara{position:fixed;right:18px;bottom:16px;width:64px;height:64px;pointer-events:none;z-index:50}
+#fo-chara svg{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .25s}
+#fo-chara .on{opacity:1}
+#fo-chara .bee.on{animation:fo-buzz 1.1s ease-in-out infinite}
+#fo-chara .hopper.on{animation:fo-hop 1.6s ease-in-out infinite}
+#fo-chara.morph{animation:fo-morph .6s ease}
+@keyframes fo-buzz{0%,100%{transform:translateY(0) rotate(-3deg)}25%{transform:translateY(-5px) rotate(2deg)}50%{transform:translateY(-2px) rotate(-2deg)}75%{transform:translateY(-6px) rotate(3deg)}}
+@keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
+@keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
 <header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
-<main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main></body></html>`;
+<main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
+<div id="fo-chara" aria-hidden="true">
+<svg class="bee on" viewBox="0 0 48 48"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/><circle cx="16.8" cy="24.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="24.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 25.8Q24 27.6 26.5 25.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+<svg class="hopper" viewBox="0 0 48 48"><path d="M20 12C18 7.5 15.5 6 13 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 12C30 7.5 32.5 6 35 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.4" cy="5" r="2.2" fill="#1C1710"/><circle cx="35.6" cy="5" r="2.2" fill="#1C1710"/><path d="M12 22L6 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M36 22L42 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M10 20 14 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M38 20 34 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M12 32L7 40M36 32L41 40" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><rect x="13" y="12" width="22" height="30" rx="11" fill="#9CCC65" stroke="#1C1710" stroke-width="2"/><rect x="13" y="28" width="22" height="4" fill="#7CB342"/><rect x="13" y="35" width="22" height="4" fill="#7CB342"/><circle cx="19.6" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="19.7" r=".8" fill="#fff"/><circle cx="29.2" cy="19.7" r=".8" fill="#fff"/><circle cx="16.8" cy="23.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="23.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 24.8Q24 26.6 26.5 24.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+</div>
+<script>
+// 蜂とバッタを10秒ごとに交互に変身させる（送信の進捗とは無関係の演出）
+(()=>{const box=document.getElementById("fo-chara");if(!box)return;
+const bee=box.querySelector(".bee"),hop=box.querySelector(".hopper");
+const t=setInterval(()=>{box.classList.remove("morph");void box.offsetWidth;box.classList.add("morph");
+setTimeout(()=>{bee.classList.toggle("on");hop.classList.toggle("on");},240);},10000);
+addEventListener("pagehide",()=>clearInterval(t),{once:true});})();
+</script>
+</body></html>`;
 }
 
 export function statusTag(s: JobStatus) {
   const cls = s === "sent" ? "sent" : s === "failed" ? "failed" : s === "queued" ? "queued" : s === "sending" ? "sending" : "skip";
   return `<span class="tag ${cls}">${STATUS_LABEL[s] ?? s}</span>`;
+}
+
+/** 失敗理由を「何のエラーか」ひと目で分かる種類に分類する */
+export function errKind(j: Pick<Job, "status" | "result_text">): string {
+  if (j.status === "skip_captcha") return "CAPTCHA検出（要手動対応）";
+  if (j.status !== "failed") return "";
+  const t = j.result_text || "";
+  if (/入力エラー|未入力|入力してください|必須項目/.test(t)) return "必須項目未入力";
+  if (/送信ボタンが見つからない/.test(t)) return "送信ボタン未検出";
+  if (/timeout|タイムアウト/i.test(t)) return "タイムアウト";
+  if (/net::|ECONN|ERR_|getaddrinfo|dns/i.test(t)) return "ネットワークエラー";
+  if (/本文欄への入力に失敗|本文（textarea）/.test(t)) return "本文欄に入力できず";
+  if (/エラー文言/.test(t)) return "サイト側のエラー表示";
+  return "その他";
+}
+function errKindTag(j: Pick<Job, "status" | "result_text">): string {
+  const k = errKind(j);
+  return k ? `<span class="errkind">${esc(k)}</span>` : "";
 }
 
 export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number })[], provider: string) {
@@ -108,7 +150,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
   const cnt = (s: string) => counts[s] ?? 0;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   // 進捗バー用: 事前チェックは「チェック済み/対象」、本送信は「処理済み/全件」
@@ -119,6 +161,10 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""}</h1>
 <p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${c.channel === "both" ? "フォーム優先＋メール" : c.channel === "email" ? "メールのみ" : "フォームのみ"} / モード: ${c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 <div class="stats"><div class="stat">全件<b>${total}</b></div><div class="stat">待機<b>${cnt("queued")}</b></div><div class="stat">送信済<b style="color:var(--ok)">${cnt("sent")}</b></div><div class="stat">失敗<b style="color:var(--ng)">${cnt("failed")}</b></div><div class="stat">フォーム無し<b>${cnt("skip_no_form")}</b></div><div class="stat">お断り<b>${cnt("skip_refused")}</b></div><div class="stat">CAPTCHA<b>${cnt("skip_captcha")}</b></div><div class="stat">除外/重複<b>${cnt("skip_suppressed") + cnt("skip_duplicate") + cnt("skip_optout")}</b></div><div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>
+
+<div class="card testcard"><h2 style="margin-top:0">🧪 テスト送信（本送信とは別）</h2>
+<p class="muted">自社のフォームや自分のメール宛てに動作を試すための機能です。営業リストには送られず、下の送信フローとも無関係です。送信前に一度だけ確認しておくと安心です。</p>
+<a class="btn" href="/campaigns/${c.id}/test">テスト送信ページを開く</a></div>
 
 <div class="card"><h2 style="margin-top:0">1. リストを取り込む</h2>
 <form method="post" action="/campaigns/${c.id}/import" enctype="multipart/form-data"><input type="file" name="csv" accept=".csv,text/csv" required> <button class="btn sub">CSVを取り込む</button>
@@ -135,21 +181,37 @@ ${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" cl
 ${extra.preview ? `<p class="muted">${esc(extra.preview.job.company_name)}（${esc(extra.preview.job.industry)}）向け ${extra.preview.aiUsed ? "・AI生成あり" : "・テンプレのみ"}</p><p><b>件名:</b> ${esc(extra.preview.subject)}</p>${(extra.preview.lint ?? []).map((l) => `<div class="small" style="color:${l.level === "error" ? "var(--ng)" : "var(--warn)"}">${l.level === "error" ? "✕" : "△"} ${esc(l.text)}</div>`).join("")}<pre>${esc(extra.preview.message)}</pre>` : ""}
 </div>
 
-<div class="card"><h2 style="margin-top:0">3. テスト送信（自社のフォームに送って動作確認）</h2>
-<p class="muted">テストの入力欄と履歴は専用ページに分けました。テスト送信は本送信の件数には含まれません。</p>
-<a class="btn sub" href="/campaigns/${c.id}/test">テスト送信ページを開く</a></div>
-
-<div class="card"><h2 style="margin-top:0">4. 本送信</h2>
+<div class="card"><h2 style="margin-top:0">3. 本送信</h2>
 ${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline"><button class="btn">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
-<a class="btn sub" href="/campaigns/${c.id}/export.csv">結果をCSVで書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
+<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
 <p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
 
 <h2>送信一覧（最新200件）</h2>
-<p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。</p>
+<form method="get" action="/campaigns/${c.id}" class="inline"><label class="inline small">状態で絞り込み:
+<select name="status" onchange="this.form.submit()" style="width:auto;padding:4px 8px">
+<option value="">すべて</option>
+${(Object.entries(STATUS_LABEL) as [string, string][]).map(([k, l]) => `<option value="${k}" ${extra.statusFilter === k ? "selected" : ""}>${l}</option>`).join("")}
+</select></label></form>
+<p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
 <table><tr><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
-${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<form method="post" action="/jobs/${j.id}/retry" class="inline"><button class="btn sub small">再試行</button></form>` : ""}</td></tr>`).join("")}
+${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusTag(j.status)}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""}</td></tr>`).join("")}
 </table>
+<script>
+async function foExportCsv(){
+  const b=document.getElementById("csvbtn");if(b.disabled)return;
+  const orig=b.textContent;b.disabled=true;b.textContent="書き出し中…";
+  try{
+    const r=await fetch("/campaigns/${c.id}/export.csv");
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const blob=await r.blob();
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="campaign-${c.id}-results.csv";a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    b.textContent="書き出し済みです ✓";
+  }catch(e){b.textContent="書き出しに失敗しました";}
+  setTimeout(()=>{b.textContent=orig;b.disabled=false;},4000);
+}
+</script>
 <script>
 // 前回表示から更新された行をハイライト（ブラウザごとに localStorage で覚える）
 (()=>{try{
@@ -193,8 +255,15 @@ export function jobView(j: Job, c: Campaign) {
   return `<h1>${esc(j.company_name)} ${statusTag(j.status)}</h1>
 <p><a href="/campaigns/${c.id}">← ${esc(c.name)}</a></p>
 <div class="row"><div class="card"><b>フォームURL:</b> <a href="${esc(j.form_url)}" target="_blank">${esc(j.form_url)}</a><br><b>企業URL:</b> ${esc(j.site_url)}<br><b>業種:</b> ${esc(j.industry)} / ${esc(j.sub_industry)}<br><b>試行:</b> ${j.attempts}回 <b>送信:</b> ${esc(j.sent_at ?? "-")}
-<h2>結果・ログ</h2><pre>${esc(j.result_text)}</pre>
+<h2>結果・ログ ${errKind(j) ? `<span class="errkind">${esc(errKind(j))}</span>` : ""}</h2><pre>${esc(j.result_text)}</pre>
 <form method="post" action="/jobs/${j.id}/retry" class="inline"><button class="btn sub">再試行</button></form>
+${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_captcha" ? `
+<div class="card" id="fix" style="margin-top:14px;background:var(--honey-50)"><h2 style="margin-top:0">修正して再送信</h2>
+<p class="muted">フォームURLの間違い（別ページに正しいフォームがある等）を直して、その場で送り直せます。</p>
+<form method="post" action="/jobs/${j.id}/fix">
+<div class="row"><div><label>フォームURL</label><input type="url" name="form_url" value="${esc(j.form_url)}"></div><div><label>企業URL</label><input type="url" name="site_url" value="${esc(j.site_url)}"></div></div>
+<div class="row"><div><label>会社名</label><input type="text" name="company_name" value="${esc(j.company_name)}"></div><div><label>メール（メール送信に切り替える場合）</label><input type="email" name="email" value="${esc(j.email)}"></div></div>
+<p><button class="btn">修正して再送信</button> <span class="muted small">送信には10〜30秒かかります</span></p></form></div>` : ""}
 <form method="post" action="/suppressions" class="inline"><input type="hidden" name="domain" value="${esc(j.domain)}"><input type="hidden" name="reason" value="手動（${esc(j.company_name)}）"><button class="btn danger">このドメインを除外</button></form>
 ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jobs/${j.id}/outcome"><p>${[["replied", "返信あり"], ["appointment", "アポ獲得"], ["declined", "断り・不要（今後送らない）"], ["", "取り消し"]].map(([k, l]) => `<button class="btn ${j.outcome === k && k ? "" : "sub"} small" name="outcome" value="${k}">${l}</button>`).join(" ")}</p><input type="text" name="note" value="${esc(j.outcome_note)}" placeholder="メモ（返信内容・次のアクション）"></form>` : ""}
 <h2>送った文面</h2><pre>${esc(j.message_used)}</pre></div>
