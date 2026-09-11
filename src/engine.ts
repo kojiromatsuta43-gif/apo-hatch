@@ -114,17 +114,23 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       log.push(`judge[${round}]: ${outcome.status} ${outcome.detail}`);
       if (outcome.status === "sent") return done("sent", outcome.detail);
       if (outcome.status === "failed") {
-        // バリデーションエラーなら、ページが再描画されている前提で項目を集め直し、埋め直して1回だけ再送する
-        if (!refilled && round < 2 && /入力エラー|エラー文言/.test(outcome.detail)) {
+        // バリデーションエラーなら、カナのスペース除去などの修正ルールを通して集め直し、埋め直して1回だけ再送する
+        if (!refilled && round < 2 && /入力エラー/.test(outcome.detail)) {
           refilled = true;
           const again = await collectFields(target);
+          // どの必須項目が空のまま弾かれたか（次のエラー表示に併記する）
+          const emptyRequired = again.filter((f) => f.required && classify(f) !== "ignore" && !f.checked);
           if (again.length) {
-            const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message });
-            log.push(`エラー後の埋め直し: ${r3.filled.join(",") || "なし"}${r3.unfilled.length ? ` / 未入力: ${r3.unfilled.join(",")}` : ""}`);
+            const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message }, { normalize: true });
+            log.push(`エラー後の自動修正・埋め直し: ${r3.filled.join(",") || "なし"}`);
             if (r3.filled.length) continue;
           }
+          if (emptyRequired.length) {
+            const names = emptyRequired.map((f) => (f.sig.split(" || ")[0] || f.name || "項目").slice(0, 16)).slice(0, 4);
+            return done("failed", `${outcome.detail}\n未入力の必須項目の可能性: ${names.join(" / ")}（この欄が必須で、値を用意できず送信できませんでした）`);
+          }
         }
-        return done("failed", outcome.detail);
+        return done("failed", `${outcome.detail}\n※ 入力しないと出るエラーは、その項目が必須になっていることが多いです。`);
       }
       // 確認画面なら次のラウンドで送信ボタンを押す。確認画面の項目は再収集
       if (kind === "confirm") {

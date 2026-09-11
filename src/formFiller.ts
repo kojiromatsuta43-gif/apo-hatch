@@ -197,6 +197,21 @@ function wantsDigitsOnly(f: FieldInfo, hyphenLen: number): boolean {
   return false;
 }
 
+// ---- 単純な入力起因エラーの自動修正ルール（拡張しやすいように配列で持つ）----
+// 送信でバリデーションに弾かれたとき、値を機械的に直して1回だけ入れ直す。ルールを足すだけで対応を増やせる。
+const hiraToKata = (s: string) => s.replace(/[ぁ-ゖ]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+export const FIXUP_RULES: { label: string; cats: Category[]; apply: (v: string) => string }[] = [
+  { label: "カナ欄のスペース除去", cats: ["kana", "kana_last", "kana_first"], apply: (v) => v.replace(/[\s　]+/g, "") },
+  { label: "ひらがな→カタカナ", cats: ["kana", "kana_last", "kana_first"], apply: hiraToKata },
+  { label: "前後の空白を除去", cats: ["company", "name", "name_last", "name_first", "email", "email_confirm", "tel", "url", "address"], apply: (v) => v.trim() },
+  { label: "メールの全角→半角", cats: ["email", "email_confirm"], apply: (v) => v.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/　/g, "") },
+];
+function applyFixups(cat: Category, value: string): string {
+  let v = value;
+  for (const r of FIXUP_RULES) if (r.cats.includes(cat)) v = r.apply(v);
+  return v;
+}
+
 /** textarea の maxlength に収まるように、段落の切れ目で短くする */
 function fitMessage(message: string, max: number): string {
   if (!max || message.length <= max) return message;
@@ -206,8 +221,10 @@ function fitMessage(message: string, max: number): string {
 }
 
 /** 収集した項目に値を入れる。戻り値は入力レポート */
-export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean } = {}): Promise<FillReport> {
+export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean; normalize?: boolean } = {}): Promise<FillReport> {
   const s = v.sender;
+  // normalize 時は「カナのスペース除去」などの修正ルールを通す（送信エラー後の埋め直し用）
+  const nz = (cat: Category, value: string) => (opts.normalize ? applyFixups(cat, value) : value);
   const [lastName, firstName] = splitName(s.person);
   const [lastKana, firstKana] = splitName(s.person_kana || "");
   const email = s.email;
@@ -281,16 +298,16 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
           ok = await setText(f, msg); if (ok) report.hasMessage = true; break;
         }
         case "subject": ok = await setText(f, v.subject); break;
-        case "company": ok = await setText(f, s.company); break;
+        case "company": ok = await setText(f, nz(cat, s.company)); break;
         case "department": ok = await setText(f, "営業部"); break;
         case "position": ok = await setText(f, "担当"); break;
-        case "name": ok = await setText(f, s.person); break;
-        case "name_last": ok = await setText(f, lastName); break;
-        case "name_first": ok = await setText(f, firstName); break;
-        case "kana": ok = await setText(f, s.person_kana || s.person); break;
-        case "kana_last": ok = await setText(f, lastKana || lastName); break;
-        case "kana_first": ok = await setText(f, firstKana || firstName); break;
-        case "email": case "email_confirm": ok = await setText(f, email); break;
+        case "name": ok = await setText(f, nz(cat, s.person)); break;
+        case "name_last": ok = await setText(f, nz(cat, lastName)); break;
+        case "name_first": ok = await setText(f, nz(cat, firstName)); break;
+        case "kana": ok = await setText(f, nz(cat, s.person_kana || s.person)); break;
+        case "kana_last": ok = await setText(f, nz(cat, lastKana || lastName)); break;
+        case "kana_first": ok = await setText(f, nz(cat, firstKana || firstName)); break;
+        case "email": case "email_confirm": ok = await setText(f, nz(cat, email)); break;
         case "tel": {
           const split = tels.length > 1 && countOf(scoped, "tel") >= 3;
           const val = split ? tels[nth - 1] ?? "" : wantsDigitsOnly(f, s.tel.length) ? s.tel.replace(/[^\d]/g, "") : s.tel;
@@ -444,28 +461,52 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
   const hadBefore = beforeCompact && (SUCCESS_RE.test(beforeCompact) || SUCCESS_RE.test(beforeText));
   if ((SUCCESS_RE.test(compact) || SUCCESS_RE.test(text)) && !hadBefore) return { status: "sent", detail: "完了文言を検知" };
   if (SUCCESS_URL_RE.test(new URL(url).pathname)) return { status: "sent", detail: `完了URLへ遷移 (${url})` };
-  // エラー表示の抽出（表示中のものだけ）
-  const visibleErrors: string[] = await page.evaluate(() => {
+  // 実際にフォーム上に赤字で出ているバリデーションメッセージだけを拾う。
+  // ページ本文の無関係なテキスト（「License is GPL」など）を拾わないよう、
+  //   ・エラー用のマークアップ（error/invalid クラス、role=alert、aria-invalid、wpcf7 のタグ）
+  //   ・または赤系の文字色で表示されている短いテキスト
+  // に限定し、さらに「入力してください」等のバリデーション文言に一致するものだけを採用する。
+  const visibleErrors: string[] = await page.evaluate((rxSrc) => {
+    const rx = new RegExp(rxSrc, "i");
+    const seen = new Set<string>();
     const out: string[] = [];
-    for (const el of Array.from(document.querySelectorAll("[class*='error'], [class*='invalid'], [role='alert'], .wpcf7-not-valid-tip, .wpcf7-response-output"))) {
+    const isRed = (el: Element) => {
+      const c = getComputedStyle(el as HTMLElement).color.match(/\d+/g);
+      if (!c) return false;
+      const [r, g, b] = c.map(Number);
+      return r > 120 && g < 110 && b < 110; // 赤〜オレンジ系
+    };
+    const cand = new Set<Element>();
+    document.querySelectorAll("[class*='error'],[class*='invalid'],[class*='err'],[id*='error'],[role='alert'],[aria-live],.wpcf7-not-valid-tip,.wpcf7-response-output,.form-error,.field-error,.help-block,.text-danger,.attention,.caution").forEach((e) => cand.add(e));
+    document.querySelectorAll("[aria-invalid='true']").forEach((f) => { const id = f.getAttribute("aria-describedby"); if (id) id.split(/\s+/).forEach((x) => { const e = document.getElementById(x); if (e) cand.add(e); }); });
+    // 赤字で表示されている短いテキスト要素も候補にする
+    document.querySelectorAll("span,p,div,dd,li,strong,em,label").forEach((e) => { const t = (e as HTMLElement).innerText?.trim() || ""; if (t && t.length <= 60 && rx.test(t) && isRed(e)) cand.add(e); });
+    for (const el of cand) {
       const r = el.getBoundingClientRect();
-      const t = (el as HTMLElement).innerText?.trim();
-      if (r.width > 0 && r.height > 0 && t) out.push(t.slice(0, 80));
+      if (r.width <= 0 || r.height <= 0) continue;
+      const t = ((el as HTMLElement).innerText || "").trim().replace(/\s+/g, " ");
+      if (!t || t.length > 80 || !rx.test(t)) continue;
+      if (seen.has(t)) continue;
+      seen.add(t); out.push(t);
     }
-    return out.slice(0, 5);
-  }).catch(() => []);
-  if (visibleErrors.length && visibleErrors.some((e) => ERROR_RE.test(e))) return { status: "failed", detail: `入力エラー: ${visibleErrors.join(" / ")}` };
+    return out.slice(0, 6);
+  }, ERROR_RE.source).catch(() => [] as string[]);
+  // 送信前から出ていた文言（フォームの注意書き）は除く
+  const freshErrors = visibleErrors.filter((e) => !(beforeCompact && beforeCompact.includes(e.replace(/\s+/g, ""))));
+  if (freshErrors.length) {
+    return { status: "failed", detail: `入力エラー: ${freshErrors.join(" / ")}` };
+  }
+  // 赤字要素として拾えなかった場合の保険: 「◯◯を入力してください」等の強いバリデーション文言だけを、
+  // 送信前に無かったものに限って本文から拾う（ページ説明文や無関係な文章は拾わない）
+  const STRONG = /([^。\n]{0,20}(を|が)?(入力|記入|選択|指定)(して)?ください|[^。\n]{0,16}は必須です|[^。\n]{0,16}が未入力|[^。\n]{0,16}を正しく|[^。\n]{0,16}の形式が正しくありません)/;
+  const sm = STRONG.exec(text);
+  if (sm) {
+    const phrase = sm[0].replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!(beforeCompact && beforeCompact.includes(phrase.replace(/\s+/g, "")))) {
+      return { status: "failed", detail: `入力エラー: ${phrase}` };
+    }
+  }
   const fieldsNow = (await collectFields(page)).length;
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
-  // エラー語の前後を切り出して見せる（「エラー文言を検知」だけでは、利用者がどの欄を直せばいいか分からない）。
-  // ただし送信前から同じ文言があるものは、フォームの説明文（「※は必須項目です」「必須項目をご入力ください」等）なので無視する
-  const errG = new RegExp(ERROR_RE.source, "gi");
-  let m: RegExpExecArray | null;
-  while ((m = errG.exec(text))) {
-    const key = text.slice(Math.max(0, m.index - 20), m.index + m[0].length + 20).replace(/\s+/g, "");
-    if (beforeCompact && key && beforeCompact.includes(key)) continue;
-    const around = text.slice(Math.max(0, m.index - 60), m.index + m[0].length + 80).replace(/\s+/g, " ").trim();
-    return { status: "failed", detail: `エラー文言を検知: 「${around}」\nスクリーンショットで該当の入力欄を確認してください` };
-  }
   return { status: "unsure", detail: "完了もエラーも検知できず" };
 }

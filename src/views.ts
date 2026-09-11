@@ -29,12 +29,16 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{border-bottom:1p
 tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--honey)}
 .card.testcard{background:var(--honey-50);border-color:var(--honey)}
 .errkind{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:#FFF3E0;color:#B26A00;margin-right:4px;white-space:nowrap}
-#fo-chara{position:fixed;right:18px;bottom:16px;width:64px;height:64px;pointer-events:none;z-index:50}
+#fo-chara{position:fixed;right:18px;bottom:16px;display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:999px;background:transparent;transition:background .35s;pointer-events:none;z-index:50}
+#fo-chara.hopper-mode{background:#8BC34A;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+#fo-chara .icon{position:relative;width:52px;height:52px;flex:none}
 #fo-chara svg{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .25s}
 #fo-chara .on{opacity:1}
 #fo-chara .bee.on{animation:fo-buzz 1.1s ease-in-out infinite}
 #fo-chara .hopper.on{animation:fo-hop 1.6s ease-in-out infinite}
-#fo-chara.morph{animation:fo-morph .6s ease}
+#fo-chara .name{font-weight:700;color:#1C1710;font-size:13px;white-space:nowrap;max-width:0;overflow:hidden;opacity:0;transition:max-width .35s,opacity .35s}
+#fo-chara.hopper-mode .name{max-width:120px;opacity:1}
+#fo-chara.morph .icon{animation:fo-morph .6s ease}
 @keyframes fo-buzz{0%,100%{transform:translateY(0) rotate(-3deg)}25%{transform:translateY(-5px) rotate(2deg)}50%{transform:translateY(-2px) rotate(-2deg)}75%{transform:translateY(-6px) rotate(3deg)}}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
@@ -42,15 +46,19 @@ tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 
 <header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <div id="fo-chara" aria-hidden="true">
+<div class="icon">
 <svg class="bee on" viewBox="0 0 48 48"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/><circle cx="16.8" cy="24.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="24.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 25.8Q24 27.6 26.5 25.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
 <svg class="hopper" viewBox="0 0 48 48"><path d="M20 12C18 7.5 15.5 6 13 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 12C30 7.5 32.5 6 35 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.4" cy="5" r="2.2" fill="#1C1710"/><circle cx="35.6" cy="5" r="2.2" fill="#1C1710"/><path d="M12 22L6 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M36 22L42 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M10 20 14 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M38 20 34 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M12 32L7 40M36 32L41 40" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><rect x="13" y="12" width="22" height="30" rx="11" fill="#9CCC65" stroke="#1C1710" stroke-width="2"/><rect x="13" y="28" width="22" height="4" fill="#7CB342"/><rect x="13" y="35" width="22" height="4" fill="#7CB342"/><circle cx="19.6" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="19.7" r=".8" fill="#fff"/><circle cx="29.2" cy="19.7" r=".8" fill="#fff"/><circle cx="16.8" cy="23.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="23.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 24.8Q24 26.6 26.5 24.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
 </div>
+<span class="name">アポバッタくん</span>
+</div>
 <script>
-// 蜂とバッタを10秒ごとに交互に変身させる（送信の進捗とは無関係の演出）
+// 蜂とバッタを10秒ごとに交互に変身させる（送信の進捗とは無関係の演出）。
+// バッタのときだけ緑の背景と「アポバッタくん」の名前を表示する。
 (()=>{const box=document.getElementById("fo-chara");if(!box)return;
 const bee=box.querySelector(".bee"),hop=box.querySelector(".hopper");
 const t=setInterval(()=>{box.classList.remove("morph");void box.offsetWidth;box.classList.add("morph");
-setTimeout(()=>{bee.classList.toggle("on");hop.classList.toggle("on");},240);},10000);
+setTimeout(()=>{const toHopper=!hop.classList.contains("on");bee.classList.toggle("on");hop.classList.toggle("on");box.classList.toggle("hopper-mode",toHopper);},240);},10000);
 addEventListener("pagehide",()=>clearInterval(t),{once:true});})();
 </script>
 </body></html>`;
@@ -79,6 +87,16 @@ function errKindTag(j: Pick<Job, "status" | "result_text">): string {
   return k ? `<span class="errkind">${esc(k)}</span>` : "";
 }
 
+/** 一覧の状態セル。リトライで送信済みになった会社は、過去の失敗をグレーアウトし ↓ で「N回目で送信済み」を見せる */
+function statusCell(j: Job): string {
+  if (j.status === "sent" && j.prev_status && j.attempts > 1) {
+    return `<span class="tag" style="background:#eee;color:#999;text-decoration:line-through">${STATUS_LABEL[j.prev_status as JobStatus] ?? j.prev_status}</span>`
+      + `<div class="small" style="color:var(--hive-600);margin:2px 0">↓</div>`
+      + `${statusTag(j.status)}<div class="small muted">${j.attempts}回目の送信で送信済み</div>`;
+  }
+  return statusTag(j.status);
+}
+
 export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number })[], provider: string) {
   return `<h1>キャンペーン</h1>
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
@@ -95,7 +113,7 @@ export function senderForm(s?: Partial<SenderProfile>) {
 <div class="row"><div><label>ラベル（管理用）</label><input type="text" name="label" value="${v("label")}" placeholder="社内用 / ○○社用" required></div><div><label>会社名 *</label><input type="text" name="company" value="${v("company")}" required></div></div>
 <div class="row"><div><label>業種</label><input type="text" name="industry" value="${v("industry")}"></div><div><label>担当者名 *（姓と名の間にスペース）</label><input type="text" name="person" value="${v("person")}" placeholder="松田 幸次郎" required></div></div>
 <div class="row"><div><label>担当者名ふりがな（カタカナ、姓 名）</label><input type="text" name="person_kana" value="${v("person_kana")}" placeholder="マツダ コウジロウ"></div><div><label>メール *（フォームに入力するアドレス）</label><input type="email" name="email" value="${v("email")}" required></div></div>
-<div class="row"><div><label>返信受付メール（本文に載せる。空なら上と同じ）</label><input type="email" name="reply_email" value="${v("reply_email")}"></div><div><label>電話（ハイフン区切り）</label><input type="text" name="tel" value="${v("tel")}" placeholder="03-1234-5678"></div></div>
+<div class="row"><div><label>返信受付メール（本文に載せる。空なら上と同じ）</label><input type="email" name="reply_email" value="${v("reply_email")}"></div><div><label>電話（ハイフン区切り）</label><input type="text" name="tel" value="${v("tel")}" placeholder="03-1234-5678"><p class="muted" style="color:var(--ng)">⚠ フォームでは電話番号が必須になっていることが多く、未入力のままだとかなりの確率で送信エラーになります。必ず入力してください。</p></div></div>
 <div class="row3"><div><label>郵便番号</label><input type="text" name="postal" value="${v("postal")}" placeholder="114-0001"></div><div><label>住所（都道府県から）</label><input type="text" name="address" value="${v("address")}"></div><div><label>自社URL</label><input type="url" name="url" value="${v("url")}"></div></div>
 <h2>メールで送る場合の設定（任意。フォームだけなら不要）</h2>
 <p class="muted">Googleアカウントで2段階認証をオンにし「アプリパスワード」を発行して貼り付けてください。営業専用のアドレスを使うのが安全です（無料Gmailは1日500通、Workspaceは2,000通まで）。</p>
@@ -150,7 +168,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null }) {
   const cnt = (s: string) => counts[s] ?? 0;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   // 進捗バー用: 事前チェックは「チェック済み/対象」、本送信は「処理済み/全件」
@@ -160,7 +178,17 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   const sendPct = total ? Math.round((processed / total) * 100) : 0;
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""}</h1>
 <p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${c.channel === "both" ? "フォーム優先＋メール" : c.channel === "email" ? "メールのみ" : "フォームのみ"} / モード: ${c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
-<div class="stats"><div class="stat">全件<b>${total}</b></div><div class="stat">待機<b>${cnt("queued")}</b></div><div class="stat">送信済<b style="color:var(--ok)">${cnt("sent")}</b></div><div class="stat">失敗<b style="color:var(--ng)">${cnt("failed")}</b></div><div class="stat">フォーム無し<b>${cnt("skip_no_form")}</b></div><div class="stat">お断り<b>${cnt("skip_refused")}</b></div><div class="stat">CAPTCHA<b>${cnt("skip_captcha")}</b></div><div class="stat">除外/重複<b>${cnt("skip_suppressed") + cnt("skip_duplicate") + cnt("skip_optout")}</b></div><div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>
+${(() => {
+    const att = extra.attempts ?? {};
+    // 「確定件数（会社の重複を除いた実数）」を大きく、試行回数が上回るときだけ「試行 N回」を併記する
+    const tile = (label: string, keys: string[], color = "") => {
+      const n = keys.reduce((a, k) => a + cnt(k), 0);
+      const a = keys.reduce((s, k) => s + (att[k] ?? 0), 0);
+      const sub = a > n ? `<span class="muted small">試行 ${a}回</span>` : "";
+      return `<div class="stat">${label}<b${color ? ` style="color:${color}"` : ""}>${n}</b>${sub}</div>`;
+    };
+    return `<div class="stats"><div class="stat">全件<b>${total}</b><span class="muted small">会社数（重複除く）</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>`;
+  })()}
 
 <div class="card testcard"><h2 style="margin-top:0">🧪 テスト送信（本送信とは別）</h2>
 <p class="muted">自社のフォームや自分のメール宛てに動作を試すための機能です。営業リストには送られず、下の送信フローとも無関係です。送信前に一度だけ確認しておくと安心です。</p>
@@ -188,14 +216,27 @@ ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline
 <p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
 
 <h2>送信一覧（最新200件）</h2>
-<form method="get" action="/campaigns/${c.id}" class="inline"><label class="inline small">状態で絞り込み:
+<form method="get" action="/campaigns/${c.id}" class="inline" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<label class="inline small">状態:
 <select name="status" onchange="this.form.submit()" style="width:auto;padding:4px 8px">
 <option value="">すべて</option>
 ${(Object.entries(STATUS_LABEL) as [string, string][]).map(([k, l]) => `<option value="${k}" ${extra.statusFilter === k ? "selected" : ""}>${l}</option>`).join("")}
-</select></label></form>
+</select></label>
+<label class="inline small">反応:
+<select name="outcome" onchange="this.form.submit()" style="width:auto;padding:4px 8px">
+<option value="">すべて</option>
+<option value="replied" ${extra.outcomeFilter === "replied" ? "selected" : ""}>返信あり</option>
+<option value="appointment" ${extra.outcomeFilter === "appointment" ? "selected" : ""}>アポ獲得</option>
+<option value="declined" ${extra.outcomeFilter === "declined" ? "selected" : ""}>断り</option>
+<option value="none" ${extra.outcomeFilter === "none" ? "selected" : ""}>反応なし</option>
+</select></label>
+<label class="inline small">会社名: <input type="text" name="q" value="${esc(extra.qFilter ?? "")}" placeholder="会社名・ドメイン" style="width:180px;padding:4px 8px"></label>
+<button class="btn sub small">絞り込む</button>
+${extra.statusFilter || extra.outcomeFilter || extra.qFilter ? `<a class="btn sub small" href="/campaigns/${c.id}">解除</a>` : ""}
+</form>
 <p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
 <table><tr><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
-${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusTag(j.status)}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""}</td></tr>`).join("")}
+${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""}</td></tr>`).join("")}
 </table>
 <script>
 async function foExportCsv(){

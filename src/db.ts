@@ -177,6 +177,9 @@ function migrate(db: Database.Database) {
   addCol("sender_profiles", "smtp_port", "INTEGER NOT NULL DEFAULT 465");
   addCol("sender_profiles", "smtp_user", "TEXT NOT NULL DEFAULT ''");
   addCol("sender_profiles", "smtp_pass", "TEXT NOT NULL DEFAULT ''");
+  // リトライで送信済みになったとき、直前の失敗ステータスを覚えておく（履歴表示用）
+  addCol("form_jobs", "prev_status", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_jobs", "prev_result", "TEXT NOT NULL DEFAULT ''");
 }
 
 export type Channel = "form" | "email" | "both";
@@ -271,6 +274,8 @@ export type Job = {
   attempts: number;
   sent_at: string | null;
   updated_at: string;
+  prev_status: string;
+  prev_result: string;
 };
 
 export const STATUS_LABEL: Record<JobStatus, string> = {

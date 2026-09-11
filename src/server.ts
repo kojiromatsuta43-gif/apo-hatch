@@ -187,11 +187,19 @@ app.get("/campaigns/:id", (req, res) => {
   const c = loadCampaignFull(req, id);
   if (!c) return res.status(404).send("not found");
   const statusFilter = typeof req.query.status === "string" && req.query.status in STATUS_LABEL ? req.query.status : "";
-  const jobs = (statusFilter
-    ? db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND status=? ORDER BY updated_at DESC, id DESC LIMIT 200").all(id, statusFilter)
-    : db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? ORDER BY updated_at DESC, id DESC LIMIT 200").all(id)) as Job[];
+  const qFilter = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 60) : "";
+  const outcomeFilter = ["replied", "appointment", "declined", "none"].includes(String(req.query.outcome)) ? String(req.query.outcome) : "";
+  const where = ["campaign_id=?"];
+  const args: (string | number)[] = [id];
+  if (statusFilter) { where.push("status=?"); args.push(statusFilter); }
+  if (qFilter) { where.push("(company_name LIKE ? OR domain LIKE ?)"); args.push(`%${qFilter}%`, `%${qFilter}%`); }
+  if (outcomeFilter === "none") where.push("outcome=''");
+  else if (outcomeFilter) { where.push("outcome=?"); args.push(outcomeFilter); }
+  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE ${where.join(" AND ")} ORDER BY updated_at DESC, id DESC LIMIT 200`).all(...args) as Job[];
   const counts: Record<string, number> = {};
-  for (const r of db.prepare("SELECT status, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY status").all(id) as { status: string; n: number }[]) counts[r.status] = r.n;
+  // 会社（ドメイン）単位で重複を除いた実数と、試行回数の合計を状態ごとに集計する
+  const attempts: Record<string, number> = {};
+  for (const r of db.prepare("SELECT status, COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n, SUM(attempts) a FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY status").all(id) as { status: string; n: number; a: number }[]) { counts[r.status] = r.n; attempts[r.status] = r.a ?? 0; }
   const preview = previews.get(id) ?? null;
   previews.delete(id);
   const consumedImport = lastImports.get(id) ?? null;
@@ -200,7 +208,7 @@ app.get("/campaigns/:id", (req, res) => {
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -394,7 +402,8 @@ app.post("/jobs/:id/fix", async (req, res) => {
   const email = String(req.body.email ?? "").trim().toLowerCase();
   const channel = !formUrl && email ? "email" : j.channel === "email" && formUrl ? "form" : j.channel;
   const domain = domainOf(formUrl || siteUrl) || (email ? email.split("@")[1] ?? j.domain : j.domain);
-  db.prepare("UPDATE form_jobs SET form_url=?, site_url=?, company_name=?, email=?, channel=?, domain=?, status='queued', result_text='', updated_at=datetime('now') WHERE id=?")
+  // status は変えない（直前の失敗ステータスを processJob が履歴として拾えるようにするため）
+  db.prepare("UPDATE form_jobs SET form_url=?, site_url=?, company_name=?, email=?, channel=?, domain=?, updated_at=datetime('now') WHERE id=?")
     .run(formUrl, siteUrl, company, email, channel, domain, id);
   const browser = await launchBrowser();
   try {

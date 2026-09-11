@@ -61,6 +61,11 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
   const db = getDb();
   const job = db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
   const { campaign, sender } = loadCampaign(job.campaign_id);
+  // 今回が再試行で、前回が失敗系だったら「直前の失敗」を覚えておく（送信済みになったとき履歴として見せる）
+  const failLike = ["failed", "skip_no_form", "skip_captcha"];
+  if (!job.is_test && failLike.includes(job.status)) {
+    db.prepare("UPDATE form_jobs SET prev_status=?, prev_result=? WHERE id=?").run(job.status, (job.result_text || "").split("\n")[0].slice(0, 80), jobId);
+  }
   db.prepare("UPDATE form_jobs SET status='sending', attempts=attempts+1, updated_at=datetime('now') WHERE id=?").run(jobId);
 
   const finish = (status: JobStatus, result: string, extra: Partial<Job> = {}) => {
