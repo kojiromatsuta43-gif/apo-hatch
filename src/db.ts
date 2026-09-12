@@ -6,12 +6,14 @@ import path from "node:path";
 
 export const DATA_DIR = process.env.DATA_DIR ?? path.resolve(process.cwd(), "data");
 export const SCREENSHOT_DIR = path.join(DATA_DIR, "screenshots");
+export const MATERIAL_DIR = path.join(DATA_DIR, "materials");
 
 let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (_db) return _db;
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  fs.mkdirSync(MATERIAL_DIR, { recursive: true });
   _db = new Database(path.join(DATA_DIR, "form-outreach.db"));
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
@@ -180,6 +182,10 @@ function migrate(db: Database.Database) {
   // リトライで送信済みになったとき、直前の失敗ステータスを覚えておく（履歴表示用）
   addCol("form_jobs", "prev_status", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "prev_result", "TEXT NOT NULL DEFAULT ''");
+  // 資料添付（メールは添付ファイル、フォームは本文にリンク）
+  addCol("form_campaigns", "material_url", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_campaigns", "attach_path", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_campaigns", "attach_name", "TEXT NOT NULL DEFAULT ''");
 }
 
 export type Channel = "form" | "email" | "both";
@@ -235,6 +241,9 @@ export type Campaign = {
   resend_days: number;
   ignore_refusal: number;
   status: "draft" | "running" | "paused" | "done";
+  material_url: string;   // フォーム送信で本文に載せる資料の公開リンク
+  attach_path: string;    // メール添付する資料ファイルの保存先（DATA_DIR/materials 配下）
+  attach_name: string;    // 添付時に見せるファイル名
 };
 
 export type JobStatus =

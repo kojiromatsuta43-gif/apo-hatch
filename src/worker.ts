@@ -1,5 +1,6 @@
 // キューを回すワーカー。server.ts から同一プロセスで呼ぶことも、`npm run worker` で単独起動もできる。
 // 本体組み込み時は Railway の別サービス（form-worker）としてこのファイルを動かし、DBだけ共有／APIで取りに行く。
+import fs from "node:fs";
 import type { Browser } from "playwright";
 import { getDb, allowsEmailFallback, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
@@ -104,14 +105,18 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     if (opts.dryRun) return finish("queued", "テスト（メールは送っていない）", { message_used: message });
     try {
       const body = buildEmailBody(message, sender);
-      await sendEmail(sender, { from: chk.from, to: job.email, subject, ...body });
+      // 資料ファイルがあればメールに添付する（フォームは添付できないので本文リンクで対応済み）
+      const attachments = campaign.attach_path && fs.existsSync(campaign.attach_path)
+        ? [{ path: campaign.attach_path, filename: campaign.attach_name || "資料.pdf" }]
+        : undefined;
+      await sendEmail(sender, { from: chk.from, to: job.email, subject, ...body, attachments });
       return finish("sent", `メール送信（${job.email}）`, { message_used: message });
     } catch (e) {
       return finish("failed", `メール送信エラー: ${explainSmtpError(e, sender)}`, { message_used: message });
     }
   }
 
-  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal) });
+  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: campaign.mode === "ai" && activeProvider() !== "none", company: job.company_name });
   const detail = [r.detail, ...r.log].join("\n");
   if (r.status === "skip_refused" && job.domain && !campaign.ignore_refusal) {
     db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（自動）");

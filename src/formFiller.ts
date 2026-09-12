@@ -361,6 +361,90 @@ function pickOption<T>(opts: { f: T; text: string }[], cat: Category): { f: T; t
   return neutral[0] ?? valid[0];
 }
 
+// ---- 想定外の項目へのAI回答（全文AI生成モード用）----
+// フォームには会社名・氏名・メール等の「よくある項目」以外の質問が混ざることがある
+// （例:「弊社を何で知りましたか」「ご予算」）。分類できなかった必須項目のラベルをAIに読ませ、
+// 文脈に合う回答を作って入力する。AIが自信を持てない項目は埋めずに返し、呼び出し側が
+// 「要確認」として手動送信リストへ振り分ける。CAPTCHA等のボット対策を回避する機能ではない。
+
+/** 触ってはいけない ignore（fax・パスワード・認証系など）と、単に分類できなかった想定外項目を区別する */
+const NEVER_AI_RE = /(fax|ファックス|ファクス|password|パスワード|search|検索|captcha|認証コード|画像の文字|クーポン|coupon)/i;
+
+/** AIに回答させる候補: 必須なのに種類を判定できなかったテキスト系の欄 */
+export function unknownRequiredFields(fields: FieldInfo[]): FieldInfo[] {
+  return fields.filter(
+    (f) =>
+      f.required &&
+      classify(f) === "ignore" &&
+      !NEVER_AI_RE.test(f.sig) &&
+      (f.tag === "textarea" || (f.tag === "input" && !["checkbox", "radio", "file"].includes(f.type))),
+  );
+}
+
+export type UnknownFieldOutcome = { answered: string[]; unsure: string[]; log: string[] };
+
+export async function aiAnswerUnknownFields(
+  target: Page | Frame,
+  candidates: FieldInfo[],
+  ctx: { company: string; sender: SenderProfile; message: string },
+  llmFn: (system: string, user: string, maxTokens?: number) => Promise<string>,
+): Promise<UnknownFieldOutcome> {
+  const out: UnknownFieldOutcome = { answered: [], unsure: [], log: [] };
+  if (!candidates.length) return out;
+  const labelOf = (f: FieldInfo) => ((f.sig.split(" || ")[0] || f.sig.split(" || ")[1] || f.name || `項目${f.idx}`).split(" | ")[0] || f.name).trim().slice(0, 40);
+  const list = candidates
+    .map((f) => `- idx=${f.idx} ラベル:「${labelOf(f)}」${f.options.length ? ` 選択肢: ${f.options.map((o) => o.text || o.value).filter(Boolean).slice(0, 12).join(" / ")}` : ""}`)
+    .join("\n");
+  const s = ctx.sender;
+  const system = `あなたは日本のBtoB営業担当のアシスタントです。企業の問い合わせフォームの入力項目に、送信者情報と文脈に沿った短い回答を作ります。
+守ること:
+- 事実として渡された情報だけを使う。虚偽・推測の数値や実績は書かない
+- 選択肢がある項目は、選択肢の中から営業の問い合わせとして最も自然なものをそのまま1つ選ぶ
+- 回答を決められない項目・答えるべきでない項目（口座番号・会員番号・紹介コードなど）は "不明" とする
+- 出力はJSON配列のみ。説明文は書かない`;
+  const user = `次のフォーム項目に入れる値を作ってください。
+
+【送信者（こちら側）の情報】
+会社名: ${s.company} / 担当: ${s.person} / メール: ${s.email}${s.tel ? ` / 電話: ${s.tel}` : ""}${s.url ? ` / URL: ${s.url}` : ""}${s.address ? ` / 住所: ${s.address}` : ""}
+
+【送ろうとしている内容（冒頭）】
+${ctx.message.slice(0, 300)}
+
+【宛先の会社】${ctx.company}
+
+【フォームの項目】
+${list}
+
+出力形式（JSONのみ）: [{"idx": 数値, "answer": "値または不明"}]`;
+  let answers = new Map<number, string>();
+  try {
+    const raw = await llmFn(system, user, 500);
+    const m = raw.match(/\[[\s\S]*\]/);
+    if (!m) throw new Error("JSONが見つからない");
+    for (const a of JSON.parse(m[0]) as { idx: number; answer: string }[]) {
+      if (typeof a?.idx === "number" && typeof a?.answer === "string") answers.set(a.idx, a.answer.trim());
+    }
+  } catch (e) {
+    out.log.push(`AI回答の生成に失敗: ${String((e as Error).message ?? e).slice(0, 100)}`);
+    out.unsure = candidates.map(labelOf);
+    return out;
+  }
+  for (const f of candidates) {
+    const ans = answers.get(f.idx);
+    if (!ans || /^["「]?不明["」]?$/.test(ans)) {
+      out.unsure.push(labelOf(f));
+      continue;
+    }
+    try {
+      await target.locator(`[data-fo-idx="${f.idx}"]`).fill(ans.slice(0, 200), { timeout: 3000 });
+      out.answered.push(`${labelOf(f)}=${ans.slice(0, 30)}`);
+    } catch {
+      out.unsure.push(labelOf(f));
+    }
+  }
+  return out;
+}
+
 // ---- ボタン ----
 const SUBMIT_RE = /(送信|送る|申し?込|送付|submit|send|完了する|確定|この内容で)/i;
 const CONFIRM_RE = /(確認|次へ|進む|confirm|next|preview|入力内容)/i;

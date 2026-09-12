@@ -98,11 +98,13 @@ npx playwright install chromium     # 初回のみ（ブラウザ本体）
 npm start                            # → http://localhost:3210
 ```
 
-AIで文面を個別化する場合は環境変数を付ける（無ければテンプレートのみで動く）:
+AIで文面を個別化する場合は、**画面の「設定」からAPIキーを登録**します（管理者のみ。プロバイダ・モデルを選んで保存すると接続テストまで自動で行われます）。APIキーとは何か・料金の目安・取得手順も設定画面に書いてあります。キーはこのPCの `data/` 内にだけ保存されます。
+
+環境変数でも渡せます（設定画面が優先）:
 
 ```bash
-ANTHROPIC_API_KEY=sk-... npm run dev     # Claude（既定 claude-haiku-4-5）
-GEMINI_API_KEY=...       npm run dev     # Gemini（既定 gemini-3.6-flash）
+ANTHROPIC_API_KEY=sk-... npm run dev     # Claude
+GEMINI_API_KEY=...       npm run dev     # Gemini
 ```
 
 ## 使い方（画面）

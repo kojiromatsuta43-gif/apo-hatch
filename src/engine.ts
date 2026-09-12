@@ -4,7 +4,8 @@ import path from "node:path";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, unknownRequiredFields, aiAnswerUnknownFields } from "./formFiller.js";
+import { llm } from "./message.js";
 
 export type SubmitInput = {
   jobId: number;
@@ -15,6 +16,8 @@ export type SubmitInput = {
   message: string;
   dryRun?: boolean; // 入力だけしてスクショを撮り、送信はしない
   ignoreRefusal?: boolean; // 営業お断り文言があっても送る（キャンペーン設定）
+  aiMode?: boolean; // 全文AI生成モード: 想定外の必須項目をAIに回答させる（決められなければ要確認へ）
+  company?: string; // AI回答の文脈用（宛先の会社名）
 };
 
 export type SubmitResult = {
@@ -99,6 +102,20 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (report.unfilled.length) log.push(`unfilled: ${report.unfilled.join(",")}`);
     log.push(...report.log);
     if (!report.hasMessage) return done("failed", "本文欄への入力に失敗");
+
+    // 全文AI生成モード: 種類を判定できなかった必須項目（想定外の質問）をAIに読ませて回答する。
+    // AIが決められない項目が残る場合は、無理に送らず「要確認」として手動送信リストに回す。
+    if (input.aiMode) {
+      const unknowns = unknownRequiredFields(fields);
+      if (unknowns.length) {
+        const r = await aiAnswerUnknownFields(target, unknowns, { company: input.company || "", sender: input.sender, message: input.message }, llm);
+        if (r.answered.length) log.push(`AIが回答した項目: ${r.answered.join(" / ")}`);
+        log.push(...r.log);
+        if (r.unsure.length) {
+          return done("failed", `要確認: 想定外の項目にAIが回答を決められないため送信していません（${r.unsure.join(" / ")}）\n手動送信リストからご対応ください`);
+        }
+      }
+    }
 
     if (input.dryRun) return done("queued", "テスト入力のみ（送信していない）");
 

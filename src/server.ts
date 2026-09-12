@@ -2,9 +2,10 @@
 import express from "express";
 import multer from "multer";
 import path from "node:path";
-import { getDb, SCREENSHOT_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
+import fs from "node:fs";
+import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
-import { composeMessage, activeProvider, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
+import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
@@ -154,7 +155,7 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') sent,
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='queued') queued
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.id DESC`).all(...scope(req).args) as any[];
-  res.send(layout("キャンペーン", campaignListView(rows, activeProvider()), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
@@ -163,14 +164,27 @@ app.get("/campaigns/new", (req, res) => {
   res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider()), takeFlash(req), navUser(req), updateReady));
 });
 
-app.post("/campaigns", (req, res) => {
+app.post("/campaigns", upload.single("material_file"), (req, res) => {
   const b = req.body;
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, "/campaigns/new", "送信者を選び直してください");
-  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0);
-  redirectWith(res, `/campaigns/${r.lastInsertRowid}`, "キャンペーンを作成しました。CSVを取り込んでください。");
+  const materialUrl = String(b.material_url ?? "").trim();
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl);
+  const cid = Number(r.lastInsertRowid);
+  // 資料ファイル（メール添付用）を保存する
+  if (req.file) saveMaterial(cid, req.file);
+  redirectWith(res, `/campaigns/${cid}`, "キャンペーンを作成しました。CSVを取り込んでください。");
 });
+
+// 資料ファイルを DATA_DIR/materials に保存し、キャンペーンに紐づける
+function saveMaterial(campaignId: number, file: Express.Multer.File) {
+  const safeExt = path.extname(file.originalname).replace(/[^.\w]/g, "").slice(0, 10) || ".pdf";
+  const dest = path.join(MATERIAL_DIR, `campaign-${campaignId}${safeExt}`);
+  fs.writeFileSync(dest, file.buffer);
+  const name = Buffer.from(file.originalname, "latin1").toString("utf8"); // multer は元名を latin1 で持つ
+  db.prepare("UPDATE form_campaigns SET attach_path=?, attach_name=? WHERE id=?").run(dest, name || `資料${safeExt}`, campaignId);
+}
 
 function loadCampaignFull(req: express.Request, id: number) {
   const c = ownedCampaign(req, id);
@@ -208,7 +222,7 @@ app.get("/campaigns/:id", (req, res) => {
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), activeProvider(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -499,11 +513,37 @@ app.post("/suppressions/:id/delete", (req, res) => {
   db.prepare(`DELETE FROM form_suppressions WHERE id=? AND ${sc.sql}`).run(Number(req.params.id), ...sc.args);
   redirectWith(res, "/suppressions", "削除しました");
 });
-app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeProvider()), takeFlash(req), navUser(req), updateReady)));
+app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig()), takeFlash(req), navUser(req), updateReady)));
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   db.prepare("INSERT INTO settings(key,value) VALUES('ng_words',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(words));
   redirectWith(res, "/settings", "保存しました");
+});
+
+// ---- AIモード設定（管理者のみ）。キーは data/ 内のDBに保存され、gitには載らない ----
+const setSetting = db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
+app.post("/settings/ai", requireAdmin, async (req, res) => {
+  const provider = req.body.provider === "gemini" ? "gemini" : "anthropic";
+  const model = String(req.body.model ?? "").trim();
+  const key = String(req.body.api_key ?? "").trim();
+  const validModel = AI_MODELS[provider].some((m) => m.id === model) ? model : AI_MODELS[provider][0].id;
+  // キー欄が空のままなら、保存済みのキーを使い続ける（マスク表示のため毎回入力させない）
+  const existing = (db.prepare("SELECT value FROM settings WHERE key='ai_api_key'").get() as { value: string } | undefined)?.value ?? "";
+  const apiKey = key || existing;
+  if (!apiKey) return redirectWith(res, "/settings", "APIキーを入力してください");
+  setSetting.run("ai_provider", provider);
+  setSetting.run("ai_model", validModel);
+  setSetting.run("ai_api_key", apiKey);
+  const err = await testAiConnection();
+  if (err) {
+    redirectWith(res, "/settings", `保存しましたが、接続テストに失敗しました: ${err}`);
+  } else {
+    redirectWith(res, "/settings", `接続テスト成功。AIが使えるようになりました（${provider} / ${validModel}）`);
+  }
+});
+app.post("/settings/ai/delete", requireAdmin, (req, res) => {
+  db.prepare("DELETE FROM settings WHERE key IN ('ai_provider','ai_api_key','ai_model')").run();
+  redirectWith(res, "/settings", "AI設定を削除しました。テンプレートのみで動きます（AI: none）");
 });
 
 // ---- アップデート（管理者のみ）----

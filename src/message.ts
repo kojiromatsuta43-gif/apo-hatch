@@ -29,27 +29,64 @@ export function renderTemplate(tpl: string, vars: Vars): string {
 
 // ---- LLM ----
 export type Provider = "anthropic" | "gemini" | "none";
+
+// 選べるモデル（設定画面のドロップダウンと料金表の元）
+export const AI_MODELS: Record<"anthropic" | "gemini", { id: string; label: string }[]> = {
+  anthropic: [
+    { id: "claude-haiku-4-5", label: "Claude Haiku（安い・速い。まずはこれ）" },
+    { id: "claude-sonnet-5", label: "Claude Sonnet（文面の質が高い）" },
+  ],
+  gemini: [
+    { id: "gemini-3.6-flash-lite", label: "Gemini Flash-Lite（最安）" },
+    { id: "gemini-3.6-flash", label: "Gemini Flash（標準）" },
+  ],
+};
+const DEFAULT_MODEL: Record<"anthropic" | "gemini", string> = { anthropic: "claude-haiku-4-5", gemini: "gemini-3.6-flash" };
+
+export type AiConfig = { provider: Provider; apiKey: string; model: string; source: "settings" | "env" | "none" };
+
+/** AI設定の解決順: 設定画面（DB）→ 環境変数 → なし。キーは data/ のDBに入り、gitには載らない */
+export function activeAiConfig(): AiConfig {
+  try {
+    const db = getDb();
+    const get = (k: string) => (db.prepare("SELECT value FROM settings WHERE key=?").get(k) as { value: string } | undefined)?.value ?? "";
+    const provider = get("ai_provider");
+    const apiKey = get("ai_api_key");
+    if ((provider === "anthropic" || provider === "gemini") && apiKey) {
+      const model = get("ai_model") || DEFAULT_MODEL[provider];
+      const valid = AI_MODELS[provider].some((m) => m.id === model) ? model : DEFAULT_MODEL[provider];
+      return { provider, apiKey, model: valid, source: "settings" };
+    }
+  } catch { /* DB未初期化のタイミングでは env にフォールバック */ }
+  if (process.env.ANTHROPIC_API_KEY) return { provider: "anthropic", apiKey: process.env.ANTHROPIC_API_KEY, model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL.anthropic, source: "env" };
+  if (process.env.GEMINI_API_KEY) return { provider: "gemini", apiKey: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || DEFAULT_MODEL.gemini, source: "env" };
+  return { provider: "none", apiKey: "", model: "", source: "none" };
+}
+
 export function activeProvider(): Provider {
-  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
-  if (process.env.GEMINI_API_KEY) return "gemini";
-  return "none";
+  return activeAiConfig().provider;
+}
+
+/** 画面表示用: 「none」または「anthropic / claude-haiku-4-5」 */
+export function aiStatusLabel(): string {
+  const c = activeAiConfig();
+  return c.provider === "none" ? "none" : `${c.provider} / ${c.model}`;
 }
 
 export async function llm(system: string, user: string, maxTokens = 600): Promise<string> {
-  const p = activeProvider();
-  if (p === "anthropic") {
+  const c = activeAiConfig();
+  if (c.provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: process.env.ANTHROPIC_MODEL || "claude-haiku-4-5", max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
+      headers: { "content-type": "application/json", "x-api-key": c.apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: c.model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
     });
     if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const j = (await res.json()) as { content: { type: string; text?: string }[] };
-    return j.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("").trim();
+    return j.content.filter((c2) => c2.type === "text").map((c2) => c2.text ?? "").join("").trim();
   }
-  if (p === "gemini") {
-    const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, {
+  if (c.provider === "gemini") {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${c.model}:generateContent?key=${c.apiKey}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 } }),
@@ -58,7 +95,22 @@ export async function llm(system: string, user: string, maxTokens = 600): Promis
     const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     return (j.candidates?.[0]?.content?.parts ?? []).map((x) => x.text ?? "").join("").trim();
   }
-  throw new Error("AIのAPIキーが設定されていません（ANTHROPIC_API_KEY または GEMINI_API_KEY）");
+  throw new Error("AIのAPIキーが設定されていません（設定画面から登録できます）");
+}
+
+/** 接続テスト。成功なら null、失敗なら利用者向けの説明文を返す */
+export async function testAiConnection(): Promise<string | null> {
+  try {
+    await llm("テスト接続です。", "「OK」とだけ返してください。", 16);
+    return null;
+  } catch (e) {
+    const msg = String((e as Error).message ?? e);
+    if (/401|403|invalid.*key|API key|PERMISSION_DENIED|unauthorized/i.test(msg)) return "APIキーが正しくない可能性があります。コピーミスが無いか確認してください";
+    if (/404|not.*found|model/i.test(msg) && /model/i.test(msg)) return "選んだモデルが使えないようです。別のモデルを試してください";
+    if (/429|rate|quota|billing|credit/i.test(msg)) return "利用上限か支払い設定の問題のようです。プロバイダの管理画面で残高・上限を確認してください";
+    if (/fetch failed|ENOTFOUND|ECONN|network/i.test(msg)) return "インターネット接続に失敗しました。回線を確認してください";
+    return `接続に失敗しました: ${msg.slice(0, 160)}`;
+  }
 }
 
 const SYSTEM_BASE = `あなたは日本のBtoB営業担当のアシスタントです。企業の問い合わせフォームに送る営業メッセージを書きます。
@@ -111,6 +163,7 @@ ${campaign.ai_instruction ? `【追加指示】\n${campaign.ai_instruction}` : "
 /** キャンペーンのモードに応じて最終文面を作る */
 export async function composeMessage(job: Job, sender: SenderProfile, campaign: Campaign, site: { title: string; text: string }): Promise<{ subject: string; message: string; aiUsed: boolean }> {
   const vars = buildVars(job, sender);
+  vars["資料リンク"] = campaign.material_url || "";
   const subject = renderTemplate(campaign.subject_text || "サービスのご案内", vars);
   let message: string;
   let aiUsed = false;
@@ -131,7 +184,13 @@ export async function composeMessage(job: Job, sender: SenderProfile, campaign: 
     const fallbackOpening = vars.業種 ? `${vars.業種}の事業を展開されている貴社に、ぜひご案内したいサービスがありご連絡いたしました。` : "貴社のホームページを拝見し、ぜひご案内したいサービスがありご連絡いたしました。";
     message = renderTemplate(campaign.template_text, { ...vars, AI冒頭: fallbackOpening });
   }
-  return { subject, message: message.trim(), aiUsed };
+  message = message.trim();
+  // フォーム送信では資料を添付できないので、公開リンクを本文末尾に載せる（メールは添付ファイルで送るため載せない）。
+  // テンプレに {{資料リンク}} を自分で置いている場合は二重にしない。
+  if (job.channel === "form" && campaign.material_url && !message.includes(campaign.material_url)) {
+    message += `\n\n▼サービス資料はこちらからご覧いただけます\n${campaign.material_url}`;
+  }
+  return { subject, message, aiUsed };
 }
 
 // ---- NGワード ----

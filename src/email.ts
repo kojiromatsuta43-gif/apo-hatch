@@ -74,7 +74,7 @@ export function buildEmailBody(message: string, sender: SenderProfile): { text: 
   return { text, html };
 }
 
-export async function sendEmail(sender: SenderProfile, input: { from: string; to: string; subject: string; text: string; html: string }): Promise<string> {
+export async function sendEmail(sender: SenderProfile, input: { from: string; to: string; subject: string; text: string; html: string; attachments?: { path: string; filename: string }[] }): Promise<string> {
   const replyTo = sender.reply_email || sender.email;
   const r = await transport(sender).sendMail({
     from: { name: sender.company, address: input.from },
@@ -83,6 +83,7 @@ export async function sendEmail(sender: SenderProfile, input: { from: string; to
     subject: input.subject,
     text: input.text,
     html: input.html,
+    attachments: input.attachments,
     headers: { "List-Unsubscribe": `<mailto:${replyTo}?subject=配信停止>` },
   });
   return r.messageId ?? "";

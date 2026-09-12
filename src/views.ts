@@ -1,6 +1,6 @@
 // 画面のHTML。BRIDGE HATCH の配色（honey-400 #FFC62E / hive-900 #1C1710）に合わせてある。
 import { STATUS_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, channelMode, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
-import type { Lint } from "./message.js";
+import { AI_MODELS, type Lint } from "./message.js";
 
 export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -74,6 +74,7 @@ export function errKind(j: Pick<Job, "status" | "result_text">): string {
   if (j.status === "skip_captcha") return "CAPTCHA検出（要手動対応）";
   if (j.status !== "failed") return "";
   const t = j.result_text || "";
+  if (/^要確認/.test(t)) return "要確認（AIが回答を決められない項目）";
   if (/入力エラー|未入力|入力してください|必須項目/.test(t)) return "必須項目未入力";
   if (/送信ボタンが見つからない/.test(t)) return "送信ボタン未検出";
   if (/timeout|タイムアウト/i.test(t)) return "タイムアウト";
@@ -132,7 +133,7 @@ ${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.compa
 export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string) {
   const d = (k: keyof Campaign, fb: unknown = "") => esc(defaults[k] ?? fb);
   return `<h1>新しいキャンペーン</h1>
-<form method="post" action="/campaigns" class="card">
+<form method="post" action="/campaigns" class="card" enctype="multipart/form-data">
 <div class="row"><div><label>キャンペーン名</label><input type="text" name="name" required placeholder="福岡 飲食 9月"></div>
 <div><label>送信者</label><select name="sender_id" required>${senders.map((s) => `<option value="${s.id}">${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select>${senders.length ? "" : '<p class="muted">先に<a href="/senders">送信者</a>を登録してください</p>'}</div></div>
 <label>配信チャネル</label>
@@ -144,18 +145,21 @@ export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaig
 </select>
 <label>文面モード</label>
 <select name="mode">
-<option value="hybrid" ${d("mode") === "ai" || d("mode") === "template" ? "" : "selected"}>ハイブリッド（テンプレの {{AI冒頭}} だけ企業ごとにAI生成）— おすすめ</option>
-<option value="template">テンプレートのみ（差し込みだけ・AI不使用）</option>
-<option value="ai">全文AI生成（テンプレは「伝えたいこと」として参照）</option>
+<option value="hybrid" ${provider === "none" ? "disabled" : d("mode") === "ai" || d("mode") === "template" ? "" : "selected"}>ハイブリッド（テンプレの {{AI冒頭}} だけ企業ごとにAI生成）${provider === "none" ? "— AI設定が必要" : "— おすすめ"}</option>
+<option value="template" ${provider === "none" || d("mode") === "template" ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用）</option>
+<option value="ai" ${provider === "none" ? "disabled" : ""}>全文AI生成（テンプレは「伝えたいこと」として参照）${provider === "none" ? "— AI設定が必要" : ""}</option>
 </select>
-${provider === "none" ? '<p class="muted">AIのAPIキーが無いので、ハイブリッド／AIを選んでもテンプレートとして送られます。</p>' : ""}
+${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a href="/settings"><b>設定画面でAPIキーの登録</b></a>が必要です（管理者のみ）。料金の目安や取得手順も設定画面に書いてあります。未設定のままではテンプレートのみで送られます。</p>' : ""}
 <label>件名（件名欄があるフォーム用）</label><input type="text" name="subject_text" value="${d("subject_text", "ショート動画制作サービスのご案内")}">
 <label>本文テンプレート</label>
-<p class="muted">使える差し込み: {{会社名}} {{代表者}}（無ければ「ご担当者様」） {{業種}} {{都道府県}} {{自社名}} {{担当者}} {{自社メール}} {{自社電話}} {{自社URL}} {{AI冒頭}}</p>
+<p class="muted">使える差し込み: {{会社名}} {{代表者}}（無ければ「ご担当者様」） {{業種}} {{都道府県}} {{自社名}} {{担当者}} {{自社メール}} {{自社電話}} {{自社URL}} {{AI冒頭}} {{資料リンク}}</p>
 <textarea name="template_text" style="min-height:320px">${d("template_text")}</textarea>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
 <div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1">はい</option><option value="0">土日も送る</option></select></div></div>
 <div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0">送らない（推奨）</option><option value="1">送る（クレームの恐れあり）</option></select></div><div></div></div>
+<h2>資料の添付（任意）</h2>
+<p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>
+<div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg"></div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" placeholder="https://（Googleドライブ等の共有リンク）"><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
 <p><button class="btn">作成する</button></p></form>`;
 }
 
@@ -338,9 +342,56 @@ ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], provider: string) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig) {
+  const configured = ai.provider !== "none";
+  const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>
-<div class="card"><h2 style="margin-top:0">AIプロバイダ</h2><p>現在: <b>${esc(provider)}</b></p><p class="muted">環境変数で切り替えます。<code>ANTHROPIC_API_KEY</code> があれば Claude（既定 claude-haiku-4-5）、無ければ <code>GEMINI_API_KEY</code> で Gemini（既定 gemini-3.6-flash）。モデルは <code>ANTHROPIC_MODEL</code> / <code>GEMINI_MODEL</code> で変更。</p></div>
+
+<div class="card"><h2 style="margin-top:0">AIモード設定</h2>
+<p>現在: ${configured ? `<span class="tag sent">設定済み</span> <b>${ai.provider === "anthropic" ? "Claude" : "Gemini"} / ${esc(ai.model)}</b>${ai.source === "env" ? ' <span class="muted small">（環境変数から読み込み）</span>' : ""}` : '<span class="tag">未設定（AI: none）</span> <span class="muted">テンプレートのみで動いています。AIを使わなくても送信はできます。</span>'}</p>
+
+<details ${configured ? "" : "open"} style="margin:10px 0"><summary style="cursor:pointer;font-weight:700">はじめての方へ: APIキーとは？ 料金はいくら？（クリックで開く）</summary>
+<div style="padding:10px 4px">
+<p><b>APIキーとは。</b> ChatGPTやClaude.aiのように「会員登録して画面から使う」サービスとは別に、このツールが直接AIを呼び出すための<b>利用者ごとの認証キー</b>です。長い文字列で、発行した本人（または会社）の支払い方法に、<b>使った分だけ課金</b>されます。月額ではなく従量課金です。</p>
+<p><b>料金の目安。</b> フォーム1件あたり入力1,000トークン＋出力300トークン程度を想定した概算です。</p>
+<table style="max-width:560px"><tr><th>モデル</th><th>1件あたり</th><th>月1,000件</th><th>月10,000件</th></tr>
+<tr><td>Claude Haiku</td><td>約0.4円</td><td>約400円</td><td>約4,000円</td></tr>
+<tr><td>Claude Sonnet</td><td>約0.8円</td><td>約800円</td><td>約8,000円</td></tr>
+<tr><td>Gemini Flash-Lite</td><td>約0.2円</td><td>約200円</td><td>約2,000円</td></tr>
+<tr><td>Gemini Flash</td><td>約0.3円</td><td>約300円</td><td>約3,000円</td></tr></table>
+<p class="muted small">2026年9月時点の各社公式レート・1ドル=154円換算の概算です。実際の送信件数やフォームの複雑さで変動します。</p>
+<p><b>キーの取得手順。</b></p>
+<ul class="small">
+<li><b>Claude:</b> <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> でアカウント作成 → 支払い方法を登録 → 左メニュー「API Keys」から発行（<code>sk-ant-</code>で始まる文字列）</li>
+<li><b>Gemini:</b> <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> にGoogleアカウントでログイン →「Get API key」から発行（<code>AIza</code>で始まる文字列）</li>
+</ul>
+<p><b>⚠ 注意。</b></p>
+<ul class="small">
+<li>キーは<b>他人・他の拠点と共有しない</b>でください。共有相手の利用分もあなたに課金されます。拠点ごとに各自のキーを発行してください</li>
+<li>各社の管理画面で<b>利用上限（スペンドリミット）</b>を設定できます。使いすぎ防止に、最初に設定しておくのがおすすめです</li>
+<li>キーはこのPCの <code>data/</code> フォルダ内にだけ保存され、配布物やGitHubには含まれません</li>
+</ul>
+</div></details>
+
+<form method="post" action="/settings/ai">
+<div class="row3">
+<div><label>AIプロバイダ</label><select name="provider" id="ai-provider" onchange="foAiModels()">
+<option value="anthropic" ${ai.provider !== "gemini" ? "selected" : ""}>Claude（Anthropic）</option>
+<option value="gemini" ${ai.provider === "gemini" ? "selected" : ""}>Gemini（Google）</option>
+</select></div>
+<div><label>モデル</label><select name="model" id="ai-model">${models("anthropic")}${models("gemini")}</select></div>
+<div><label>APIキー ${configured && ai.source === "settings" ? '<span class="muted small">（保存済み。変えるときだけ入力）</span>' : ""}</label><input type="password" name="api_key" placeholder="${configured && ai.source === "settings" ? "••••••••（保存済み）" : "sk-ant-… / AIza…"}" autocomplete="off"></div>
+</div>
+<p><button class="btn">保存して接続テスト</button> <span class="muted small">保存すると、実際にAIを1回呼んで接続を確認します</span></p>
+</form>
+${configured && ai.source === "settings" ? `<form method="post" action="/settings/ai/delete" class="inline" onsubmit="return confirm('AI設定を削除しますか？ テンプレートのみの動作に戻ります')"><button class="btn danger small">AI設定を削除する</button></form>` : ""}
+<script>
+function foAiModels(){const p=document.getElementById("ai-provider").value;const sel=document.getElementById("ai-model");let first=null;let cur=sel.selectedOptions[0];
+for(const o of sel.options){const show=o.dataset.p===p;o.hidden=!show;o.disabled=!show;if(show&&!first)first=o;}
+if(!cur||cur.dataset.p!==p)sel.value=first.value;}
+foAiModels();
+</script></div>
+
 <div class="card"><h2 style="margin-top:0">NGワード（1行1語）</h2><form method="post" action="/settings"><textarea name="ng_words">${esc(ngWords.join("\n"))}</textarea><p><button class="btn">保存</button></p></form></div>`;
 }
 

@@ -27,6 +27,8 @@ npm start                        # → http://localhost:3210
 
 環境変数: `PORT`(3210) / `DATA_DIR`(./data) / `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` / `CHROMIUM_PATH` / `HEADLESS=0`(ブラウザを見ながらデバッグ) / `COOKIE_SECURE`
 
+AIのAPIキーは**設定画面（管理者のみ）からの登録が優先**され、`data/` 内のDBに保存されます（gitには載らない）。環境変数はそのフォールバック。**キーをコードやリポジトリに書かないこと**（利用先ごとに各自のキーを登録してもらう方式。開発者のキーを配布物に入れると全利用先の分が開発者に課金される）。
+
 ## ファイルの地図
 
 | ファイル | 役割 |

@@ -205,8 +205,10 @@ const rows: import("../src/csv.js").CompanyRow[] = [
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
 const alias = (i: number, host: string) => { rows[i].form_url = rows[i].form_url.replace("127.0.0.1", host); };
-alias(1, "127.0.0.2"); alias(2, "127.0.0.3"); alias(3, "127.0.0.4"); alias(4, "127.0.0.5");
-alias(7, "127.0.0.7"); alias(8, "127.0.0.8"); alias(9, "127.0.0.9"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "127.0.0.10"); alias(11, "127.0.0.11"); alias(12, "127.0.0.12"); alias(13, "127.0.0.13"); alias(14, "127.0.0.14");
+// 以前は 127.0.0.2〜14 を使っていたが、macOSでは sudo ifconfig lo0 alias が必要で再起動のたびに消えるため、
+// 何も設定しなくても 127.0.0.1 に解決される <名前>.localhost 方式に変更した。
+alias(1, "e2.localhost"); alias(2, "e3.localhost"); alias(3, "e4.localhost"); alias(4, "e5.localhost");
+alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost");
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
@@ -253,7 +255,7 @@ assert.equal(received.confirm.kind, "other");
 assert.ok(received.confirm.body.includes("確認画面工業") && received.confirm.body.includes("ご担当者様"));
 
 assert.equal(results["お断り物産"], "skip_refused");
-assert.ok(db.prepare("SELECT 1 FROM form_suppressions WHERE domain='127.0.0.3'").get(), "お断りは除外リストに入る");
+assert.ok(db.prepare("SELECT 1 FROM form_suppressions WHERE domain='e3.localhost'").get(), "お断りは除外リストに入る");
 assert.equal(results["キャプチャ株式会社"], "skip_captcha");
 assert.equal(results["厳格クリニック"], "failed");
 assert.equal(results["リンク探索社"], "sent", "トップページのリンクからフォームを探索");
