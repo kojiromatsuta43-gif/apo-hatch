@@ -468,7 +468,9 @@ ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.
 <p class="muted">列は <b>会社名</b>（必須）と、<b>メール</b>・<b>ドメイン（企業URL）</b>・<b>電話番号</b>（いずれも任意・あれば拾います）。1行1社。<br>ドメインもメールも無い行は、送信を止める手がかりが無いため登録できません（その場合は会社名を一覧で出します）。</p>
 <form method="post" action="/suppressions/import" enctype="multipart/form-data">
 <div class="row"><div><label>CSVファイル</label><input type="file" name="csv" accept=".csv" required></div><div><label>理由（CSVに理由列が無い行に付けます）</label><input type="text" name="reason" placeholder="取引先のため送信対象外"></div></div>
-<p><button class="btn">取り込む</button></p></form></div>
+<p><button class="btn">取り込む</button></p></form>
+<p class="muted small">除外リストはPCごとに独立しています。別のメンバーと共有したいときは、下のボタンでCSVに書き出し、相手はこの「CSVでまとめて追加」から取り込めます（列はそのまま合います）。</p>
+${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リストをCSVで書き出す</a>' : ""}</div>
 
 <table><tr><th>会社名</th><th>ドメイン</th><th>メール</th><th>電話</th><th>理由</th><th>登録</th><th></th></tr>${rows.length ? rows.map((r) => `<tr><td>${esc(r.company_name || "―")}</td><td>${esc(r.domain ?? "―")}</td><td class="small">${esc(r.email ?? "―")}</td><td class="small">${esc(r.tel || "―")}</td><td class="small">${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td><td><form method="post" action="/suppressions/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("") : `<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>`}</table>
 <h2>メール配信停止（アドレス単位）</h2><p class="muted">上の欄にメールアドレスを入れて追加すると、そのアドレス宛てのメールを停止します。返信で「配信停止」と言われた相手は必ず入れてください。</p>

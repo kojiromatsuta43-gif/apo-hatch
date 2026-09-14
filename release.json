@@ -1,6 +1,6 @@
 {
-  "version": "0.3.32",
-  "notes": "送信者一覧に「利用中（このプロフィールを使っているキャンペーン数）」の列を追加",
+  "version": "0.3.33",
+  "notes": "除外リストをCSVで書き出せるように（別PCの「CSVでまとめて追加」にそのまま読み込めて、チームで手動共有できます）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T22:14:19.924Z"
+  "published_at": "2026-09-14T22:17:43.896Z"
 }

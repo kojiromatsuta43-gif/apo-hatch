@@ -642,6 +642,18 @@ app.get("/suppressions", (req, res) => {
   res.send(layout("除外リスト", suppressionsView(rows, optouts, imported), takeFlash(req), navUser(req), updateReady));
 });
 
+/** 除外リストをCSVで書き出す。列は取り込みと同じなので、別PCの「CSVでまとめて追加」にそのまま読み込める
+    （除外リストはPCごとに独立のため、チーム内での手動共有に使う） */
+app.get("/suppressions/export.csv", (req, res) => {
+  const sc = scope(req);
+  const rows = db.prepare(`SELECT * FROM form_suppressions WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as any[];
+  const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+  const lines = ["会社名,ドメイン,メール,電話,理由,登録日時", ...rows.map((r) => [r.company_name, r.domain, r.email, r.tel, r.reason, r.created_at].map(q).join(","))];
+  res.setHeader("content-type", "text/csv; charset=utf-8");
+  res.setHeader("content-disposition", "attachment; filename=suppressions.csv");
+  res.send("﻿" + lines.join("\n"));
+});
+
 /** 除外リストをCSVでまとめて追加 */
 app.post("/suppressions/import", upload.single("csv"), (req, res) => {
   if (!req.file) return redirectWith(res, "/suppressions", "CSVが選択されていません");
