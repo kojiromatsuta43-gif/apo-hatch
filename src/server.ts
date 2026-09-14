@@ -591,7 +591,7 @@ app.get("/senders", (req, res) => {
   const list = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
   // 各送信者を使っているキャンペーン数（編集・使い回しの判断材料。集計するだけの追加表示）
   const usage: Record<number, number> = {};
-  for (const r of db.prepare(`SELECT sender_id, COUNT(*) n FROM campaigns GROUP BY sender_id`).all() as { sender_id: number; n: number }[]) usage[r.sender_id] = r.n;
+  for (const r of db.prepare(`SELECT sender_id, COUNT(*) n FROM form_campaigns WHERE ${sc.sql} GROUP BY sender_id`).all(...sc.args) as { sender_id: number; n: number }[]) usage[r.sender_id] = r.n;
   res.send(layout("送信者", sendersView(list, usage), takeFlash(req), navUser(req), updateReady));
 });
 app.get("/senders/:id", (req, res) => {
@@ -710,7 +710,19 @@ app.get("/game", (req, res) => {
   res.send(layout("アポスロット", gameView(sent), takeFlash(req), navUser(req), updateReady));
 });
 
-app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig()), takeFlash(req), navUser(req), updateReady)));
+app.get("/settings", requireAdmin, (req, res) => {
+  // 設定は管理者のみ（全体を見られる）なので、件数は全体の合計を出す。集計するだけの追加表示
+  const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  const stats = {
+    senders: one("SELECT COUNT(*) n FROM sender_profiles"),
+    campaigns: one("SELECT COUNT(*) n FROM form_campaigns"),
+    companies: one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0"),
+    sent: one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND status='sent'"),
+    suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
+    optouts: one("SELECT COUNT(*) n FROM email_optouts"),
+  };
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats), takeFlash(req), navUser(req), updateReady));
+});
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
   db.prepare("INSERT INTO settings(key,value) VALUES('ng_words',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(words));

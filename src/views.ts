@@ -477,11 +477,17 @@ ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リス
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }) {
   const configured = ai.provider !== "none";
+  // データの概要: 集計して表示するだけの追加カード。このブロックを消せば丸ごと外せる
+  const overview = stats
+    ? `<div class="card"><h2 style="margin-top:0">データの概要</h2>
+<p class="muted">このPCに保存されている件数のまとめです（あなたが見られる範囲）。</p>
+<div class="stats"><div class="stat">送信者<b>${stats.senders}</b></div><div class="stat">キャンペーン<b>${stats.campaigns}</b></div><div class="stat">登録企業<b>${stats.companies}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">送信済<b style="color:var(--ok)">${stats.sent}</b></div><div class="stat">除外リスト<b>${stats.suppressions}</b></div><div class="stat">配信停止<b>${stats.optouts}</b></div></div></div>`
+    : "";
   const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>
-
+${overview}
 <div class="card"><h2 style="margin-top:0">AIモード設定</h2>
 <p>現在: ${configured ? `<span class="tag sent">設定済み</span> <b>${ai.provider === "anthropic" ? "Claude" : "Gemini"} / ${esc(ai.model)}</b>${ai.source === "env" ? ' <span class="muted small">（環境変数から読み込み）</span>' : ""}` : '<span class="tag">未設定（AI: none）</span> <span class="muted">テンプレートのみで動いています。AIを使わなくても送信はできます。</span>'}</p>
 
