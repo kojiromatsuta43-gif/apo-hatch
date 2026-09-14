@@ -66,16 +66,21 @@ export async function pageHasContactForm(page: Page): Promise<boolean> {
     await page.waitForTimeout(1200);
     if (await scanFrames(page)) return true;
   }
-  // 「お問い合わせはこちら」等をクリックしてモーダル/パネルを開いてから再スキャン
+  return false;
+}
+
+/** 「お問い合わせはこちら」等をクリックしてモーダル/パネルで開くフォームを探す（最後の手段）。
+    ページを遷移させる可能性があるので、リンク探索が全て終わった後にだけ呼ぶ。 */
+async function tryClickTrigger(page: Page): Promise<boolean> {
   try {
     const clicked = await page.evaluate(CLICK_TRIGGER_SCRIPT).catch(() => false);
-    if (clicked) {
-      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(1200);
-      if (await scanFrames(page)) return true;
-    }
-  } catch { /* ignore */ }
-  return false;
+    if (!clicked) return false;
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+    return scanFrames(page);
+  } catch {
+    return false;
+  }
 }
 
 async function safeGoto(page: Page, url: string): Promise<boolean> {
@@ -139,6 +144,10 @@ export async function findContactForm(page: Page, formUrl: string, siteUrl: stri
   // よくあるパス
   for (const p of COMMON_PATHS) {
     if (await tryUrl(origin + p)) return page.url();
+  }
+  // 最後の手段: トップに戻り「お問い合わせはこちら」等を押してモーダル/パネルを開く
+  if (await safeGoto(page, site)) {
+    if (await tryClickTrigger(page)) return page.url();
   }
   return null;
 

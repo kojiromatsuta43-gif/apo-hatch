@@ -222,7 +222,7 @@ ${(() => {
 <a class="btn" href="/campaigns/${c.id}/test">テスト送信ページを開く</a></div>
 
 <div class="card"><h2 style="margin-top:0">1. リストを取り込む</h2>
-<p class="muted">次のどれか1つで取り込めます。見出しは 企業名 / 問い合わせフォーム / 企業URL / メール / 大業界 / 小業界 / 都道府県 / 代表者名 に対応（順不同）。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p>
+<p class="muted"><b>最低限、企業名と企業URL（HP）の2列があれば取り込めます。</b>問い合わせフォームは、HPから自動で探して送信します（AIは不要）。<br>使える見出し: 企業名 / 企業URL / 問い合わせフォーム / メール / 大業界 / 小業界 / 都道府県 / 代表者名（順不同・必要な列だけでOK）。問い合わせフォームのURLも入れておくと成功率が上がります。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p>
 <form method="post" action="/campaigns/${c.id}/import" enctype="multipart/form-data">
 <label>① ファイルから（CSV / Excel .xlsx）</label>
 <input type="file" name="csv" accept=".csv,.xlsx,text/csv">
