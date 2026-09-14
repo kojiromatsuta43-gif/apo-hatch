@@ -104,7 +104,7 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a></td></tr>`).join("")}
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a></td></tr>`).join("")}
 </table>`;
 }
 
@@ -130,12 +130,13 @@ ${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.compa
 </table><h2>新規追加</h2><div class="card">${senderForm()}</div>`;
 }
 
-export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string) {
+export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number) {
   const d = (k: keyof Campaign, fb: unknown = "") => esc(defaults[k] ?? fb);
-  return `<h1>新しいキャンペーン</h1>
-<form method="post" action="/campaigns" class="card" enctype="multipart/form-data">
-<div class="row"><div><label>キャンペーン名</label><input type="text" name="name" required placeholder="福岡 飲食 9月"></div>
-<div><label>送信者</label><select name="sender_id" required>${senders.map((s) => `<option value="${s.id}">${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select>${senders.length ? "" : '<p class="muted">先に<a href="/senders">送信者</a>を登録してください</p>'}</div></div>
+  return `<h1>${editId ? `キャンペーンを編集: ${d("name")}` : "新しいキャンペーン"}</h1>
+${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a></p><p class="muted">配信チャネルの変更は、<b>これから取り込む会社</b>に適用されます（取り込み済みの会社の振り分けは変わりません）。</p>` : ""}
+<form method="post" action="${editId ? `/campaigns/${editId}/edit` : "/campaigns"}" class="card" enctype="multipart/form-data">
+<div class="row"><div><label>キャンペーン名</label><input type="text" name="name" value="${d("name")}" required placeholder="福岡 飲食 9月"></div>
+<div><label>送信者</label><select name="sender_id" required>${senders.map((s) => `<option value="${s.id}" ${defaults.sender_id === s.id ? "selected" : ""}>${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select>${senders.length ? "" : '<p class="muted">先に<a href="/senders">送信者</a>を登録してください</p>'}</div></div>
 <label>配信チャネル</label>
 <select name="channel">
 <option value="form_first" ${channelMode(String(defaults.channel ?? "")) === "form_first" ? "selected" : ""}>フォーム優先（フォームが無ければメール）— おすすめ</option>
@@ -145,9 +146,9 @@ export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaig
 </select>
 <label>文面モード</label>
 <select name="mode">
-<option value="hybrid" ${provider === "none" ? "disabled" : d("mode") === "ai" || d("mode") === "template" ? "" : "selected"}>ハイブリッド（テンプレの {{AI冒頭}} だけ企業ごとにAI生成）${provider === "none" ? "— AI設定が必要" : "— おすすめ"}</option>
-<option value="template" ${provider === "none" || d("mode") === "template" ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用）</option>
-<option value="ai" ${provider === "none" ? "disabled" : ""}>全文AI生成（テンプレは「伝えたいこと」として参照）${provider === "none" ? "— AI設定が必要" : ""}</option>
+<option value="hybrid" ${provider === "none" && defaults.mode !== "hybrid" ? "disabled" : ""} ${defaults.mode === "hybrid" || (provider !== "none" && !defaults.mode) ? "selected" : ""}>ハイブリッド（テンプレの {{AI冒頭}} だけ企業ごとにAI生成）${provider === "none" ? "— AI設定が必要" : "— おすすめ"}</option>
+<option value="template" ${defaults.mode === "template" || (provider === "none" && defaults.mode !== "ai" && defaults.mode !== "hybrid") ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用）</option>
+<option value="ai" ${provider === "none" && defaults.mode !== "ai" ? "disabled" : ""} ${defaults.mode === "ai" ? "selected" : ""}>全文AI生成（テンプレは「伝えたいこと」として参照）${provider === "none" ? "— AI設定が必要" : ""}</option>
 </select>
 ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a href="/settings"><b>設定画面でAPIキーの登録</b></a>が必要です（管理者のみ）。料金の目安や取得手順も設定画面に書いてあります。未設定のままではテンプレートのみで送られます。</p>' : ""}
 <label>件名（件名欄があるフォーム用）</label><input type="text" name="subject_text" value="${d("subject_text", "ショート動画制作サービスのご案内")}">
@@ -155,12 +156,12 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 <p class="muted">使える差し込み: {{会社名}} {{代表者}}（無ければ「ご担当者様」） {{業種}} {{都道府県}} {{自社名}} {{担当者}} {{自社メール}} {{自社電話}} {{自社URL}} {{AI冒頭}} {{資料リンク}}</p>
 <textarea name="template_text" style="min-height:320px">${d("template_text")}</textarea>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
-<div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1">はい</option><option value="0">土日も送る</option></select></div></div>
-<div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0">送らない（推奨）</option><option value="1">送る（クレームの恐れあり）</option></select></div><div></div></div>
+<div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1" ${Number(defaults.weekdays_only ?? 1) ? "selected" : ""}>はい</option><option value="0" ${defaults.weekdays_only !== undefined && !Number(defaults.weekdays_only) ? "selected" : ""}>土日も送る</option></select></div></div>
+<div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0" ${Number(defaults.ignore_refusal ?? 0) ? "" : "selected"}>送らない（推奨）</option><option value="1" ${Number(defaults.ignore_refusal ?? 0) ? "selected" : ""}>送る（クレームの恐れあり）</option></select></div><div></div></div>
 <h2>資料の添付（任意）</h2>
 <p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>
-<div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg"></div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" placeholder="https://（Googleドライブ等の共有リンク）"><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
-<p><button class="btn">作成する</button></p></form>`;
+<div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg">${defaults.attach_name ? `<p class="muted small">現在の添付: <b>${d("attach_name")}</b>（新しいファイルを選ぶと置き換わります）</p>` : ""}</div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" value="${d("material_url")}" placeholder="https://（Googleドライブ等の共有リンク）"><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
+<p><button class="btn">${editId ? "保存する" : "作成する"}</button></p></form>`;
 }
 
 /** CSV取込の結果。何件入ったかだけでなく、除外された会社名まで出す */
@@ -181,7 +182,7 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   const scanPct = scanTotal ? Math.round((extra.scanned / scanTotal) * 100) : 0;
   const processed = total - cnt("queued");
   const sendPct = total ? Math.round((processed / total) * 100) : 0;
-  return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""}</h1>
+  return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""} <a class="btn sub small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">✏️ 編集</a></h1>
 <p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 ${(() => {
     const att = extra.attempts ?? {};
