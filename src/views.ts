@@ -571,110 +571,94 @@ ${!st.configured
 </div>`;
 }
 
-/** ミニゲーム「アポスロット」（待ち時間の息抜き）。
- *  - 3リール×3行・5ライン。図柄は利用者自身のイラスト（蜂＝リプレイ、バッタ＝ブドウ相当）
- *  - クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる（1送信=1枚、BET3枚=3送信で1回転）
- *  - 音は Web Audio でデコードし、先頭の無音を自動で切って鳴らす（HTMLAudioの遅延対策）
- *  - 実在機のキャラクター・ロゴは使わない。筐体はこのツール独自のデザイン */
+/** ミニゲーム「アポスロット」。利用者提供の筐体イラスト（BATTA筐体）を土台に、
+ *  リール・停止ボタン・レバー・表示・GOGOランプを座標で重ねる。座標は元画像 967×1627 基準（--s で拡縮）。
+ *  - 3リール×3行・5ライン。図柄: バッタ(ブドウ相当+8)・蜂(リプレイ)・7・BAR・🔔・🍒
+ *  - クレジットはフォーム送信数から（1送信=1枚、BET3）。ブラウザに保存
+ *  - 音は Web Audio で先頭無音をカットして即時再生 */
 export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
 <p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。</p>
 <div id="cab">
-  <div class="cab-top"><div class="marq"><span>APO</span><span class="seven">7</span><span class="seven">7</span><span class="seven">7</span><span>SLOT</span></div></div>
-  <div class="lamp-row"><div class="lamp" id="lamp"><img src="/assets/game/gogo.jpg" alt="GOGO! BATTA"></div></div>
-  <div class="glass">
-    <div class="win">
-      <div class="reel" id="r0"><div class="strip"></div></div>
-      <div class="reel" id="r1"><div class="strip"></div></div>
-      <div class="reel" id="r2"><div class="strip"></div></div>
-      <div class="line l-top"></div><div class="line l-mid"></div><div class="line l-bot"></div>
-    </div>
+  <img class="bg" src="/assets/game/cabinet.jpg" alt="" draggable="false">
+  <div class="win">
+    <div class="reel" id="r0"><div class="strip"></div></div>
+    <div class="reel" id="r1"><div class="strip"></div></div>
+    <div class="reel" id="r2"><div class="strip"></div></div>
   </div>
-  <div class="disp">
-    <div class="seg"><span>CREDIT</span><b id="credit">0</b></div>
-    <div class="seg"><span>BET</span><b id="bet">3</b></div>
-    <div class="seg"><span>PAYOUT</span><b id="win">0</b></div>
-  </div>
-  <div class="panel">
-    <div class="lever-wrap"><button class="lever" id="lever" disabled><span></span></button><div class="lbl">LEVER</div></div>
-    <div class="stops">
-      <button class="stopbtn" data-i="0" disabled></button>
-      <button class="stopbtn" data-i="1" disabled></button>
-      <button class="stopbtn" data-i="2" disabled></button>
-    </div>
-    <div class="coin"><button class="btn small" id="sync">送信数を反映</button><div class="lbl">送信 <b id="sent">${sentCount}</b>件</div></div>
-  </div>
-  <div class="msg" id="msg">…</div>
-  <div class="cab-bottom">
-    <img src="/assets/game/hatch.png" alt=""><div class="bt">アポハッチ ＆ アポバッタ<small>営業がんばった分だけ回せる</small></div><img src="/assets/game/batta.png" alt="">
-  </div>
+  <div class="lamp" id="lamp"><img src="/assets/game/gogo.jpg" alt="GOGO! BATTA" draggable="false"></div>
+  <div class="seg" id="credit" style="left:calc(322px*var(--s));width:calc(90px*var(--s))">0</div>
+  <div class="seg" id="count" style="left:calc(432px*var(--s));width:calc(100px*var(--s))">0</div>
+  <div class="seg" id="win" style="left:calc(552px*var(--s));width:calc(90px*var(--s))">0</div>
+  <div class="betlamp" id="bl3" style="top:calc(476px*var(--s))"></div>
+  <div class="betlamp" id="bl2" style="top:calc(542px*var(--s))"></div>
+  <div class="betlamp" id="bl1" style="top:calc(607px*var(--s))"></div>
+  <div class="replamp" id="replamp"></div>
+  <button class="lever" id="lever" disabled title="レバー"></button>
+  <button class="stopbtn" data-i="0" style="left:calc(361px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="1" style="left:calc(468px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="2" style="left:calc(568px*var(--s))" disabled></button>
 </div>
-<div class="rules muted small" style="max-width:640px;margin:10px auto">
-・BET 3枚／回（＝フォーム3送信）・5ライン（上・中・下・斜め2本）<br>
-・<img src="/assets/game/batta.png" class="ico">×3 = +8枚　・<img src="/assets/game/hatch.png" class="ico">×3 = リプレイ（次回転はBET不要）　・7×3 = +30枚　・BAR×3 = +10枚　・🔔×3 = +5枚　・左リールに🍒 = +2枚<br>
+<div class="gmsg" id="msg">…</div>
+<div class="gctl"><button class="btn small" id="sync">送信数を反映</button> <span class="muted small">送信 <b id="sent">${sentCount}</b>件</span></div>
+<div class="rules muted small" style="max-width:600px;margin:8px auto 0">
+・BET 3枚／回（＝フォーム3送信）・5ライン（上・中・下・斜め2本）・レバー＝左の黒いノブ、停止＝緑の3ボタン<br>
+・<img src="/assets/game/batta.png" class="ico">×3 = +8枚　・<img src="/assets/game/hatch.png" class="ico">×3 = リプレイ（次回転BET不要）　・7×3 = +30枚　・BAR×3 = +10枚　・🔔×3 = +5枚　・左リール🍒 = +2枚<br>
 ・毎回転 1/30 で GOGO! BATTA が光る → その回転は7が揃って +50枚
 </div>
 <style>
-#cab{max-width:640px;margin:0 auto;background:linear-gradient(180deg,#3a3f47,#1c1f24 30%,#15171b);border-radius:18px;padding:12px 14px 14px;box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.15);color:#fff;user-select:none}
-.cab-top{background:linear-gradient(180deg,#5b2cff,#2c0f8a);border:3px solid #ffd54a;border-radius:12px;padding:10px;text-align:center;box-shadow:inset 0 0 24px rgba(255,255,255,.15)}
-.marq{display:flex;justify-content:center;align-items:center;gap:14px;font-weight:900;font-size:28px;letter-spacing:2px;color:#ffe36e;text-shadow:0 0 10px #ffb300,0 2px 0 #7a4b00}
-.marq .seven{color:#ff3d5a;font-size:40px;font-style:italic;text-shadow:0 0 12px #ff6b81,0 3px 0 #7a0016;transform:skewX(-8deg)}
-.lamp-row{display:flex;justify-content:center;margin:10px 0}
-.lamp{width:280px;height:118px;border-radius:14px;overflow:hidden;background:#000;border:3px solid #444;box-shadow:inset 0 0 20px #000;transition:box-shadow .2s}
-.lamp img{width:100%;height:100%;object-fit:contain;filter:brightness(.18) saturate(.6);transition:filter .15s}
-.lamp.on{border-color:#ff5ce0;box-shadow:0 0 22px #ff5ce0,0 0 48px #6a5cff,inset 0 0 20px #000}
-.lamp.on img{filter:brightness(1.15) saturate(1.3);animation:lampflk .22s steps(2) infinite}
-@keyframes lampflk{50%{filter:brightness(.7) saturate(1.2)}}
-.glass{background:linear-gradient(180deg,#c9ced6,#8c939d);border-radius:14px;padding:10px;box-shadow:inset 0 2px 6px rgba(255,255,255,.6),inset 0 -3px 8px rgba(0,0,0,.35)}
-.win{position:relative;display:flex;gap:10px;justify-content:center;background:#f6f1e4;border:4px solid #2a2a2a;border-radius:10px;padding:8px;overflow:hidden}
-.win:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0) 40%,rgba(0,0,0,0) 70%,rgba(0,0,0,.12));pointer-events:none}
-.reel{position:relative;width:150px;height:270px;overflow:hidden;background:#fffdf6;border:2px solid #b9b2a2;border-radius:8px}
-.reel .strip{will-change:transform}
-.reel .cell{height:90px;display:flex;align-items:center;justify-content:center;font-size:52px;font-weight:900;line-height:1;color:#222}
-.reel .cell img{width:74px;height:74px;object-fit:contain}
-.reel .cell .s7{color:#e6203c;font-size:70px;font-style:italic;text-shadow:0 3px 0 #7a0016,0 0 6px rgba(230,32,60,.35)}
-.reel .cell .sbar{font-size:24px;letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:8px 16px;border-radius:6px;box-shadow:0 2px 0 #000}
-.reel.spinning .strip{filter:blur(1.2px)}
-.line{position:absolute;left:8px;right:8px;height:2px;background:rgba(230,32,60,.55);pointer-events:none}
-.l-top{top:calc(8px + 45px)}.l-mid{top:calc(8px + 135px)}.l-bot{top:calc(8px + 225px)}
-.disp{display:flex;gap:10px;margin:12px 0}
-.seg{flex:1;background:#0b0b0d;border:2px solid #333;border-radius:8px;padding:6px 8px;text-align:center;box-shadow:inset 0 0 10px #000}
-.seg span{display:block;font-size:11px;color:#9aa;letter-spacing:1px}.seg b{font-family:"Menlo","Courier New",monospace;font-size:26px;color:#ff3b3b;text-shadow:0 0 8px #ff3b3b;font-variant-numeric:tabular-nums}
-.panel{display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,#9aa0a8,#5f6670);border-radius:12px;padding:12px 14px;box-shadow:inset 0 2px 4px rgba(255,255,255,.4)}
-.lbl{font-size:11px;color:#eee;text-align:center;margin-top:4px;letter-spacing:1px}
-.lever{width:64px;height:64px;border-radius:50%;border:4px solid #222;background:radial-gradient(circle at 40% 35%,#ff9a9a,#d4145a 60%,#7a0030);box-shadow:0 6px 0 #3a0018,0 8px 12px rgba(0,0,0,.5);cursor:pointer;position:relative}
-.lever span{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff8,transparent 55%)}
-.lever:active{transform:translateY(4px);box-shadow:0 2px 0 #3a0018}
-.lever:disabled{filter:grayscale(.8) brightness(.6);cursor:default;transform:none}
-.stops{flex:1;display:flex;justify-content:center;gap:22px}
-.stopbtn{width:58px;height:58px;border-radius:50%;border:4px solid #1a1a1a;background:radial-gradient(circle at 40% 35%,#ffe9a8,#ffb000 55%,#b26a00);box-shadow:0 5px 0 #4a2c00,0 7px 10px rgba(0,0,0,.5),inset 0 0 0 3px rgba(255,255,255,.35);cursor:pointer}
-.stopbtn:active{transform:translateY(3px);box-shadow:0 2px 0 #4a2c00}
-.stopbtn:disabled{filter:grayscale(.7) brightness(.55);cursor:default;transform:none}
-.coin{text-align:center}
-.msg{margin:12px 0 8px;text-align:center;font-weight:800;font-size:16px;min-height:22px;color:#ffe36e;text-shadow:0 0 8px #ffb300}
-.cab-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#ffcc33,#ff8f1f);border-radius:12px;padding:8px 14px;color:#2a1a00;font-weight:900;font-size:18px;box-shadow:inset 0 0 20px rgba(255,255,255,.35)}
-.cab-bottom img{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 2px 2px rgba(0,0,0,.3))}
-.cab-bottom .bt{text-align:center}.cab-bottom small{display:block;font-size:11px;font-weight:600;opacity:.8}
+#cab{position:relative;width:min(560px,100%);margin:0 auto;aspect-ratio:967/1627;user-select:none;--s:0.579}
+#cab .bg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:10px}
+#cab .win{position:absolute;left:calc(183px*var(--s));top:calc(479px*var(--s));width:calc(607px*var(--s));height:calc(212px*var(--s));display:flex;gap:calc(10px*var(--s));background:#111;border-radius:calc(6px*var(--s));overflow:hidden}
+#cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#fffdf6}
+#cab .reel .strip{will-change:transform}
+#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(46px*var(--s));font-weight:900;line-height:1;color:#222}
+#cab .reel .cell img{width:calc(60px*var(--s));height:calc(60px*var(--s));object-fit:contain}
+#cab .reel .cell .s7{color:#e6203c;font-size:calc(60px*var(--s));font-style:italic;text-shadow:0 calc(3px*var(--s)) 0 #7a0016}
+#cab .reel .cell .sbar{font-size:calc(20px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(6px*var(--s)) calc(12px*var(--s));border-radius:5px}
+#cab .reel.spinning .strip{filter:blur(1.1px)}
+#cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
+#cab .lamp img{width:100%;height:100%;object-fit:contain;filter:brightness(.16) saturate(.5) grayscale(.6);transition:filter .15s}
+#cab .lamp.on{border-color:#ff5ce0;box-shadow:0 0 calc(22px*var(--s)) #ff5ce0,0 0 calc(50px*var(--s)) #6a5cff}
+#cab .lamp.on img{filter:brightness(1.15) saturate(1.3);animation:lampflk .22s steps(2) infinite}
+@keyframes lampflk{50%{filter:brightness(.65) saturate(1.2)}}
+#cab .seg{position:absolute;top:calc(716px*var(--s));height:calc(46px*var(--s));background:#0b0b0d;border:calc(2px*var(--s)) solid #2b2b2b;border-radius:calc(6px*var(--s));display:flex;align-items:center;justify-content:center;font-family:"Menlo","Courier New",monospace;font-size:calc(30px*var(--s));color:#ff3b3b;text-shadow:0 0 calc(8px*var(--s)) #ff3b3b;font-variant-numeric:tabular-nums}
+#cab .betlamp{position:absolute;left:calc(103px*var(--s));width:calc(46px*var(--s));height:calc(46px*var(--s));border-radius:50%;pointer-events:none;box-shadow:none;transition:box-shadow .15s}
+#cab .betlamp.on{box-shadow:0 0 calc(18px*var(--s)) calc(6px*var(--s)) rgba(255,230,80,.85)}
+#cab .replamp{position:absolute;left:calc(818px*var(--s));top:calc(536px*var(--s));width:calc(92px*var(--s));height:calc(36px*var(--s));border-radius:8px;pointer-events:none}
+#cab .replamp.on{box-shadow:0 0 calc(16px*var(--s)) calc(4px*var(--s)) rgba(80,200,255,.9)}
+#cab .lever{position:absolute;left:calc(198px*var(--s));top:calc(894px*var(--s));width:calc(64px*var(--s));height:calc(64px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
+#cab .lever:not(:disabled){box-shadow:0 0 calc(14px*var(--s)) calc(4px*var(--s)) rgba(255,255,140,.75);animation:leverpulse 1.2s ease-in-out infinite}
+@keyframes leverpulse{50%{box-shadow:0 0 calc(6px*var(--s)) calc(2px*var(--s)) rgba(255,255,140,.4)}}
+#cab .lever:active{transform:scale(.92)}
+#cab .lever:disabled{cursor:default;background:rgba(0,0,0,.35);animation:none}
+#cab .stopbtn{position:absolute;top:calc(892px*var(--s));width:calc(56px*var(--s));height:calc(56px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
+#cab .stopbtn:not(:disabled){box-shadow:0 0 calc(16px*var(--s)) calc(5px*var(--s)) rgba(90,255,120,.85)}
+#cab .stopbtn:active{transform:scale(.9)}
+#cab .stopbtn:disabled{cursor:default;background:rgba(0,0,0,.45)}
+.gmsg{margin:10px 0 6px;text-align:center;font-weight:800;font-size:16px;min-height:22px;color:#1C1710}
+.gctl{text-align:center}
 .rules .ico{width:18px;height:18px;vertical-align:-3px}
 </style>
 <script>
 (() => {
+  const cab = document.getElementById("cab");
+  const setScale = () => cab.style.setProperty("--s", (cab.clientWidth / 967).toFixed(4));
+  setScale(); addEventListener("resize", setScale);
+
   // ---- 図柄と配当 ----
-  // H=蜂(リプレイ) B=バッタ(+8) 7=+30 R=BAR(+10) L=ベル(+5) C=チェリー(左リール+2)
-  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂">', B: '<img src="/assets/game/batta.png" alt="バッタ">' };
+  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
   const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<span class="s7">7</span>' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
-  const REEL = [
-    "B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H",
-  ]; // バッタ多め・蜂それなり・7/BARは少なめ（実機の出目バランスをゆるく模倣）
-  const LEN = REEL.length, CELL = 90;
+  const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
+  const LEN = REEL.length, CELL = 70.67;
   const PAY = { B: 8, "7": 30, R: 10, L: 5 };
 
-  // ---- クレジット（フォーム送信数から貯まる。ブラウザに保存）----
-  const KEY = "aposlot-v2";
+  // ---- クレジット（フォーム送信数から。ブラウザに保存）----
+  const KEY = "aposlot-v3";
   const sent = ${Number(sentCount) || 0};
   let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
-  let credit = Number(st.credit) || 0, synced = Number(st.synced) || 0, freeSpin = false;
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced })); } catch {} };
+  let credit = Number(st.credit) || 0, synced = Number(st.synced) || 0, games = Number(st.games) || 0, freeSpin = false;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced, games })); } catch {} };
   const syncSends = () => { if (sent > synced) { const d = sent - synced; credit += d; synced = sent; save(); return d; } return 0; };
 
   const $ = (id) => document.getElementById(id);
@@ -682,19 +666,18 @@ export function gameView(sentCount: number): string {
   const strips = reels.map((r) => r.querySelector(".strip"));
   const stopBtns = [...document.querySelectorAll(".stopbtn")];
 
-  // ---- 音: Web Audio でデコードし、先頭の無音を切って即時再生（遅延対策）----
+  // ---- 音（Web Audio・先頭無音カット）----
   const AC = window.AudioContext || window.webkitAudioContext;
   const actx = AC ? new AC() : null;
   const bufs = {};
   async function loadSnd(name, url) {
     if (!actx) return;
     try {
-      const ab = await (await fetch(url)).arrayBuffer();
-      const buf = await actx.decodeAudioData(ab);
-      const ch = buf.getChannelData(0); let i = 0; const th = 0.02;
-      while (i < ch.length && Math.abs(ch[i]) < th) i++;
+      const buf = await actx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      const ch = buf.getChannelData(0); let i = 0;
+      while (i < ch.length && Math.abs(ch[i]) < 0.02) i++;
       bufs[name] = { buf, off: Math.max(0, i / buf.sampleRate - 0.005) };
-    } catch (e) { /* 音が無くても遊べる */ }
+    } catch {}
   }
   function play(name) {
     const b = bufs[name]; if (!actx || !b) return;
@@ -704,29 +687,23 @@ export function gameView(sentCount: number): string {
   loadSnd("spin", "/assets/game/spin.mp3"); loadSnd("stop", "/assets/game/stop.mp3"); loadSnd("bonus", "/assets/game/bonus.mp3");
   document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
-  // ---- リール描画（3行表示・rAFで回す）----
-  const pos = [0, 0, 0], vel = [0, 0, 0], target = [null, null, null], spinning = [false, false, false];
-  const idx = [3, 8, 13]; // 中段に来ている図柄のインデックス
-  function buildStrip(i) {
-    let html = "";
-    for (let k = 0; k < LEN * 2; k++) { const s = REEL[k % LEN]; html += '<div class="cell' + (s === "7" ? " s7-wrap" : "") + '">' + draw(s) + "</div>"; }
-    strips[i].innerHTML = html;
-  }
-  [0,1,2].forEach((i) => { buildStrip(i); pos[i] = idx[i] - 1; render(i); });
-  function render(i) { const p = ((pos[i] % LEN) + LEN) % LEN; strips[i].style.transform = "translateY(" + (-p * CELL) + "px)"; }
+  // ---- リール（3行表示・rAF）----
+  const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.58;
+  const pos = [0,0,0], vel = [0,0,0], target = [null,null,null], spinning = [false,false,false];
+  function buildStrip(i) { let h = ""; for (let k = 0; k < LEN * 2; k++) h += '<div class="cell">' + draw(REEL[k % LEN]) + "</div>"; strips[i].innerHTML = h; }
+  [0,1,2].forEach((i) => { buildStrip(i); pos[i] = [3, 8, 13][i] - 1; render(i); });
+  function render(i) { const p = ((pos[i] % LEN) + LEN) % LEN; strips[i].style.transform = "translateY(" + (-p * CELL * s()) + "px)"; }
   let last = 0;
   function loop(t) {
     const dt = Math.min(40, t - last) / 1000; last = t;
     for (let i = 0; i < 3; i++) {
       if (!spinning[i]) continue;
-      if (target[i] === null) { pos[i] += vel[i] * dt; }
+      if (target[i] === null) pos[i] += vel[i] * dt;
       else {
-        // 目標（中段=target → 表示開始位置 target-1）へ減速して吸い付く
         const goal = target[i] - 1;
         let d = ((goal - pos[i]) % LEN + LEN) % LEN; if (d > LEN / 2) d -= LEN;
         const step = Math.max(6, Math.abs(d) * 9) * dt + (d > 0.5 ? vel[i] * dt * 0.15 : 0);
-        // 目標まで1歩以内なら正確に吸い付けて停止（歩幅で目標をまたいで振動するのを防ぐ）
-        if (Math.abs(d) <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(i); continue; }
+        if (Math.abs(d) <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
         pos[i] += Math.sign(d) * step;
       }
       render(i);
@@ -738,21 +715,26 @@ export function gameView(sentCount: number): string {
   // ---- 進行 ----
   let bonus = false, lastWin = 0;
   const rnd = (n) => Math.floor(Math.random() * n);
-  function paint() { $("credit").textContent = credit; $("bet").textContent = freeSpin ? "REP" : "3"; $("win").textContent = lastWin; $("sent").textContent = sent; $("lever").disabled = spinning.some(Boolean) || (!freeSpin && credit < 3); }
-  function say(m) { $("msg").textContent = m; }
+  function paint() {
+    $("credit").textContent = credit; $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
+    $("lever").disabled = spinning.some(Boolean) || (!freeSpin && credit < 3);
+    $("replamp").classList.toggle("on", freeSpin);
+  }
+  const say = (m) => { $("msg").textContent = m; };
+  const betLamps = (on) => ["bl1","bl2","bl3"].forEach((id) => $(id).classList.toggle("on", on));
 
   $("sync").onclick = () => { const d = syncSends(); paint(); say(d > 0 ? "送信 " + d + " 件ぶんのクレジットを追加しました" : "新しい送信はありません（送信すると1件=1枚貯まります）"); };
   const first = syncSends(); paint();
-  say(credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバーで回そう！" : "レバーで回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映ボタンで補充）");
+  say(credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映で補充）");
 
   $("lever").onclick = () => {
     if (spinning.some(Boolean)) return;
     if (!freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
-    freeSpin = false; lastWin = 0; save(); paint();
+    freeSpin = false; lastWin = 0; games++; save(); paint(); betLamps(true);
     bonus = rnd(30) === 0;
     $("lamp").classList.remove("on");
-    if (bonus) { $("lamp").classList.add("on"); play("bonus"); say("✨ GOGO! BATTA ✨ 光った！ 止めて7を揃えよう"); }
-    else say("ストップボタンで止めよう");
+    if (bonus) { $("lamp").classList.add("on"); play("bonus"); say("✨ GOGO! BATTA が光った！ 止めて7を揃えよう"); }
+    else say("緑のボタンで止めよう");
     play("spin");
     for (let i = 0; i < 3; i++) { target[i] = null; vel[i] = 26 + i * 2; spinning[i] = true; reels[i].classList.add("spinning"); }
     stopBtns.forEach((b) => (b.disabled = false));
@@ -762,15 +744,13 @@ export function gameView(sentCount: number): string {
   stopBtns.forEach((btn) => btn.onclick = () => {
     const i = Number(btn.dataset.i);
     if (!spinning[i] || target[i] !== null) return;
-    btn.disabled = true;
-    play("stop");
-    // ボーナス中は中段に7を引き込む（実機の「揃う」体験）。通常はランダム
-    if (bonus) { const sevens = REEL.map((s, k) => s === "7" ? k : -1).filter((k) => k >= 0); target[i] = sevens[rnd(sevens.length)]; }
+    btn.disabled = true; play("stop");
+    if (bonus) { const sevens = REEL.map((v, k) => v === "7" ? k : -1).filter((k) => k >= 0); target[i] = sevens[rnd(sevens.length)]; }
     else target[i] = rnd(LEN);
   });
 
-  function onStopped(i) { if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge(); }
-  const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN]; // row: -1=上 0=中 1=下
+  function onStopped() { if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge(); }
+  const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN];
   function judge() {
     const lines = [[-1,-1,-1],[0,0,0],[1,1,1],[-1,0,1],[1,0,-1]];
     let payout = 0, rep = false, notes = [];
@@ -784,9 +764,8 @@ export function gameView(sentCount: number): string {
     }
     if (bonus) { payout += 50; notes.push("GOGO! BATTA +50"); }
     lastWin = payout; credit += payout; if (rep) freeSpin = true;
-    save(); paint(); target.fill(null);
+    save(); paint(); betLamps(false); target.fill(null);
     say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
-    if (!bonus) $("lamp").classList.remove("on");
     bonus = false;
   }
 })();
