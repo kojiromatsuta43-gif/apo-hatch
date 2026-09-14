@@ -146,10 +146,14 @@ ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a
 </select>
 <label>文面モード</label>
 <select name="mode">
-<option value="hybrid" ${provider === "none" && defaults.mode !== "hybrid" ? "disabled" : ""} ${defaults.mode === "hybrid" || (provider !== "none" && !defaults.mode) ? "selected" : ""}>ハイブリッド（テンプレの {{AI冒頭}} だけ企業ごとにAI生成）${provider === "none" ? "— AI設定が必要" : "— おすすめ"}</option>
-<option value="template" ${defaults.mode === "template" || (provider === "none" && defaults.mode !== "ai" && defaults.mode !== "hybrid") ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用）</option>
-<option value="ai" ${provider === "none" && defaults.mode !== "ai" ? "disabled" : ""} ${defaults.mode === "ai" ? "selected" : ""}>全文AI生成（テンプレは「伝えたいこと」として参照）${provider === "none" ? "— AI設定が必要" : ""}</option>
+<option value="ai" ${provider === "none" && defaults.mode !== "ai" ? "disabled" : ""} ${defaults.mode === "ai" || (provider !== "none" && !defaults.mode) ? "selected" : ""}>全文AI生成 — おすすめ。想定外の質問欄にもAIが回答${provider === "none" ? "（AI設定が必要）" : ""}</option>
+<option value="hybrid" ${provider === "none" && defaults.mode !== "hybrid" ? "disabled" : ""} ${defaults.mode === "hybrid" ? "selected" : ""}>ハイブリッド — 冒頭だけAI生成で安いが、想定外の質問欄には対応できない${provider === "none" ? "（AI設定が必要）" : ""}</option>
+<option value="template" ${defaults.mode === "template" || (provider === "none" && defaults.mode !== "ai" && defaults.mode !== "hybrid") ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用・0円）</option>
 </select>
+<p class="muted small">
+<b>全文AI生成:</b> 企業ごとに全文を書き、「ご予算」「何で知りましたか」など想定外の質問欄にもAIが回答するため、送信が成功しやすくなります。料金は1件あたり約0.5〜0.8円（Haiku）。月1,000件送ってもハイブリッドとの差は数百円です。<br>
+<b>ハイブリッド:</b> 冒頭1〜2文だけAIが書くので安い（約0.2円/件）ぶん、想定外の質問欄には対応できず、そのフォームは失敗になりやすくなります。<br>
+※ チェック欄・選択肢はどのモードでも自動対応します。CAPTCHAはどのモードでも突破しません。</p>
 ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a href="/settings"><b>設定画面でAPIキーの登録</b></a>が必要です（管理者のみ）。料金の目安や取得手順も設定画面に書いてあります。未設定のままではテンプレートのみで送られます。</p>' : ""}
 <label>件名（件名欄があるフォーム用）</label><input type="text" name="subject_text" value="${d("subject_text", "ショート動画制作サービスのご案内")}">
 <label>本文テンプレート</label>
