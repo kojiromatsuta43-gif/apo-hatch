@@ -602,9 +602,9 @@ export function gameView(sentCount: number): string {
 <div class="gmsg" id="msg">…</div>
 <div class="gctl"><button class="btn small" id="sync">送信数を反映</button> <span class="muted small">送信 <b id="sent">${sentCount}</b>件</span></div>
 <div class="rules muted small" style="max-width:600px;margin:8px auto 0">
-・BET 3枚／回（＝フォーム3送信）・5ライン（上・中・下・斜め2本）・レバー＝左の黒いノブ、停止＝緑の3ボタン<br>
-・<img src="/assets/game/batta.png" class="ico">×3 = +8枚　・<img src="/assets/game/hatch.png" class="ico">×3 = リプレイ（次回転BET不要）　・7×3 = +30枚　・BAR×3 = +10枚　・🔔×3 = +5枚　・左リール🍒 = +2枚<br>
-・毎回転 1/30 で GOGO! BATTA が光る → その回転は7が揃って +50枚
+レバー＝左の黒いノブ、停止＝緑の3ボタン。図柄は自動で揃うように制御されます。<br>
+・<img src="/assets/game/batta.png" class="ico">ブドウ 1/6 = +8枚　・<img src="/assets/game/hatch.png" class="ico">リプレイ 1/7.3（次回転BET不要）　・🍒チェリー 1/15 = +2枚（10%でGOGO!）<br>
+・左リールだけ🍒（1/50）= GOGO! 確定　・GOGO!後に7が3つ揃うと +50枚
 </div>
 <style>
 #cab{position:relative;width:min(700px,100%);margin:0 auto;aspect-ratio:967/1627;user-select:none;--s:0.724}
@@ -612,9 +612,9 @@ export function gameView(sentCount: number): string {
 #cab .win{position:absolute;left:calc(183px*var(--s));top:calc(479px*var(--s));width:calc(607px*var(--s));height:calc(212px*var(--s));display:flex;gap:calc(10px*var(--s));background:#111;border-radius:calc(6px*var(--s));overflow:hidden}
 #cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#fffdf6}
 #cab .reel .strip{will-change:transform}
-#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(58px*var(--s));font-weight:900;line-height:1;color:#222}
-#cab .reel .cell img{width:calc(68px*var(--s));height:calc(68px*var(--s));object-fit:contain}
-#cab .reel .cell img.s7{width:calc(150px*var(--s));height:calc(68px*var(--s));object-fit:contain}
+#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(72px*var(--s));font-weight:900;line-height:1;color:#222}
+#cab .reel .cell img{width:calc(86px*var(--s));height:calc(86px*var(--s));object-fit:contain}
+#cab .reel .cell img.s7{width:calc(180px*var(--s));height:calc(82px*var(--s));object-fit:contain}
 #cab .reel .cell .sbar{font-size:calc(24px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(8px*var(--s)) calc(14px*var(--s));border-radius:5px}
 #cab .reel.spinning .strip{filter:blur(1.1px)}
 #cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
@@ -645,29 +645,17 @@ export function gameView(sentCount: number): string {
   const cab = document.getElementById("cab");
   const setScale = () => cab.style.setProperty("--s", (cab.clientWidth / 967).toFixed(4));
   setScale(); addEventListener("resize", setScale);
-
-  // ---- 図柄と配当 ----
-  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
-  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<img class="s7" src="/assets/game/seven.png" alt="7" draggable="false">' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
-  const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
-  const LEN = REEL.length, CELL = 70.67;
-  const PAY = { B: 8, "7": 30, R: 10, L: 5 };
-  const FREE_PLAY = true; // テスト中: クレジットを消費せず無限に回せる（本番運用に戻すときは false）
-
-  // ---- クレジット（フォーム送信数から。ブラウザに保存）----
-  const KEY = "aposlot-v3";
-  const sent = ${Number(sentCount) || 0};
-  let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
-  let credit = Number(st.credit) || 0, synced = Number(st.synced) || 0, games = Number(st.games) || 0, freeSpin = false;
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced, games })); } catch {} };
-  const syncSends = () => { if (sent > synced) { const d = sent - synced; credit += d; synced = sent; save(); return d; } return 0; };
-
   const $ = (id) => document.getElementById(id);
   const reels = [0,1,2].map((i) => $("r" + i));
   const strips = reels.map((r) => r.querySelector(".strip"));
   const stopBtns = [...document.querySelectorAll(".stopbtn")];
 
-  // ---- 音（Web Audio・先頭無音カット）----
+  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
+  const draw = (x) => x === "H" || x === "B" ? IMG[x] : x === "7" ? '<img class="s7" src="/assets/game/seven.png" alt="7" draggable="false">' : x === "R" ? '<span class="sbar">BAR</span>' : x === "L" ? "🔔" : "🍒";
+  const cellHTML = (x) => '<div class="cell">' + draw(x) + "</div>";
+  const FILLER = ["L","R"];
+  const rndOf = (a) => a[Math.floor(Math.random() * a.length)];
+
   const AC = window.AudioContext || window.webkitAudioContext;
   const actx = AC ? new AC() : null;
   const bufs = {};
@@ -680,119 +668,151 @@ export function gameView(sentCount: number): string {
       bufs[name] = { buf, off: Math.max(0, i / buf.sampleRate - 0.005) };
     } catch {}
   }
-  function play(name) {
+  let bgmSrc = null;
+  function stopBgm() { if (bgmSrc) { try { bgmSrc.stop(); } catch {} bgmSrc = null; } }
+  function play(name, keep) {
     const b = bufs[name]; if (!actx || !b) return;
     if (actx.state === "suspended") actx.resume();
     const src = actx.createBufferSource(); src.buffer = b.buf; src.connect(actx.destination); src.start(0, b.off);
+    if (keep) bgmSrc = src;
   }
-  loadSnd("spin", "/assets/game/spin.mp3"); loadSnd("stop", "/assets/game/stop.mp3"); loadSnd("bonus", "/assets/game/bonus.mp3");
-  loadSnd("bgm", "/assets/game/bgm.mp3"); loadSnd("grape", "/assets/game/grape.mp3"); loadSnd("replay", "/assets/game/replay.mp3"); loadSnd("tenpai", "/assets/game/tenpai.mp3"); loadSnd("cherry", "/assets/game/cherry.mp3");
-  // 7揃い後の音楽: 次にレバーを叩くまでループで流す
-  let loopSrc = null;
-  function stopLoop() { if (loopSrc) { try { loopSrc.stop(); } catch {} loopSrc = null; } }
-  function playLoop(name) {
-    stopLoop(); const b = bufs[name]; if (!actx || !b) return;
-    if (actx.state === "suspended") actx.resume();
-    const src = actx.createBufferSource(); src.buffer = b.buf; src.loop = true; src.loopStart = b.off; src.loopEnd = b.buf.duration; src.connect(actx.destination); src.start(0, b.off); loopSrc = src;
-  }
+  ["spin","stop","bonus","bgm","grape","replay","tenpai","cherry"].forEach((n) => loadSnd(n, "/assets/game/" + n + ".mp3"));
   document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
-  // ---- リール（3行表示・rAF）----
-  const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.58;
-  const pos = [0,0,0], vel = [0,0,0], target = [null,null,null], spinning = [false,false,false];
-  function buildStrip(i) { let h = ""; for (let k = 0; k < LEN * 2; k++) h += '<div class="cell">' + draw(REEL[k % LEN]) + "</div>"; strips[i].innerHTML = h; }
-  [0,1,2].forEach((i) => { buildStrip(i); pos[i] = [3, 8, 13][i] - 1; render(i); });
-  function render(i) { const p = ((pos[i] % LEN) + LEN) % LEN; strips[i].style.transform = "translateY(" + (-p * CELL * s()) + "px)"; }
+  const SPINSYMS = ["B","H","7","C","L","R"];
+  const CELL = 70.67;
+  const pos = [0,0,0], spinning = [false,false,false];
+  let grid = [null,null,null];
+  function fillSpin(i) { let h = ""; for (let k = 0; k < 24; k++) h += cellHTML(rndOf(SPINSYMS)); strips[i].innerHTML = h; }
+  function showGrid(i) { const g = grid[i]; strips[i].style.transform = "translateY(0px)"; strips[i].innerHTML = cellHTML(g[0]) + cellHTML(g[1]) + cellHTML(g[2]); }
+  [0,1,2].forEach((i) => { grid[i] = [rndOf(FILLER),rndOf(FILLER),rndOf(FILLER)]; showGrid(i); });
+  const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.72;
   let last = 0;
   function loop(t) {
     const dt = Math.min(40, t - last) / 1000; last = t;
     for (let i = 0; i < 3; i++) {
       if (!spinning[i]) continue;
-      // 実機と同じく図柄は常に上から下へ流れる（pos を減らす方向にだけ動かす）
-      if (target[i] === null) pos[i] -= vel[i] * dt;
-      else {
-        const goal = target[i] - 1;
-        const dist = ((pos[i] - goal) % LEN + LEN) % LEN; // 下方向に進んで目標へ届くまでの距離
-        const step = Math.max(6, dist * 9) * dt + (dist > 0.5 ? vel[i] * dt * 0.15 : 0);
-        if (dist <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
-        pos[i] -= step;
-      }
-      pos[i] = ((pos[i] % LEN) + LEN) % LEN;
-      render(i);
+      pos[i] = (pos[i] + (26 + i * 2) * dt) % SPINSYMS.length;
+      strips[i].style.transform = "translateY(" + (-(pos[i] % 1) * CELL * s()) + "px)";
     }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
-  // ---- 進行 ----
-  let bonus = false, lastWin = 0;
-  const rnd = (n) => Math.floor(Math.random() * n);
+  const KEY = "aposlot-v3";
+  const sent = ${Number(sentCount) || 0};
+  const FREE_PLAY = true;
+  let stst = {}; try { stst = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
+  let credit = Number(stst.credit) || 0, synced = Number(stst.synced) || 0, games = Number(stst.games) || 0;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced, games })); } catch {} };
+  const syncSends = () => { if (sent > synced) { const d = sent - synced; credit += d; synced = sent; save(); return d; } return 0; };
+
+  let freeSpin = false, bonusReady = false, outcome = "none", pekari = false, pekariAt = "third", lastWin = 0;
+  const rnd = () => Math.random();
+  const stoppedCount = () => spinning.filter((v) => !v).length;
+
   function paint() {
-    $("credit").textContent = FREE_PLAY ? "∞" : credit; $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
+    $("credit").textContent = FREE_PLAY ? "∞" : credit;
+    $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
     $("lever").disabled = spinning.some(Boolean) || (!FREE_PLAY && !freeSpin && credit < 3);
     $("replamp").classList.toggle("on", freeSpin);
   }
   const say = (m) => { $("msg").textContent = m; };
   const betLamps = (on) => ["bl1","bl2","bl3"].forEach((id) => $(id).classList.toggle("on", on));
+  const lampOn = () => $("lamp").classList.add("on");
+  const lampOff = () => $("lamp").classList.remove("on");
 
   $("sync").onclick = () => { const d = syncSends(); paint(); say(d > 0 ? "送信 " + d + " 件ぶんのクレジットを追加しました" : "新しい送信はありません（送信すると1件=1枚貯まります）"); };
-  const first = syncSends(); paint();
-  say(FREE_PLAY ? "テストモード: 無限に回せます。レバー（左の黒いノブ）で回そう！" : credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映で補充）");
+  syncSends(); paint();
+  say(FREE_PLAY ? "テストモード: 無限に回せます。レバー（左の黒いノブ）で回そう！" : "フォーム送信3件で1回転できます");
+
+  // 空きマスを埋める見た目用の図柄（蜂・バッタ・7・ベル・BARを重み付きで。チェリーは意図した位置のみ）
+  const WPOOL = ["B","B","H","H","L","L","R","R","7"];
+  const noMidTriple = () => {
+    const m = [grid[0][1], grid[1][1], grid[2][1]];
+    if (m[0] === m[1] && m[1] === m[2] && (m[0] === "B" || m[0] === "H" || m[0] === "7")) grid[2][1] = grid[2][1] === "L" ? "R" : "L";
+  };
+  function buildGrid() {
+    grid = [[null,null,null],[null,null,null],[null,null,null]];
+    if (bonusReady) { for (let i = 0; i < 3; i++) grid[i][1] = "7"; }
+    else if (outcome === "grape") { for (let i = 0; i < 3; i++) grid[i][1] = "B"; }
+    else if (outcome === "replay") { for (let i = 0; i < 3; i++) grid[i][1] = "H"; }
+    else if (outcome === "cherry") {
+      const kind = Math.floor(rnd() * 5);
+      if (kind === 3) { grid[1][2] = "C"; grid[2][1] = "C"; }
+      else if (kind === 4) { grid[1][0] = "C"; grid[2][1] = "C"; }
+      else { grid[1][kind] = "C"; grid[2][kind] = "C"; }
+    } else if (outcome === "cherryLeft") {
+      grid[0][rnd() < 0.5 ? 0 : 2] = "C";
+    }
+    // 残りマスを見た目用の図柄で埋める（チェリーは混ぜない＝意図した位置だけに出す）
+    for (let i = 0; i < 3; i++) for (let r = 0; r < 3; r++) if (grid[i][r] === null) grid[i][r] = rndOf(WPOOL);
+    // 中段が意図せず揃って見えるのを防ぐ（役はブドウ・リプレイ・ボーナスのときだけ中段を揃える）
+    if (outcome !== "grape" && outcome !== "replay" && !bonusReady) noMidTriple();
+  }
+
+  function lampOffIfNeeded() { if (!bonusReady && !(pekari && pekariAt === "lever")) lampOff(); }
 
   $("lever").onclick = () => {
     if (spinning.some(Boolean)) return;
+    stopBgm();
     if (!FREE_PLAY && !freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
-    stopLoop();
-    freeSpin = false; lastWin = 0; games++; save(); paint(); betLamps(true);
-    bonus = rnd(30) === 0;
-    $("lamp").classList.remove("on");
-    if (bonus) { $("lamp").classList.add("on"); play("bonus"); say("✨ GOGO! BATTA が光った！ 止めて7を揃えよう"); }
-    else say("緑のボタンで止めよう");
+    freeSpin = false; lastWin = 0; games++; save(); betLamps(true);
+
+    if (bonusReady) { outcome = "bonus"; pekari = false; say("GOGO! ボーナス中！ 7を狙って止めよう"); }
+    else {
+      const r = rnd();
+      if (r < 1/50) outcome = "cherryLeft";
+      else if (r < 1/50 + 1/15) outcome = "cherry";
+      else if (r < 1/50 + 1/15 + 1/6) outcome = "grape";
+      else if (r < 1/50 + 1/15 + 1/6 + 1/7.3) outcome = "replay";
+      else outcome = "none";
+      pekari = outcome === "cherryLeft" || (outcome === "cherry" && rnd() < 0.10);
+      pekariAt = rnd() < 0.25 ? "lever" : "third";
+      say("緑のボタンで止めよう");
+      if (pekari && pekariAt === "lever") { lampOn(); play("bonus"); say("✨ GOGO! BATTA 点灯！ 次のゲームで7を狙おう"); }
+    }
+    lampOffIfNeeded();
+    buildGrid();
     play("spin");
-    for (let i = 0; i < 3; i++) { target[i] = null; vel[i] = 26 + i * 2; spinning[i] = true; reels[i].classList.add("spinning"); }
+    for (let i = 0; i < 3; i++) { spinning[i] = true; reels[i].classList.add("spinning"); fillSpin(i); }
     stopBtns.forEach((b) => (b.disabled = false));
-    $("lever").disabled = true;
+    paint(); $("lever").disabled = true;
   };
 
   stopBtns.forEach((btn) => btn.onclick = () => {
     const i = Number(btn.dataset.i);
-    if (!spinning[i] || target[i] !== null) return;
-    btn.disabled = true; play("stop");
-    if (bonus) { const sevens = REEL.map((v, k) => v === "7" ? k : -1).filter((k) => k >= 0); target[i] = sevens[rnd(sevens.length)]; }
-    else target[i] = rnd(LEN);
+    if (!spinning[i]) return;
+    spinning[i] = false; btn.disabled = true;
+    reels[i].classList.remove("spinning");
+    showGrid(i);
+    play("stop");
+    if (outcome === "bonus" && stoppedCount() === 2) {
+      const mids = [0,1,2].filter((k) => !spinning[k]).map((k) => grid[k][1]);
+      if (mids.length === 2 && mids.every((m) => m === "7")) play("tenpai");
+    }
+    if (!spinning.some(Boolean)) judge();
   });
 
-  function onStopped() {
-    const stopped = [0,1,2].filter((i) => !spinning[i] && target[i] !== null);
-    if (stopped.length === 2 && stopped.every((i) => at(i, 0) === "7")) play("tenpai"); // 7のテンパイ
-    if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge();
-  }
-  const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN];
   function judge() {
-    const lines = [[-1,-1,-1],[0,0,0],[1,1,1],[-1,0,1],[1,0,-1]];
-    let payout = 0, rep = false, notes = [];
-    for (const ln of lines) {
-      const a = at(0, ln[0]), b = at(1, ln[1]), c = at(2, ln[2]);
-      if (a === b && b === c) {
-        if (a === "H") { rep = true; notes.push("蜂×3 リプレイ"); }
-        else if (PAY[a]) { payout += PAY[a]; notes.push((a === "B" ? "バッタ" : a === "R" ? "BAR" : a === "L" ? "🔔" : "7") + "×3 +" + PAY[a]); }
+    betLamps(false);
+    if (outcome === "bonus") {
+      lastWin = 50; credit += 50; bonusReady = false; lampOff();
+      say("🎉 7・7・7！ ボーナス成立 +50枚"); play("bgm", true);
+    } else {
+      if (outcome === "grape") { lastWin = 8; credit += 8; say("🎉 ブドウ揃い +8枚"); play("grape"); }
+      else if (outcome === "replay") { freeSpin = true; say("🔁 リプレイ！ 次回転はBET不要"); play("replay"); }
+      else if (outcome === "cherry" || outcome === "cherryLeft") { lastWin = 2; credit += 2; play("cherry"); say(outcome === "cherryLeft" ? "🍒 左チェリー！" : "🍒 チェリー +2枚"); }
+      else { say("ハズレ… 次いこう"); }
+      if (pekari) {
+        if (pekariAt === "third") { lampOn(); play("bonus"); }
+        bonusReady = true;
+        say($("msg").textContent + "　✨ GOGO! BATTA 点灯！ 次のゲームで7を狙おう");
       }
-      if (a === "C") { payout += 2; notes.push("🍒 +2"); }
     }
-    if (bonus) { payout += 50; notes.push("GOGO! BATTA +50"); }
-    const sevens = at(0, 0) === "7" && at(1, 0) === "7" && at(2, 0) === "7";
-    const batta = notes.some((n) => n.startsWith("バッタ"));
-    const cherry = notes.some((n) => n.startsWith("🍒"));
-    lastWin = payout; credit += payout; if (rep) freeSpin = true;
-    save(); paint(); betLamps(false); target.fill(null);
-    say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
-    // 効果音: 7揃い(ボーナス)はBGMを1回再生（ループしない）、それ以外は1つだけ鳴らす
-    if (sevens || bonus) play("bgm");
-    else if (batta) play("grape");
-    else if (rep) play("replay");
-    else if (cherry) play("cherry");
-    bonus = false;
+    save(); paint();
   }
 })();
-</script>`;
+</script>
+`;
 }
