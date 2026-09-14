@@ -186,6 +186,9 @@ function migrate(db: Database.Database) {
   addCol("form_campaigns", "material_url", "TEXT NOT NULL DEFAULT ''");
   addCol("form_campaigns", "attach_path", "TEXT NOT NULL DEFAULT ''");
   addCol("form_campaigns", "attach_name", "TEXT NOT NULL DEFAULT ''");
+  // 要確認: 回答を決められなかった質問（JSON）と、画面で利用者が選んだ回答（JSON）
+  addCol("form_jobs", "pending_questions", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_jobs", "manual_answers", "TEXT NOT NULL DEFAULT ''");
 }
 
 export type Channel = "form" | "email" | "both";
@@ -285,6 +288,8 @@ export type Job = {
   updated_at: string;
   prev_status: string;
   prev_result: string;
+  pending_questions: string;
+  manual_answers: string;
 };
 
 export const STATUS_LABEL: Record<JobStatus, string> = {

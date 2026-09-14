@@ -4,7 +4,7 @@ import path from "node:path";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, unknownRequiredFields, aiAnswerUnknownFields } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, type PendingQuestion } from "./formFiller.js";
 import { llm } from "./message.js";
 
 export type SubmitInput = {
@@ -18,6 +18,7 @@ export type SubmitInput = {
   ignoreRefusal?: boolean; // 営業お断り文言があっても送る（キャンペーン設定）
   aiMode?: boolean; // 全文AI生成モード: 想定外の必須項目をAIに回答させる（決められなければ要確認へ）
   company?: string; // AI回答の文脈用（宛先の会社名）
+  manualAnswers?: { label: string; answer: string }[]; // 要確認画面で利用者が選んだ回答（AIより優先）
 };
 
 export type SubmitResult = {
@@ -26,6 +27,7 @@ export type SubmitResult = {
   finalUrl: string;
   screenshot: string;
   log: string[];
+  pendingQuestions?: PendingQuestion[]; // 要確認: 利用者に画面で選んでもらう質問
 };
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
@@ -50,7 +52,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
   const page = await ctx.newPage();
   page.on("dialog", (d) => d.accept().catch(() => {}));
   const shot = path.join(SCREENSHOT_DIR, `job-${input.jobId}.png`);
-  const done = async (status: JobStatus, detail: string): Promise<SubmitResult> => {
+  const done = async (status: JobStatus, detail: string, pendingQuestions?: PendingQuestion[]): Promise<SubmitResult> => {
     let screenshot = "";
     try {
       await page.screenshot({ path: shot, fullPage: false });
@@ -58,7 +60,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     } catch {}
     const finalUrl = page.url();
     await ctx.close().catch(() => {});
-    return { status, detail, finalUrl, screenshot, log };
+    return { status, detail, finalUrl, screenshot, log, pendingQuestions };
   };
 
   try {
@@ -103,16 +105,27 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     log.push(...report.log);
     if (!report.hasMessage) return done("failed", "本文欄への入力に失敗");
 
-    // 全文AI生成モード: 種類を判定できなかった必須項目（想定外の質問）をAIに読ませて回答する。
-    // AIが決められない項目が残る場合は、無理に送らず「要確認」として手動送信リストに回す。
-    if (input.aiMode) {
-      const unknowns = unknownRequiredFields(fields);
-      if (unknowns.length) {
-        const r = await aiAnswerUnknownFields(target, unknowns, { company: input.company || "", sender: input.sender, message: input.message }, llm);
-        if (r.answered.length) log.push(`AIが回答した項目: ${r.answered.join(" / ")}`);
+    // 想定外の質問（判定できないテキスト欄・未チェックの選択肢グループ）への対応。
+    // 優先順位は「要確認画面で利用者が選んだ回答」→「AI（全文AIモードのとき）」。
+    // それでも決められない質問が残る場合は、無理に送らず「要確認」にして質問一覧を画面に出す。
+    if (input.aiMode || input.manualAnswers?.length) {
+      const fresh = await collectFields(target); // 入力後のチェック状態で見直す
+      const unknowns = collectUnknownQuestions(fresh);
+      if (unknowns.texts.length || unknowns.groups.length) {
+        const r = await aiAnswerUnknownFields(
+          target, unknowns,
+          { company: input.company || "", sender: input.sender, message: input.message },
+          input.aiMode ? llm : null,
+          input.manualAnswers ?? [],
+        );
+        if (r.answered.length) log.push(`想定外の質問に回答: ${r.answered.join(" / ")}`);
         log.push(...r.log);
         if (r.unsure.length) {
-          return done("failed", `要確認: 想定外の項目にAIが回答を決められないため送信していません（${r.unsure.join(" / ")}）\n手動送信リストからご対応ください`);
+          return done(
+            "failed",
+            `要確認: 回答を決められない質問があるため送信していません（${r.unsure.map((u) => u.label).join(" / ")}）\nこの下の「未回答の質問」で選んで再送信できます`,
+            r.unsure,
+          );
         }
       }
     }

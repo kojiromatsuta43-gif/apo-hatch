@@ -17,6 +17,7 @@ export type FieldInfo = {
   placeholder: string;
   inputmode: string;
   pattern: string;
+  glabel: string; // ラジオ・チェックボックス用: 設問の見出し（fieldsetのlegend等）。それ以外は空
 };
 
 export type Category =
@@ -141,7 +142,16 @@ const COLLECT_SCRIPT = `
     const sig = own + ' || ' + labelText(el).replace(/\\s+/g, ' ').slice(0, 200);
     const required = el.required || el.getAttribute('aria-required') === 'true' || /必須|required|\\*/.test(labelText(el).slice(0, 60)) || /required|必須/i.test(el.className);
     const options = el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({ value: o.value, text: (o.textContent || '').trim() })) : [];
-    out.push({ idx: i, tag: el.tagName.toLowerCase(), type, name: el.getAttribute('name') || '', id: el.id || '', sig, required, options, checked: !!el.checked, formIndex: forms.indexOf(el.closest('form')), maxlength: Number(el.getAttribute('maxlength') || 0), placeholder: el.getAttribute('placeholder') || '', inputmode: el.getAttribute('inputmode') || '', pattern: el.getAttribute('pattern') || '' });
+    // ラジオ・チェックボックスの「設問見出し」: fieldsetのlegend → 包んでいるlabelの外側の見出し、の順で探す
+    let glabel = '';
+    if (type === 'radio' || type === 'checkbox') {
+      const fs2 = el.closest('fieldset');
+      const legend = fs2 ? fs2.querySelector('legend') : null;
+      if (legend && legend.innerText.trim()) glabel = legend.innerText.trim();
+      else { const wrap2 = el.closest('label'); glabel = labelText(wrap2 || el); }
+      glabel = (glabel || '').replace(/\\s+/g, ' ').slice(0, 80);
+    }
+    out.push({ idx: i, tag: el.tagName.toLowerCase(), type, name: el.getAttribute('name') || '', id: el.id || '', sig, required, options, checked: !!el.checked, formIndex: forms.indexOf(el.closest('form')), maxlength: Number(el.getAttribute('maxlength') || 0), placeholder: el.getAttribute('placeholder') || '', inputmode: el.getAttribute('inputmode') || '', pattern: el.getAttribute('pattern') || '', glabel });
     i++;
   }
   return out;
@@ -370,39 +380,95 @@ function pickOption<T>(opts: { f: T; text: string }[], cat: Category): { f: T; t
 /** 触ってはいけない ignore（fax・パスワード・認証系など）と、単に分類できなかった想定外項目を区別する */
 const NEVER_AI_RE = /(fax|ファックス|ファクス|password|パスワード|search|検索|captcha|認証コード|画像の文字|クーポン|coupon)/i;
 
-/** AIに回答させる候補: 必須なのに種類を判定できなかったテキスト系の欄 */
-export function unknownRequiredFields(fields: FieldInfo[]): FieldInfo[] {
-  return fields.filter(
+const ownLabelOf = (f: FieldInfo) => {
+  const raw = ((f.sig.split(" || ")[0] || "").split(" | ")[0] || f.name).trim();
+  return Array.from(new Set(raw.split(/\s+/))).join(" ").slice(0, 40); // 「ご予算 ご予算」のような重複を除く
+};
+const ctxLabelOf = (f: FieldInfo) => (f.sig.split(" || ")[1] || "").trim().slice(0, 60);
+
+/** 画面（要確認UI）にも出す「未回答の質問」の形 */
+export type PendingQuestion = { label: string; kind: "text" | "choice"; multiple?: boolean; options?: string[] };
+
+export type UnknownQuestions = {
+  texts: FieldInfo[]; // 必須なのに種類を判定できなかったテキスト欄
+  groups: { label: string; multiple: boolean; members: FieldInfo[]; options: string[] }[]; // 未チェックのラジオ・チェック群
+};
+
+/** AI/手動回答の対象: 判定できなかった必須テキスト欄 ＋ どれもチェックされていない選択肢グループ */
+export function collectUnknownQuestions(fields: FieldInfo[]): UnknownQuestions {
+  const texts = fields.filter(
     (f) =>
       f.required &&
       classify(f) === "ignore" &&
       !NEVER_AI_RE.test(f.sig) &&
       (f.tag === "textarea" || (f.tag === "input" && !["checkbox", "radio", "file"].includes(f.type))),
   );
+  const map = new Map<string, { label: string; multiple: boolean; members: FieldInfo[]; options: string[] }>();
+  for (const f of fields) {
+    if (f.type !== "radio" && f.type !== "checkbox") continue;
+    if (classify(f) !== "type") continue;
+    const heading = (f.glabel || ctxLabelOf(f)).trim();
+    // 除外語（検索・fax等）は設問見出しで判定する。選択肢名（「検索」等）で弾かない
+    if (!heading || NEVER_AI_RE.test(heading)) continue;
+    const key = f.name || heading;
+    const g = map.get(key) ?? { label: heading.slice(0, 60), multiple: f.type === "checkbox", members: [], options: [] };
+    g.members.push(f);
+    const own = ownLabelOf(f);
+    if (own && !g.options.includes(own)) g.options.push(own);
+    map.set(key, g);
+  }
+  // 2択以上あり、まだ1つもチェックされていないグループだけ（既定ロジックが選べたものは触らない）
+  const groups = [...map.values()].filter((g) => g.members.length >= 2 && g.options.length >= 2 && !g.members.some((m) => m.checked));
+  return { texts, groups };
 }
 
-export type UnknownFieldOutcome = { answered: string[]; unsure: string[]; log: string[] };
+export function toPendingQuestions(q: UnknownQuestions): PendingQuestion[] {
+  return [
+    ...q.texts.map((f) => ({ label: ownLabelOf(f) || ctxLabelOf(f) || `項目${f.idx}`, kind: "text" as const })),
+    ...q.groups.map((g) => ({ label: g.label, kind: "choice" as const, multiple: g.multiple, options: g.options.slice(0, 15) })),
+  ];
+}
 
+export type UnknownFieldOutcome = { answered: string[]; unsure: PendingQuestion[]; log: string[] };
+
+/** 想定外の質問に回答して入力する。優先順位は 手動回答（利用者が画面で選んだもの）→ AI。
+    どちらでも決められなかった質問は unsure として返し、呼び出し側が「要確認」に振り分ける。 */
 export async function aiAnswerUnknownFields(
   target: Page | Frame,
-  candidates: FieldInfo[],
+  q: UnknownQuestions,
   ctx: { company: string; sender: SenderProfile; message: string },
-  llmFn: (system: string, user: string, maxTokens?: number) => Promise<string>,
+  llmFn: ((system: string, user: string, maxTokens?: number) => Promise<string>) | null,
+  manual: { label: string; answer: string }[] = [],
 ): Promise<UnknownFieldOutcome> {
   const out: UnknownFieldOutcome = { answered: [], unsure: [], log: [] };
-  if (!candidates.length) return out;
-  const labelOf = (f: FieldInfo) => ((f.sig.split(" || ")[0] || f.sig.split(" || ")[1] || f.name || `項目${f.idx}`).split(" | ")[0] || f.name).trim().slice(0, 40);
-  const list = candidates
-    .map((f) => `- idx=${f.idx} ラベル:「${labelOf(f)}」${f.options.length ? ` 選択肢: ${f.options.map((o) => o.text || o.value).filter(Boolean).slice(0, 12).join(" / ")}` : ""}`)
-    .join("\n");
-  const s = ctx.sender;
-  const system = `あなたは日本のBtoB営業担当のアシスタントです。企業の問い合わせフォームの入力項目に、送信者情報と文脈に沿った短い回答を作ります。
+  type Item = { qid: number; kind: "text" | "choice"; label: string; f?: FieldInfo; g?: UnknownQuestions["groups"][0] };
+  const items: Item[] = [
+    ...q.texts.map((f, i) => ({ qid: i, kind: "text" as const, label: ownLabelOf(f) || ctxLabelOf(f) || `項目${f.idx}`, f })),
+    ...q.groups.map((g, i) => ({ qid: q.texts.length + i, kind: "choice" as const, label: g.label, g })),
+  ];
+  if (!items.length) return out;
+
+  const norm = (s: string) => s.replace(/\s+/g, "");
+  const answers = new Map<number, string>();
+  // 1) 手動回答（ラベルの部分一致で対応づけ）
+  for (const it of items) {
+    const hit = manual.find((m) => m.answer && (norm(m.label) === norm(it.label) || norm(it.label).includes(norm(m.label)) || norm(m.label).includes(norm(it.label))));
+    if (hit) answers.set(it.qid, hit.answer);
+  }
+  // 2) 残りをAIに（AIが使えるときだけ）
+  const rest = items.filter((it) => !answers.has(it.qid));
+  if (rest.length && llmFn) {
+    const list = rest
+      .map((it) => `- qid=${it.qid} 質問:「${it.label}」${it.kind === "choice" ? ` 選択肢: ${it.g!.options.join(" / ")}${it.g!.multiple ? "（複数選択可・1つでよい）" : ""}` : "（自由記入）"}`)
+      .join("\n");
+    const s = ctx.sender;
+    const system = `あなたは日本のBtoB営業担当のアシスタントです。企業の問い合わせフォームの入力項目に、送信者情報と文脈に沿った短い回答を作ります。
 守ること:
 - 事実として渡された情報だけを使う。虚偽・推測の数値や実績は書かない
-- 選択肢がある項目は、選択肢の中から営業の問い合わせとして最も自然なものをそのまま1つ選ぶ
-- 回答を決められない項目・答えるべきでない項目（口座番号・会員番号・紹介コードなど）は "不明" とする
+- 選択肢がある質問は、選択肢の中から営業の問い合わせとして最も自然なものを「そのままの文字」で1つ選ぶ（「その他」があり判断に迷うならそれを選ぶ）
+- 回答を決められない質問・答えるべきでない質問（口座番号・会員番号・紹介コード・予算の具体額など）は "不明" とする
 - 出力はJSON配列のみ。説明文は書かない`;
-  const user = `次のフォーム項目に入れる値を作ってください。
+    const user = `次のフォームの質問に入れる値を作ってください。
 
 【送信者（こちら側）の情報】
 会社名: ${s.company} / 担当: ${s.person} / メール: ${s.email}${s.tel ? ` / 電話: ${s.tel}` : ""}${s.url ? ` / URL: ${s.url}` : ""}${s.address ? ` / 住所: ${s.address}` : ""}
@@ -412,34 +478,39 @@ ${ctx.message.slice(0, 300)}
 
 【宛先の会社】${ctx.company}
 
-【フォームの項目】
+【質問】
 ${list}
 
-出力形式（JSONのみ）: [{"idx": 数値, "answer": "値または不明"}]`;
-  let answers = new Map<number, string>();
-  try {
-    const raw = await llmFn(system, user, 500);
-    const m = raw.match(/\[[\s\S]*\]/);
-    if (!m) throw new Error("JSONが見つからない");
-    for (const a of JSON.parse(m[0]) as { idx: number; answer: string }[]) {
-      if (typeof a?.idx === "number" && typeof a?.answer === "string") answers.set(a.idx, a.answer.trim());
-    }
-  } catch (e) {
-    out.log.push(`AI回答の生成に失敗: ${String((e as Error).message ?? e).slice(0, 100)}`);
-    out.unsure = candidates.map(labelOf);
-    return out;
-  }
-  for (const f of candidates) {
-    const ans = answers.get(f.idx);
-    if (!ans || /^["「]?不明["」]?$/.test(ans)) {
-      out.unsure.push(labelOf(f));
-      continue;
-    }
+出力形式（JSONのみ）: [{"qid": 数値, "answer": "値または不明"}]`;
     try {
-      await target.locator(`[data-fo-idx="${f.idx}"]`).fill(ans.slice(0, 200), { timeout: 3000 });
-      out.answered.push(`${labelOf(f)}=${ans.slice(0, 30)}`);
-    } catch {
-      out.unsure.push(labelOf(f));
+      const raw = await llmFn(system, user, 500);
+      const m = raw.match(/\[[\s\S]*\]/);
+      if (!m) throw new Error("JSONが見つからない");
+      for (const a of JSON.parse(m[0]) as { qid: number; answer: string }[]) {
+        if (typeof a?.qid === "number" && typeof a?.answer === "string" && !answers.has(a.qid)) answers.set(a.qid, a.answer.trim());
+      }
+    } catch (e) {
+      out.log.push(`AI回答の生成に失敗: ${String((e as Error).message ?? e).slice(0, 100)}`);
+    }
+  }
+  // 3) 回答を実際に入力する
+  for (const it of items) {
+    const ans = answers.get(it.qid);
+    const giveUp = () => out.unsure.push(it.kind === "text" ? { label: it.label, kind: "text" } : { label: it.label, kind: "choice", multiple: it.g!.multiple, options: it.g!.options.slice(0, 15) });
+    if (!ans || /^["「]?不明["」]?$/.test(ans)) { giveUp(); continue; }
+    if (it.kind === "text") {
+      try {
+        await target.locator(`[data-fo-idx="${it.f!.idx}"]`).fill(ans.slice(0, 200), { timeout: 3000 });
+        out.answered.push(`${it.label}=${ans.slice(0, 30)}`);
+      } catch { giveUp(); }
+    } else {
+      // 回答文字列に含まれる選択肢を全部チェック（複数回答は「／」区切り）。単一選択は最初の1つだけ
+      const hits = it.g!.members.filter((m) => { const own = norm(ownLabelOf(m)); return own && (norm(ans).includes(own) || own.includes(norm(ans))); });
+      const targets = it.g!.multiple ? hits : hits.slice(0, 1);
+      let okAny = false;
+      for (const m of targets) { if (await ensureChecked(target, m)) okAny = true; }
+      if (okAny) out.answered.push(`${it.label}=${ans.slice(0, 30)}`);
+      else giveUp();
     }
   }
   return out;

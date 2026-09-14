@@ -319,7 +319,23 @@ ${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_cap
 <form method="post" action="/suppressions" class="inline"><input type="hidden" name="domain" value="${esc(j.domain)}"><input type="hidden" name="reason" value="手動（${esc(j.company_name)}）"><button class="btn danger">このドメインを除外</button></form>
 ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jobs/${j.id}/outcome"><p>${[["replied", "返信あり"], ["appointment", "アポ獲得"], ["declined", "断り・不要（今後送らない）"], ["", "取り消し"]].map(([k, l]) => `<button class="btn ${j.outcome === k && k ? "" : "sub"} small" name="outcome" value="${k}">${l}</button>`).join(" ")}</p><input type="text" name="note" value="${esc(j.outcome_note)}" placeholder="メモ（返信内容・次のアクション）"></form>` : ""}
 <h2>送った文面</h2><pre>${esc(j.message_used)}</pre></div>
-<div class="card"><h2 style="margin-top:0">スクリーンショット</h2>${j.screenshot_path ? `<img src="/screenshots/${esc(j.screenshot_path.split("/").pop())}" style="max-width:100%;border:1px solid #ddd">` : '<p class="muted">なし</p>'}</div></div>`;
+<div class="card"><h2 style="margin-top:0">スクリーンショット</h2>${j.screenshot_path ? `<img src="/screenshots/${esc(j.screenshot_path.split("/").pop())}" style="max-width:100%;border:1px solid #ddd">` : '<p class="muted">なし</p>'}
+${(() => {
+    if (j.status === "sent") return "";
+    let qs: { label: string; kind: string; multiple?: boolean; options?: string[] }[] = [];
+    try { qs = JSON.parse(j.pending_questions || "[]"); } catch { qs = []; }
+    if (!qs.length) return "";
+    return `<div style="margin-top:14px;background:var(--honey-50);border:1px solid var(--honey);border-radius:10px;padding:12px">
+<h2 style="margin-top:0">📝 未回答の質問に答えて再送信</h2>
+<p class="muted small">フォームにあった質問に自動で回答を決められませんでした。上のスクリーンショットを見ながら選ぶか記入してください。再送信時にこの回答をフォームへ入力します。</p>
+<form method="post" action="/jobs/${j.id}/answer">
+${qs.slice(0, 30).map((q, i) => `<input type="hidden" name="q_label_${i}" value="${esc(q.label)}">
+<label>${esc(q.label)}${q.multiple ? '<span class="muted small">（複数選べます）</span>' : ""}</label>
+${q.kind === "choice" && q.options?.length
+      ? `<div class="small" style="display:flex;flex-wrap:wrap;gap:4px 14px;margin:4px 0 10px">${q.options.map((o) => `<label class="inline" style="font-weight:400;display:inline-flex;align-items:center;gap:4px"><input type="${q.multiple ? "checkbox" : "radio"}" name="q_ans_${i}" value="${esc(o)}">${esc(o)}</label>`).join("")}</div>`
+      : `<input type="text" name="q_ans_${i}" style="margin-bottom:10px" placeholder="回答を記入">`}`).join("")}
+<p><button class="btn">回答して再送信</button> <span class="muted small">10〜30秒かかります</span></p></form></div>`;
+  })()}</div></div>`;
 }
 
 export function suppressionsView(

@@ -8,6 +8,11 @@ import { composeMessage, findNgWords, activeProvider, lintMessage } from "./mess
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
 
 const running = new Map<number, { stop: boolean }>();
+
+/** 要確認画面で選ばれた回答（JSON）を安全に読む */
+function parseManualAnswers(json: string): { label: string; answer: string }[] {
+  try { const a = JSON.parse(json || "[]"); return Array.isArray(a) ? a.filter((x) => x && typeof x.label === "string" && typeof x.answer === "string") : []; } catch { return []; }
+}
 const CONCURRENCY = Number(process.env.FO_CONCURRENCY ?? 2);
 const MIN_WAIT = Number(process.env.FO_MIN_WAIT_MS ?? 8000);
 const MAX_WAIT = Number(process.env.FO_MAX_WAIT_MS ?? 15000);
@@ -73,8 +78,9 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     db.prepare(
       `UPDATE form_jobs SET status=@status, result_text=@result_text, message_used=COALESCE(@message_used, message_used),
         screenshot_path=COALESCE(@screenshot_path, screenshot_path), form_url=COALESCE(@form_url, form_url),
+        pending_questions=CASE WHEN @status='sent' THEN '' ELSE COALESCE(@pending_questions, pending_questions) END,
         sent_at=CASE WHEN @status='sent' THEN datetime('now') ELSE sent_at END, updated_at=datetime('now') WHERE id=@id`
-    ).run({ id: jobId, status, result_text: result, message_used: extra.message_used ?? null, screenshot_path: extra.screenshot_path ?? null, form_url: extra.form_url ?? null });
+    ).run({ id: jobId, status, result_text: result, message_used: extra.message_used ?? null, screenshot_path: extra.screenshot_path ?? null, form_url: extra.form_url ?? null, pending_questions: extra.pending_questions ?? null });
     return db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
   };
 
@@ -116,13 +122,13 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     }
   }
 
-  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: campaign.mode === "ai" && activeProvider() !== "none", company: job.company_name });
+  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: campaign.mode === "ai" && activeProvider() !== "none", company: job.company_name, manualAnswers: parseManualAnswers(job.manual_answers) });
   const detail = [r.detail, ...r.log].join("\n");
   if (r.status === "skip_refused" && job.domain && !campaign.ignore_refusal) {
     db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（自動）");
   }
   const status: JobStatus = opts.dryRun ? "queued" : r.status;
-  return finish(status, detail, { message_used: message, screenshot_path: r.screenshot, form_url: r.finalUrl && r.status !== "skip_no_form" ? r.finalUrl : undefined });
+  return finish(status, detail, { message_used: message, screenshot_path: r.screenshot, form_url: r.finalUrl && r.status !== "skip_no_form" ? r.finalUrl : undefined, pending_questions: r.pendingQuestions ? JSON.stringify(r.pendingQuestions) : undefined });
 }
 
 /** キャンペーンのキューを回す。停止要求・送信時間帯・日次上限を守る */

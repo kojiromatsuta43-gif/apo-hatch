@@ -451,6 +451,32 @@ app.post("/jobs/:id/fix", async (req, res) => {
   }
 });
 
+// 要確認の質問に画面で回答して、その回答でその場で送り直す
+app.post("/jobs/:id/answer", async (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  const answers: { label: string; answer: string }[] = [];
+  for (let i = 0; i < 30; i++) {
+    const label = String(req.body[`q_label_${i}`] ?? "").trim();
+    if (!label) continue;
+    const raw = req.body[`q_ans_${i}`];
+    const answer = (Array.isArray(raw) ? raw.map(String) : raw !== undefined ? [String(raw)] : []).map((s) => s.trim()).filter(Boolean).join("／");
+    if (answer) answers.push({ label: label.slice(0, 80), answer: answer.slice(0, 200) });
+  }
+  if (!answers.length) return redirectWith(res, `/jobs/${id}`, "回答が選ばれていません");
+  db.prepare("UPDATE form_jobs SET manual_answers=?, updated_at=datetime('now') WHERE id=?").run(JSON.stringify(answers), id);
+  const browser = await launchBrowser();
+  try {
+    const r = await processJob(browser, id);
+    redirectWith(res, `/jobs/${id}`, `回答を反映して再送信した結果: ${STATUS_LABEL[r.status] ?? r.status}`);
+  } catch (e) {
+    redirectWith(res, `/jobs/${id}`, `再送信エラー: ${String((e as Error).message)}`);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+});
+
 app.post("/jobs/:id/retry", async (req, res) => {
   const id = Number(req.params.id);
   if (!ownedJob(req, id)) return res.status(403).send(DENIED);
