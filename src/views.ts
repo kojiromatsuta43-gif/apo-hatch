@@ -571,132 +571,223 @@ ${!st.configured
 </div>`;
 }
 
-/** ミニゲーム: 蜂・バッタのオリジナル・スロット（待ち時間の息抜き用）。
- *  実在のパチスロ機（ジャグラー等）のデザイン・キャラクター・ロゴは使わず、
- *  当ツールの蜂(アポハッチ)・バッタ(アポバッタ)を使った独自デザイン。機構だけ参考にしている。 */
-export function gameView(): string {
+/** ミニゲーム「アポスロット」（待ち時間の息抜き）。
+ *  - 3リール×3行・5ライン。図柄は利用者自身のイラスト（蜂＝リプレイ、バッタ＝ブドウ相当）
+ *  - クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる（1送信=1枚、BET3枚=3送信で1回転）
+ *  - 音は Web Audio でデコードし、先頭の無音を自動で切って鳴らす（HTMLAudioの遅延対策）
+ *  - 実在機のキャラクター・ロゴは使わない。筐体はこのツール独自のデザイン */
+export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
-<p class="muted">CSV確認などの待ち時間の息抜きに。仮想コインで遊ぶだけで、課金や送信は一切ありません。</p>
-<div id="slot">
-<div class="slot-top"><div class="peka" id="peka">GOGO! BATTA</div></div>
-<div class="reels" id="reels">
-  <div class="reel" id="r0"><div class="strip"></div></div>
-  <div class="reel" id="r1"><div class="strip"></div></div>
-  <div class="reel" id="r2"><div class="strip"></div></div>
-  <div class="payline"></div>
+<p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。</p>
+<div id="cab">
+  <div class="cab-top"><div class="marq"><span>APO</span><span class="seven">7</span><span class="seven">7</span><span class="seven">7</span><span>SLOT</span></div></div>
+  <div class="lamp-row"><div class="lamp" id="lamp"><img src="/assets/game/gogo.jpg" alt="GOGO! BATTA"></div></div>
+  <div class="glass">
+    <div class="win">
+      <div class="reel" id="r0"><div class="strip"></div></div>
+      <div class="reel" id="r1"><div class="strip"></div></div>
+      <div class="reel" id="r2"><div class="strip"></div></div>
+      <div class="line l-top"></div><div class="line l-mid"></div><div class="line l-bot"></div>
+    </div>
+  </div>
+  <div class="disp">
+    <div class="seg"><span>CREDIT</span><b id="credit">0</b></div>
+    <div class="seg"><span>BET</span><b id="bet">3</b></div>
+    <div class="seg"><span>PAYOUT</span><b id="win">0</b></div>
+  </div>
+  <div class="panel">
+    <div class="lever-wrap"><button class="lever" id="lever" disabled><span></span></button><div class="lbl">LEVER</div></div>
+    <div class="stops">
+      <button class="stopbtn" data-i="0" disabled></button>
+      <button class="stopbtn" data-i="1" disabled></button>
+      <button class="stopbtn" data-i="2" disabled></button>
+    </div>
+    <div class="coin"><button class="btn small" id="sync">送信数を反映</button><div class="lbl">送信 <b id="sent">${sentCount}</b>件</div></div>
+  </div>
+  <div class="msg" id="msg">…</div>
+  <div class="cab-bottom">
+    <img src="/assets/game/hatch.png" alt=""><div class="bt">アポハッチ ＆ アポバッタ<small>営業がんばった分だけ回せる</small></div><img src="/assets/game/batta.png" alt="">
+  </div>
 </div>
-<div class="meters">
-  <div class="meter"><span>CREDIT</span><b id="credit">0</b></div>
-  <div class="meter"><span>BET</span><b id="bet">3</b></div>
-  <div class="meter"><span>WIN</span><b id="win">0</b></div>
+<div class="rules muted small" style="max-width:640px;margin:10px auto">
+・BET 3枚／回（＝フォーム3送信）・5ライン（上・中・下・斜め2本）<br>
+・<img src="/assets/game/batta.png" class="ico">×3 = +8枚　・<img src="/assets/game/hatch.png" class="ico">×3 = リプレイ（次回転はBET不要）　・7×3 = +30枚　・BAR×3 = +10枚　・🔔×3 = +5枚　・左リールに🍒 = +2枚<br>
+・毎回転 1/30 で GOGO! BATTA が光る → その回転は7が揃って +50枚
 </div>
-<div class="controls">
-  <button class="btn" id="insert">1000円投入（コイン50枚）</button>
-  <button class="btn lever" id="lever" disabled>レバーON（回す）</button>
-</div>
-<div class="stops">
-  <button class="stopbtn" data-i="0" disabled>STOP</button>
-  <button class="stopbtn" data-i="1" disabled>STOP</button>
-  <button class="stopbtn" data-i="2" disabled>STOP</button>
-</div>
-<div class="msg" id="msg">「1000円投入」で50枚チャージして、レバーONで回そう！</div>
-<div class="rules muted small">
-・BET 3枚／回　・🦗×3=+8枚　・🐝×3=リプレイ（次回転ぶんBET不要）　・7×3=+20枚　・🔔×3=+5枚<br>
-・毎回転1/30で「GOGO! BATTA」当選 → +50枚（点滅演出）
-</div>
-</div>
-<audio id="sndSpin" src="/assets/game/spin.mp3" preload="auto"></audio>
-<audio id="sndStop" src="/assets/game/stop.mp3" preload="auto"></audio>
-<audio id="sndBonus" src="/assets/game/bonus.mp3" preload="auto"></audio>
 <style>
-#slot{max-width:520px;margin:0 auto;background:linear-gradient(#2b1e5a,#140d34);border:3px solid var(--honey);border-radius:16px;padding:16px;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.25)}
-.slot-top{height:54px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
-.peka{font-weight:800;font-size:26px;letter-spacing:1px;color:#3a2f6e;text-shadow:none;transition:none}
-.peka.on{color:#ff45d0;text-shadow:0 0 8px #ff45d0,0 0 18px #6a5cff,0 0 30px #6a5cff;animation:peka .18s steps(2) infinite}
-@keyframes peka{50%{opacity:.35}}
-.reels{position:relative;display:flex;gap:8px;justify-content:center;background:#fff;border-radius:10px;padding:10px;overflow:hidden}
-.reel{width:96px;height:108px;overflow:hidden;background:#faf7ef;border:2px solid var(--hive-200);border-radius:8px}
-.reel .strip{display:flex;flex-direction:column}
-.reel .cell{height:108px;display:flex;align-items:center;justify-content:center;font-size:56px;line-height:1}
-.reel.spinning .strip{animation:spin .18s linear infinite}
-@keyframes spin{from{transform:translateY(0)}to{transform:translateY(-108px)}}
-.payline{position:absolute;left:8px;right:8px;top:50%;height:3px;background:rgba(255,70,70,.7);transform:translateY(-1.5px);pointer-events:none}
-.meters{display:flex;gap:8px;margin:12px 0}
-.meter{flex:1;background:#0c0722;border:1px solid #3a2f6e;border-radius:8px;padding:6px 8px;text-align:center}
-.meter span{display:block;font-size:11px;color:#a99fe0}.meter b{font-size:22px;color:#ffe36e;font-variant-numeric:tabular-nums}
-.controls{display:flex;gap:8px;margin-bottom:8px}.controls .btn{flex:1}
-.lever{background:#e53}.lever:disabled{opacity:.5}
-.stops{display:flex;gap:8px}
-.stopbtn{flex:1;height:52px;border-radius:50px;border:3px solid #7a1a1a;background:radial-gradient(circle at 50% 35%,#ff6b6b,#c62828);color:#fff;font-weight:800;font-size:15px;cursor:pointer}
-.stopbtn:disabled{opacity:.4;cursor:default}
-.msg{margin:12px 0 6px;text-align:center;font-weight:700;min-height:22px}
-.rules{margin-top:6px;color:#c9c1e8}
+#cab{max-width:640px;margin:0 auto;background:linear-gradient(180deg,#3a3f47,#1c1f24 30%,#15171b);border-radius:18px;padding:12px 14px 14px;box-shadow:0 18px 40px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.15);color:#fff;user-select:none}
+.cab-top{background:linear-gradient(180deg,#5b2cff,#2c0f8a);border:3px solid #ffd54a;border-radius:12px;padding:10px;text-align:center;box-shadow:inset 0 0 24px rgba(255,255,255,.15)}
+.marq{display:flex;justify-content:center;align-items:center;gap:14px;font-weight:900;font-size:28px;letter-spacing:2px;color:#ffe36e;text-shadow:0 0 10px #ffb300,0 2px 0 #7a4b00}
+.marq .seven{color:#ff3d5a;font-size:40px;font-style:italic;text-shadow:0 0 12px #ff6b81,0 3px 0 #7a0016;transform:skewX(-8deg)}
+.lamp-row{display:flex;justify-content:center;margin:10px 0}
+.lamp{width:280px;height:118px;border-radius:14px;overflow:hidden;background:#000;border:3px solid #444;box-shadow:inset 0 0 20px #000;transition:box-shadow .2s}
+.lamp img{width:100%;height:100%;object-fit:contain;filter:brightness(.18) saturate(.6);transition:filter .15s}
+.lamp.on{border-color:#ff5ce0;box-shadow:0 0 22px #ff5ce0,0 0 48px #6a5cff,inset 0 0 20px #000}
+.lamp.on img{filter:brightness(1.15) saturate(1.3);animation:lampflk .22s steps(2) infinite}
+@keyframes lampflk{50%{filter:brightness(.7) saturate(1.2)}}
+.glass{background:linear-gradient(180deg,#c9ced6,#8c939d);border-radius:14px;padding:10px;box-shadow:inset 0 2px 6px rgba(255,255,255,.6),inset 0 -3px 8px rgba(0,0,0,.35)}
+.win{position:relative;display:flex;gap:10px;justify-content:center;background:#f6f1e4;border:4px solid #2a2a2a;border-radius:10px;padding:8px;overflow:hidden}
+.win:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,0) 40%,rgba(0,0,0,0) 70%,rgba(0,0,0,.12));pointer-events:none}
+.reel{position:relative;width:150px;height:270px;overflow:hidden;background:#fffdf6;border:2px solid #b9b2a2;border-radius:8px}
+.reel .strip{will-change:transform}
+.reel .cell{height:90px;display:flex;align-items:center;justify-content:center;font-size:52px;font-weight:900;line-height:1;color:#222}
+.reel .cell img{width:74px;height:74px;object-fit:contain}
+.reel .cell .s7{color:#e6203c;font-size:70px;font-style:italic;text-shadow:0 3px 0 #7a0016,0 0 6px rgba(230,32,60,.35)}
+.reel .cell .sbar{font-size:24px;letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:8px 16px;border-radius:6px;box-shadow:0 2px 0 #000}
+.reel.spinning .strip{filter:blur(1.2px)}
+.line{position:absolute;left:8px;right:8px;height:2px;background:rgba(230,32,60,.55);pointer-events:none}
+.l-top{top:calc(8px + 45px)}.l-mid{top:calc(8px + 135px)}.l-bot{top:calc(8px + 225px)}
+.disp{display:flex;gap:10px;margin:12px 0}
+.seg{flex:1;background:#0b0b0d;border:2px solid #333;border-radius:8px;padding:6px 8px;text-align:center;box-shadow:inset 0 0 10px #000}
+.seg span{display:block;font-size:11px;color:#9aa;letter-spacing:1px}.seg b{font-family:"Menlo","Courier New",monospace;font-size:26px;color:#ff3b3b;text-shadow:0 0 8px #ff3b3b;font-variant-numeric:tabular-nums}
+.panel{display:flex;align-items:center;gap:14px;background:linear-gradient(180deg,#9aa0a8,#5f6670);border-radius:12px;padding:12px 14px;box-shadow:inset 0 2px 4px rgba(255,255,255,.4)}
+.lbl{font-size:11px;color:#eee;text-align:center;margin-top:4px;letter-spacing:1px}
+.lever{width:64px;height:64px;border-radius:50%;border:4px solid #222;background:radial-gradient(circle at 40% 35%,#ff9a9a,#d4145a 60%,#7a0030);box-shadow:0 6px 0 #3a0018,0 8px 12px rgba(0,0,0,.5);cursor:pointer;position:relative}
+.lever span{position:absolute;inset:14px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fff8,transparent 55%)}
+.lever:active{transform:translateY(4px);box-shadow:0 2px 0 #3a0018}
+.lever:disabled{filter:grayscale(.8) brightness(.6);cursor:default;transform:none}
+.stops{flex:1;display:flex;justify-content:center;gap:22px}
+.stopbtn{width:58px;height:58px;border-radius:50%;border:4px solid #1a1a1a;background:radial-gradient(circle at 40% 35%,#ffe9a8,#ffb000 55%,#b26a00);box-shadow:0 5px 0 #4a2c00,0 7px 10px rgba(0,0,0,.5),inset 0 0 0 3px rgba(255,255,255,.35);cursor:pointer}
+.stopbtn:active{transform:translateY(3px);box-shadow:0 2px 0 #4a2c00}
+.stopbtn:disabled{filter:grayscale(.7) brightness(.55);cursor:default;transform:none}
+.coin{text-align:center}
+.msg{margin:12px 0 8px;text-align:center;font-weight:800;font-size:16px;min-height:22px;color:#ffe36e;text-shadow:0 0 8px #ffb300}
+.cab-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,#ffcc33,#ff8f1f);border-radius:12px;padding:8px 14px;color:#2a1a00;font-weight:900;font-size:18px;box-shadow:inset 0 0 20px rgba(255,255,255,.35)}
+.cab-bottom img{width:64px;height:64px;object-fit:contain;filter:drop-shadow(0 2px 2px rgba(0,0,0,.3))}
+.cab-bottom .bt{text-align:center}.cab-bottom small{display:block;font-size:11px;font-weight:600;opacity:.8}
+.rules .ico{width:18px;height:18px;vertical-align:-3px}
 </style>
 <script>
 (() => {
-  const SYM = ["🐝","🦗","7","🔔","🍒","🍇"]; // 🐝=リプレイ相当 / 🦗=ブドウ相当(+8) はオリジナル図柄
-  const reels = [0,1,2].map((i)=>document.getElementById("r"+i));
-  const strips = reels.map((r)=>r.querySelector(".strip"));
+  // ---- 図柄と配当 ----
+  // H=蜂(リプレイ) B=バッタ(+8) 7=+30 R=BAR(+10) L=ベル(+5) C=チェリー(左リール+2)
+  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂">', B: '<img src="/assets/game/batta.png" alt="バッタ">' };
+  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<span class="s7">7</span>' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
+  const REEL = [
+    "B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H",
+  ]; // バッタ多め・蜂それなり・7/BARは少なめ（実機の出目バランスをゆるく模倣）
+  const LEN = REEL.length, CELL = 90;
+  const PAY = { B: 8, "7": 30, R: 10, L: 5 };
+
+  // ---- クレジット（フォーム送信数から貯まる。ブラウザに保存）----
+  const KEY = "aposlot-v2";
+  const sent = ${Number(sentCount) || 0};
+  let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
+  let credit = Number(st.credit) || 0, synced = Number(st.synced) || 0, freeSpin = false;
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced })); } catch {} };
+  const syncSends = () => { if (sent > synced) { const d = sent - synced; credit += d; synced = sent; save(); return d; } return 0; };
+
+  const $ = (id) => document.getElementById(id);
+  const reels = [0,1,2].map((i) => $("r" + i));
+  const strips = reels.map((r) => r.querySelector(".strip"));
   const stopBtns = [...document.querySelectorAll(".stopbtn")];
-  const $=(id)=>document.getElementById(id);
-  const snd=(id)=>{const a=$(id);try{a.currentTime=0;a.play().catch(()=>{});}catch(e){}};
-  let credit=0, freeSpin=false, result=[0,0,0], spinning=[false,false,false], stopOrder=0, bonusThisSpin=false;
 
-  function rnd(n){return Math.floor(Math.random()*n);}
-  function setCell(i,sym){ strips[i].innerHTML='<div class="cell">'+sym+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div>'; }
-  function paint(){ $("credit").textContent=credit; $("bet").textContent=freeSpin?"0(REP)":"3"; }
-  [0,1,2].forEach(i=>setCell(i,SYM[i%SYM.length]));
-  paint();
+  // ---- 音: Web Audio でデコードし、先頭の無音を切って即時再生（遅延対策）----
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const actx = AC ? new AC() : null;
+  const bufs = {};
+  async function loadSnd(name, url) {
+    if (!actx) return;
+    try {
+      const ab = await (await fetch(url)).arrayBuffer();
+      const buf = await actx.decodeAudioData(ab);
+      const ch = buf.getChannelData(0); let i = 0; const th = 0.02;
+      while (i < ch.length && Math.abs(ch[i]) < th) i++;
+      bufs[name] = { buf, off: Math.max(0, i / buf.sampleRate - 0.005) };
+    } catch (e) { /* 音が無くても遊べる */ }
+  }
+  function play(name) {
+    const b = bufs[name]; if (!actx || !b) return;
+    if (actx.state === "suspended") actx.resume();
+    const src = actx.createBufferSource(); src.buffer = b.buf; src.connect(actx.destination); src.start(0, b.off);
+  }
+  loadSnd("spin", "/assets/game/spin.mp3"); loadSnd("stop", "/assets/game/stop.mp3"); loadSnd("bonus", "/assets/game/bonus.mp3");
+  document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
-  $("insert").onclick=()=>{ credit=50; freeSpin=false; $("win").textContent=0; $("msg").textContent="レバーONで回そう！"; paint(); $("lever").disabled=false; };
+  // ---- リール描画（3行表示・rAFで回す）----
+  const pos = [0, 0, 0], vel = [0, 0, 0], target = [null, null, null], spinning = [false, false, false];
+  const idx = [3, 8, 13]; // 中段に来ている図柄のインデックス
+  function buildStrip(i) {
+    let html = "";
+    for (let k = 0; k < LEN * 2; k++) { const s = REEL[k % LEN]; html += '<div class="cell' + (s === "7" ? " s7-wrap" : "") + '">' + draw(s) + "</div>"; }
+    strips[i].innerHTML = html;
+  }
+  [0,1,2].forEach((i) => { buildStrip(i); pos[i] = idx[i] - 1; render(i); });
+  function render(i) { const p = ((pos[i] % LEN) + LEN) % LEN; strips[i].style.transform = "translateY(" + (-p * CELL) + "px)"; }
+  let last = 0;
+  function loop(t) {
+    const dt = Math.min(40, t - last) / 1000; last = t;
+    for (let i = 0; i < 3; i++) {
+      if (!spinning[i]) continue;
+      if (target[i] === null) { pos[i] += vel[i] * dt; }
+      else {
+        // 目標（中段=target → 表示開始位置 target-1）へ減速して吸い付く
+        const goal = target[i] - 1;
+        let d = ((goal - pos[i]) % LEN + LEN) % LEN; if (d > LEN / 2) d -= LEN;
+        const step = Math.max(6, Math.abs(d) * 9) * dt + (d > 0.5 ? vel[i] * dt * 0.15 : 0);
+        // 目標まで1歩以内なら正確に吸い付けて停止（歩幅で目標をまたいで振動するのを防ぐ）
+        if (Math.abs(d) <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(i); continue; }
+        pos[i] += Math.sign(d) * step;
+      }
+      render(i);
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
 
-  $("lever").onclick=()=>{
-    if(spinning.some(Boolean)) return;
-    const cost=freeSpin?0:3;
-    if(credit<cost){ $("msg").textContent="コインが足りません。「1000円投入」でチャージ！"; return; }
-    credit-=cost; freeSpin=false; $("win").textContent=0; $("msg").textContent="ストップを押して止めよう"; paint();
-    // 今回転のボーナス抽選（1/30）
-    bonusThisSpin = rnd(30)===0;
-    $("peka").classList.remove("on");
-    // 各リールの最終出目を決定（ボーナス当選時は演出のみ・払い出しは別途）
-    result=[rnd(SYM.length),rnd(SYM.length),rnd(SYM.length)];
-    stopOrder=0;
-    snd("sndSpin");
-    reels.forEach((r,i)=>{ r.classList.add("spinning"); spinning[i]=true; strips[i].innerHTML='<div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div>'; });
-    $("lever").disabled=true;
-    stopBtns.forEach(b=>b.disabled=false);
+  // ---- 進行 ----
+  let bonus = false, lastWin = 0;
+  const rnd = (n) => Math.floor(Math.random() * n);
+  function paint() { $("credit").textContent = credit; $("bet").textContent = freeSpin ? "REP" : "3"; $("win").textContent = lastWin; $("sent").textContent = sent; $("lever").disabled = spinning.some(Boolean) || (!freeSpin && credit < 3); }
+  function say(m) { $("msg").textContent = m; }
+
+  $("sync").onclick = () => { const d = syncSends(); paint(); say(d > 0 ? "送信 " + d + " 件ぶんのクレジットを追加しました" : "新しい送信はありません（送信すると1件=1枚貯まります）"); };
+  const first = syncSends(); paint();
+  say(credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバーで回そう！" : "レバーで回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映ボタンで補充）");
+
+  $("lever").onclick = () => {
+    if (spinning.some(Boolean)) return;
+    if (!freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
+    freeSpin = false; lastWin = 0; save(); paint();
+    bonus = rnd(30) === 0;
+    $("lamp").classList.remove("on");
+    if (bonus) { $("lamp").classList.add("on"); play("bonus"); say("✨ GOGO! BATTA ✨ 光った！ 止めて7を揃えよう"); }
+    else say("ストップボタンで止めよう");
+    play("spin");
+    for (let i = 0; i < 3; i++) { target[i] = null; vel[i] = 26 + i * 2; spinning[i] = true; reels[i].classList.add("spinning"); }
+    stopBtns.forEach((b) => (b.disabled = false));
+    $("lever").disabled = true;
   };
 
-  stopBtns.forEach(btn=>btn.onclick=()=>{
-    const i=Number(btn.dataset.i);
-    if(!spinning[i]) return;
-    spinning[i]=false; btn.disabled=true;
-    reels[i].classList.remove("spinning");
-    setCell(i, SYM[result[i]]);
-    snd("sndStop");
-    stopOrder++;
-    if(!spinning.some(Boolean)) judge();
+  stopBtns.forEach((btn) => btn.onclick = () => {
+    const i = Number(btn.dataset.i);
+    if (!spinning[i] || target[i] !== null) return;
+    btn.disabled = true;
+    play("stop");
+    // ボーナス中は中段に7を引き込む（実機の「揃う」体験）。通常はランダム
+    if (bonus) { const sevens = REEL.map((s, k) => s === "7" ? k : -1).filter((k) => k >= 0); target[i] = sevens[rnd(sevens.length)]; }
+    else target[i] = rnd(LEN);
   });
 
-  function judge(){
-    $("lever").disabled=false;
-    const [a,b,c]=result.map(x=>SYM[x]);
-    let winCoins=0, rep=false, msg="ハズレ…もう一回！";
-    if(a===b&&b===c){
-      if(a==="🦗"){winCoins=8; msg="🦗×3！ +8枚";}
-      else if(a==="🐝"){rep=true; msg="🐝×3！ リプレイ（次回転ぶんBET不要）";}
-      else if(a==="7"){winCoins=20; msg="7×3！ +20枚";}
-      else if(a==="🔔"){winCoins=5; msg="🔔×3！ +5枚";}
-      else {winCoins=3; msg=a+"×3！ +3枚";}
+  function onStopped(i) { if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge(); }
+  const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN]; // row: -1=上 0=中 1=下
+  function judge() {
+    const lines = [[-1,-1,-1],[0,0,0],[1,1,1],[-1,0,1],[1,0,-1]];
+    let payout = 0, rep = false, notes = [];
+    for (const ln of lines) {
+      const a = at(0, ln[0]), b = at(1, ln[1]), c = at(2, ln[2]);
+      if (a === b && b === c) {
+        if (a === "H") { rep = true; notes.push("蜂×3 リプレイ"); }
+        else if (PAY[a]) { payout += PAY[a]; notes.push((a === "B" ? "バッタ" : a === "R" ? "BAR" : a === "L" ? "🔔" : "7") + "×3 +" + PAY[a]); }
+      }
+      if (a === "C") { payout += 2; notes.push("🍒 +2"); }
     }
-    // ボーナス当選（1/30）: 出目に関係なく点滅演出＋加算
-    if(bonusThisSpin){
-      $("peka").classList.add("on"); snd("sndBonus");
-      winCoins+=50; msg="🎉 GOGO! BATTA 当選！ +50枚";
-    }
-    if(winCoins>0){ credit+=winCoins; $("win").textContent=winCoins; }
-    if(rep){ freeSpin=true; }
-    $("msg").textContent=msg; paint();
+    if (bonus) { payout += 50; notes.push("GOGO! BATTA +50"); }
+    lastWin = payout; credit += payout; if (rep) freeSpin = true;
+    save(); paint(); target.fill(null);
+    say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
+    if (!bonus) $("lamp").classList.remove("on");
+    bonus = false;
   }
 })();
 </script>`;

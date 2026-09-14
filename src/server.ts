@@ -606,8 +606,12 @@ app.post("/suppressions/:id/delete", (req, res) => {
   db.prepare(`DELETE FROM form_suppressions WHERE id=? AND ${sc.sql}`).run(Number(req.params.id), ...sc.args);
   redirectWith(res, "/suppressions", "削除しました");
 });
-// ミニゲーム（誰でも遊べる息抜き）
-app.get("/game", (req, res) => res.send(layout("アポスロット", gameView(), takeFlash(req), navUser(req), updateReady)));
+// ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
+app.get("/game", (req, res) => {
+  const sc = scope(req);
+  const sent = (db.prepare(`SELECT COUNT(*) n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.status='sent' AND j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`).get(...sc.args) as { n: number }).n;
+  res.send(layout("アポスロット", gameView(sent), takeFlash(req), navUser(req), updateReady));
+});
 
 app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig()), takeFlash(req), navUser(req), updateReady)));
 app.post("/settings", requireAdmin, (req, res) => {
