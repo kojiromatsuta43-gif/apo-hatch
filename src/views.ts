@@ -579,6 +579,7 @@ ${!st.configured
 export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
 <p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。</p>
+<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="g7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a8a"/><stop offset=".45" stop-color="#e8102e"/><stop offset="1" stop-color="#8f0014"/></linearGradient></defs></svg>
 <div id="cab">
   <img class="bg" src="/assets/game/cabinet.jpg" alt="" draggable="false">
   <div class="win">
@@ -595,9 +596,9 @@ export function gameView(sentCount: number): string {
   <div class="betlamp" id="bl1" style="top:calc(607px*var(--s))"></div>
   <div class="replamp" id="replamp"></div>
   <button class="lever" id="lever" disabled title="レバー"></button>
-  <button class="stopbtn" data-i="0" style="left:calc(361px*var(--s))" disabled></button>
-  <button class="stopbtn" data-i="1" style="left:calc(468px*var(--s))" disabled></button>
-  <button class="stopbtn" data-i="2" style="left:calc(568px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="0" style="left:calc(339px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="1" style="left:calc(444px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="2" style="left:calc(546px*var(--s))" disabled></button>
 </div>
 <div class="gmsg" id="msg">…</div>
 <div class="gctl"><button class="btn small" id="sync">送信数を反映</button> <span class="muted small">送信 <b id="sent">${sentCount}</b>件</span></div>
@@ -607,15 +608,15 @@ export function gameView(sentCount: number): string {
 ・毎回転 1/30 で GOGO! BATTA が光る → その回転は7が揃って +50枚
 </div>
 <style>
-#cab{position:relative;width:min(560px,100%);margin:0 auto;aspect-ratio:967/1627;user-select:none;--s:0.579}
+#cab{position:relative;width:min(700px,100%);margin:0 auto;aspect-ratio:967/1627;user-select:none;--s:0.724}
 #cab .bg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:10px}
 #cab .win{position:absolute;left:calc(183px*var(--s));top:calc(479px*var(--s));width:calc(607px*var(--s));height:calc(212px*var(--s));display:flex;gap:calc(10px*var(--s));background:#111;border-radius:calc(6px*var(--s));overflow:hidden}
 #cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#fffdf6}
 #cab .reel .strip{will-change:transform}
-#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(46px*var(--s));font-weight:900;line-height:1;color:#222}
-#cab .reel .cell img{width:calc(60px*var(--s));height:calc(60px*var(--s));object-fit:contain}
-#cab .reel .cell .s7{color:#e6203c;font-size:calc(60px*var(--s));font-style:italic;text-shadow:0 calc(3px*var(--s)) 0 #7a0016}
-#cab .reel .cell .sbar{font-size:calc(20px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(6px*var(--s)) calc(12px*var(--s));border-radius:5px}
+#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(58px*var(--s));font-weight:900;line-height:1;color:#222}
+#cab .reel .cell img{width:calc(68px*var(--s));height:calc(68px*var(--s));object-fit:contain}
+#cab .reel .cell .s7{width:calc(66px*var(--s));height:calc(66px*var(--s));display:block}
+#cab .reel .cell .sbar{font-size:calc(24px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(8px*var(--s)) calc(14px*var(--s));border-radius:5px}
 #cab .reel.spinning .strip{filter:blur(1.1px)}
 #cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
 #cab .lamp img{width:100%;height:100%;object-fit:contain;filter:brightness(.16) saturate(.5) grayscale(.6);transition:filter .15s}
@@ -627,12 +628,12 @@ export function gameView(sentCount: number): string {
 #cab .betlamp.on{box-shadow:0 0 calc(18px*var(--s)) calc(6px*var(--s)) rgba(255,230,80,.85)}
 #cab .replamp{position:absolute;left:calc(818px*var(--s));top:calc(536px*var(--s));width:calc(92px*var(--s));height:calc(36px*var(--s));border-radius:8px;pointer-events:none}
 #cab .replamp.on{box-shadow:0 0 calc(16px*var(--s)) calc(4px*var(--s)) rgba(80,200,255,.9)}
-#cab .lever{position:absolute;left:calc(198px*var(--s));top:calc(894px*var(--s));width:calc(64px*var(--s));height:calc(64px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
+#cab .lever{position:absolute;left:calc(201px*var(--s));top:calc(870px*var(--s));width:calc(70px*var(--s));height:calc(70px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
 #cab .lever:not(:disabled){box-shadow:0 0 calc(14px*var(--s)) calc(4px*var(--s)) rgba(255,255,140,.75);animation:leverpulse 1.2s ease-in-out infinite}
 @keyframes leverpulse{50%{box-shadow:0 0 calc(6px*var(--s)) calc(2px*var(--s)) rgba(255,255,140,.4)}}
 #cab .lever:active{transform:scale(.92)}
 #cab .lever:disabled{cursor:default;background:rgba(0,0,0,.35);animation:none}
-#cab .stopbtn{position:absolute;top:calc(892px*var(--s));width:calc(56px*var(--s));height:calc(56px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
+#cab .stopbtn{position:absolute;top:calc(864px*var(--s));width:calc(62px*var(--s));height:calc(62px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
 #cab .stopbtn:not(:disabled){box-shadow:0 0 calc(16px*var(--s)) calc(5px*var(--s)) rgba(90,255,120,.85)}
 #cab .stopbtn:active{transform:scale(.9)}
 #cab .stopbtn:disabled{cursor:default;background:rgba(0,0,0,.45)}
@@ -648,10 +649,11 @@ export function gameView(sentCount: number): string {
 
   // ---- 図柄と配当 ----
   const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
-  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<span class="s7">7</span>' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
+  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<svg class="s7" viewBox="0 0 64 64"><path d="M7 7h50l-7 13H33L21 59H6l19-39H7z" fill="url(#g7)" stroke="#2a0008" stroke-width="3.5" stroke-linejoin="round"/><path d="M11 11h40l-2.5 4.5H13z" fill="#fff" opacity=".6"/><path d="M48 40l2.6 6.4 6.9.5-5.3 4.4 1.7 6.7-5.9-3.7-5.9 3.7 1.7-6.7-5.3-4.4 6.9-.5z" fill="#ffd23f" stroke="#8a5a00" stroke-width="1.4" stroke-linejoin="round"/></svg>' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
   const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
   const LEN = REEL.length, CELL = 70.67;
   const PAY = { B: 8, "7": 30, R: 10, L: 5 };
+  const FREE_PLAY = true; // テスト中: クレジットを消費せず無限に回せる（本番運用に戻すときは false）
 
   // ---- クレジット（フォーム送信数から。ブラウザに保存）----
   const KEY = "aposlot-v3";
@@ -685,6 +687,15 @@ export function gameView(sentCount: number): string {
     const src = actx.createBufferSource(); src.buffer = b.buf; src.connect(actx.destination); src.start(0, b.off);
   }
   loadSnd("spin", "/assets/game/spin.mp3"); loadSnd("stop", "/assets/game/stop.mp3"); loadSnd("bonus", "/assets/game/bonus.mp3");
+  loadSnd("bgm", "/assets/game/bgm.mp3"); loadSnd("grape", "/assets/game/grape.mp3"); loadSnd("replay", "/assets/game/replay.mp3"); loadSnd("tenpai", "/assets/game/tenpai.mp3"); loadSnd("cherry", "/assets/game/cherry.mp3");
+  // 7揃い後の音楽: 次にレバーを叩くまでループで流す
+  let loopSrc = null;
+  function stopLoop() { if (loopSrc) { try { loopSrc.stop(); } catch {} loopSrc = null; } }
+  function playLoop(name) {
+    stopLoop(); const b = bufs[name]; if (!actx || !b) return;
+    if (actx.state === "suspended") actx.resume();
+    const src = actx.createBufferSource(); src.buffer = b.buf; src.loop = true; src.loopStart = b.off; src.loopEnd = b.buf.duration; src.connect(actx.destination); src.start(0, b.off); loopSrc = src;
+  }
   document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
   // ---- リール（3行表示・rAF）----
@@ -698,14 +709,16 @@ export function gameView(sentCount: number): string {
     const dt = Math.min(40, t - last) / 1000; last = t;
     for (let i = 0; i < 3; i++) {
       if (!spinning[i]) continue;
-      if (target[i] === null) pos[i] += vel[i] * dt;
+      // 実機と同じく図柄は常に上から下へ流れる（pos を減らす方向にだけ動かす）
+      if (target[i] === null) pos[i] -= vel[i] * dt;
       else {
         const goal = target[i] - 1;
-        let d = ((goal - pos[i]) % LEN + LEN) % LEN; if (d > LEN / 2) d -= LEN;
-        const step = Math.max(6, Math.abs(d) * 9) * dt + (d > 0.5 ? vel[i] * dt * 0.15 : 0);
-        if (Math.abs(d) <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
-        pos[i] += Math.sign(d) * step;
+        const dist = ((pos[i] - goal) % LEN + LEN) % LEN; // 下方向に進んで目標へ届くまでの距離
+        const step = Math.max(6, dist * 9) * dt + (dist > 0.5 ? vel[i] * dt * 0.15 : 0);
+        if (dist <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
+        pos[i] -= step;
       }
+      pos[i] = ((pos[i] % LEN) + LEN) % LEN;
       render(i);
     }
     requestAnimationFrame(loop);
@@ -716,8 +729,8 @@ export function gameView(sentCount: number): string {
   let bonus = false, lastWin = 0;
   const rnd = (n) => Math.floor(Math.random() * n);
   function paint() {
-    $("credit").textContent = credit; $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
-    $("lever").disabled = spinning.some(Boolean) || (!freeSpin && credit < 3);
+    $("credit").textContent = FREE_PLAY ? "∞" : credit; $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
+    $("lever").disabled = spinning.some(Boolean) || (!FREE_PLAY && !freeSpin && credit < 3);
     $("replamp").classList.toggle("on", freeSpin);
   }
   const say = (m) => { $("msg").textContent = m; };
@@ -725,11 +738,12 @@ export function gameView(sentCount: number): string {
 
   $("sync").onclick = () => { const d = syncSends(); paint(); say(d > 0 ? "送信 " + d + " 件ぶんのクレジットを追加しました" : "新しい送信はありません（送信すると1件=1枚貯まります）"); };
   const first = syncSends(); paint();
-  say(credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映で補充）");
+  say(FREE_PLAY ? "テストモード: 無限に回せます。レバー（左の黒いノブ）で回そう！" : credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映で補充）");
 
   $("lever").onclick = () => {
     if (spinning.some(Boolean)) return;
-    if (!freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
+    if (!FREE_PLAY && !freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
+    stopLoop();
     freeSpin = false; lastWin = 0; games++; save(); paint(); betLamps(true);
     bonus = rnd(30) === 0;
     $("lamp").classList.remove("on");
@@ -749,7 +763,11 @@ export function gameView(sentCount: number): string {
     else target[i] = rnd(LEN);
   });
 
-  function onStopped() { if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge(); }
+  function onStopped() {
+    const stopped = [0,1,2].filter((i) => !spinning[i] && target[i] !== null);
+    if (stopped.length === 2 && stopped.every((i) => at(i, 0) === "7")) play("tenpai"); // 7のテンパイ
+    if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge();
+  }
   const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN];
   function judge() {
     const lines = [[-1,-1,-1],[0,0,0],[1,1,1],[-1,0,1],[1,0,-1]];
@@ -763,9 +781,17 @@ export function gameView(sentCount: number): string {
       if (a === "C") { payout += 2; notes.push("🍒 +2"); }
     }
     if (bonus) { payout += 50; notes.push("GOGO! BATTA +50"); }
+    const sevens = at(0, 0) === "7" && at(1, 0) === "7" && at(2, 0) === "7";
+    const batta = notes.some((n) => n.startsWith("バッタ"));
+    const cherry = notes.some((n) => n.startsWith("🍒"));
     lastWin = payout; credit += payout; if (rep) freeSpin = true;
     save(); paint(); betLamps(false); target.fill(null);
     say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
+    // 効果音: 7揃い(ボーナス)は次のレバーまで音楽ループ、それ以外は1つだけ鳴らす
+    if (sevens || bonus) playLoop("bgm");
+    else if (batta) play("grape");
+    else if (rep) play("replay");
+    else if (cherry) play("cherry");
     bonus = false;
   }
 })();
