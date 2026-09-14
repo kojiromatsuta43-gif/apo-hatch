@@ -366,6 +366,30 @@ setTimeout(()=>location.reload(),15000); // 一覧の中身も15秒ごとに更�
 }
 
 /** テスト送信の専用ページ。自社フォーム宛ての動作確認と、テスト履歴 */
+/** 取り込みプレビュー: 実際に登録する前に、先頭数行と件数内訳を見せて確認してもらう */
+export function importPreviewView(c: Campaign & { sender: SenderProfile }, rows: import("./csv.js").CompanyRow[], summary: import("./csv.js").ImportSummary, srcLabel: string): string {
+  const sample = rows.slice(0, 8);
+  const cell = (v: string) => `<td class="small">${esc((v || "").slice(0, 40)) || '<span class="muted">―</span>'}</td>`;
+  const willSend = summary.added, willSkip = summary.excluded + summary.suppressed + summary.duplicated + summary.noUrl;
+  return `<h1>取り込みプレビュー <span class="tag">${esc(srcLabel)}</span></h1>
+<p><a href="/campaigns/${c.id}">← ${esc(c.name)}</a></p>
+<div class="card"><h2 style="margin-top:0">この内容で取り込みますか？</h2>
+<p>読み込んだ行数: <b>${rows.length}</b>件　→　登録予定: <b style="color:var(--ok)">${willSend}</b>件（フォーム${summary.addedForm}・メール${summary.addedEmail}）／ 送らない: <b>${willSkip}</b>件</p>
+<p class="muted small">送らない内訳: 除外/官公庁 ${summary.excluded} ・ 除外リスト ${summary.suppressed} ・ 重複/再送禁止 ${summary.duplicated} ・ 送信先なし ${summary.noUrl}</p>
+<form method="post" action="/campaigns/${c.id}/import-confirm" class="inline" data-busy><button class="btn" data-busytext="取り込み中…">この内容で取り込む（${rows.length}行）</button></form>
+<form method="post" action="/campaigns/${c.id}/import-cancel" class="inline"><button class="btn sub">やめる</button></form>
+</div>
+<h2>先頭 ${sample.length} 行の読み取り結果（列がずれていないか確認してください）</h2>
+<p class="muted small">下の各列に正しい値が入っていれば、見出しの対応は合っています。ずれている場合は、取り込み元の1行目の見出し（企業名 / 企業URL / 問い合わせフォーム / メール …）をご確認ください。</p>
+<div style="overflow-x:auto"><table><tr><th>企業名</th><th>問い合わせフォーム</th><th>企業URL</th><th>メール</th><th>業種</th><th>都道府県</th><th>代表者</th></tr>
+${sample.map((r) => `<tr>${cell(r.company_name)}${cell(r.form_url)}${cell(r.site_url)}${cell(r.email)}${cell(r.sub_industry || r.industry)}${cell(r.prefecture)}${cell(r.representative)}</tr>`).join("")}
+</table></div>
+${summary.excludedRows.length ? `<details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700">送らない会社 ${summary.excludedRows.length}件の内訳を見る</summary>
+<table style="margin-top:6px"><tr><th>会社名</th><th>理由</th><th>送信先</th></tr>
+${summary.excludedRows.slice(0, 200).map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.reason)}</td><td class="small">${esc((x.where || "").slice(0, 60))}</td></tr>`).join("")}
+</table></details>` : ""}`;
+}
+
 export function testView(c: Campaign & { sender: SenderProfile }, tests: Job[]) {
   return `<h1>テスト送信 <span class="tag">${esc(c.name)}</span></h1>
 <p><a href="/campaigns/${c.id}">← キャンペーンに戻る</a></p>

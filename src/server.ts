@@ -5,13 +5,13 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
-import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
+import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, errKind, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -221,6 +221,7 @@ function loadCampaignFull(req: express.Request, id: number) {
 }
 
 const lastImports = new Map<number, ImportSummary>();
+const pendingImports = new Map<number, { rows: CompanyRow[]; srcLabel: string }>();
 const previews = new Map<number, { job: Job; subject: string; message: string; aiUsed: boolean; lint?: import("./message.js").Lint[] }>();
 
 app.get("/campaigns/:id", (req, res) => {
@@ -292,12 +293,32 @@ app.post("/campaigns/:id/import", upload.single("csv"), async (req, res) => {
     } else {
       return redirectWith(res, `/campaigns/${id}`, "ファイル・貼り付け・スプレッドシートURLのいずれかを指定してください");
     }
-    const s = importRowsToCampaign(id, rows);
-    lastImports.set(id, s);
-    redirectWith(res, `/campaigns/${id}`, `${srcLabel}から ${rows.length}行を読み込みました`);
+    if (!rows.length) return redirectWith(res, `/campaigns/${id}`, "取り込める行がありませんでした。1行目に見出し（企業名・企業URL 等）があるか確認してください");
+    // すぐには登録せず、まずプレビュー（先頭行・件数内訳）を見せて確定してもらう
+    pendingImports.set(id, { rows, srcLabel });
+    const dry = importRowsToCampaign(id, rows, { dryRun: true });
+    const c = loadCampaignFull(req, id)!;
+    res.send(layout(`取り込みプレビュー | ${c.name}`, importPreviewView(c, rows, dry, srcLabel), takeFlash(req), navUser(req), updateReady));
   } catch (e) {
     redirectWith(res, `/campaigns/${id}`, `取り込みエラー: ${String((e as Error).message)}`);
   }
+});
+// プレビューを確認して実際に取り込む
+app.post("/campaigns/:id/import-confirm", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const pending = pendingImports.get(id);
+  if (!pending) return redirectWith(res, `/campaigns/${id}`, "プレビューの有効期限が切れました。もう一度取り込んでください");
+  const s = importRowsToCampaign(id, pending.rows);
+  pendingImports.delete(id);
+  lastImports.set(id, s);
+  redirectWith(res, `/campaigns/${id}`, `${pending.srcLabel}から ${pending.rows.length}行を取り込みました`);
+});
+// プレビューを取り消す
+app.post("/campaigns/:id/import-cancel", (req, res) => {
+  const id = Number(req.params.id);
+  pendingImports.delete(id);
+  redirectWith(res, `/campaigns/${id}`, "取り込みを取り消しました");
 });
 
 // GoogleスプレッドシートのURLをCSV書き出しURLに変換して取得する（共有＝リンクを知っている全員が閲覧可、が前提）

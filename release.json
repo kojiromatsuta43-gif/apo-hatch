@@ -1,6 +1,6 @@
 {
-  "version": "0.3.29",
-  "notes": "設定画面に「データのバックアップ書き出し」を追加（送信者・キャンペーン・送信履歴をJSONで。SMTPパスワードとAIキーは含みません・復元機能なし）。送信者フォームにメール/電話の簡易チェックを追加",
+  "version": "0.3.30",
+  "notes": "CSV・Excel・貼り付けの取り込みに「プレビュー確認ステップ」を追加（登録前に先頭数件と件数内訳を確認してから確定）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T20:57:50.000Z"
+  "published_at": "2026-09-14T22:06:51.213Z"
 }

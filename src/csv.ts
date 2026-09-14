@@ -114,7 +114,7 @@ export type ExcludedRow = { company: string; reason: string; where: string };
 export type ImportSummary = { added: number; addedForm: number; addedEmail: number; excluded: number; suppressed: number; duplicated: number; noUrl: number; excludedRows: ExcludedRow[] };
 
 /** 企業行をキャンペーンのジョブとして登録。チャネル（フォーム／メール）を振り分け、除外・重複は理由を残す */
-export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): ImportSummary {
+export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opts: { dryRun?: boolean } = {}): ImportSummary {
   const db = getDb();
   const campaign = db.prepare("SELECT channel, resend_days FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number } | undefined;
   const resendDays = campaign?.resend_days ?? 90;
@@ -150,7 +150,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[]): Im
       else if (hasEmail && isOptedOut.get(r.email)) { status = "skip_optout"; reason = "配信停止・除外済みのアドレス"; summary.suppressed++; note(reason); }
       else if (resendDays > 0 && recentlySent.get(`-${resendDays} days`, domain)) { status = "skip_duplicate"; reason = `${resendDays}日以内に送信済み`; summary.duplicated++; note(reason); }
       else { summary.added++; if (channel === "form") summary.addedForm++; else summary.addedEmail++; }
-      insert.run({ ...r, campaign_id: campaignId, domain, channel, email: hasEmail ? r.email : "", status, result_text: reason });
+      if (!opts.dryRun) insert.run({ ...r, campaign_id: campaignId, domain, channel, email: hasEmail ? r.email : "", status, result_text: reason });
     }
   });
   tx();
