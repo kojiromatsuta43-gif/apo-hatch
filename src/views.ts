@@ -222,18 +222,16 @@ ${(() => {
 <a class="btn" href="/campaigns/${c.id}/test">テスト送信ページを開く</a></div>
 
 <div class="card"><h2 style="margin-top:0">1. リストを取り込む</h2>
+<p class="muted">次のどれか1つで取り込めます。見出しは 企業名 / 問い合わせフォーム / 企業URL / メール / 大業界 / 小業界 / 都道府県 / 代表者名 に対応（順不同）。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p>
 <form method="post" action="/campaigns/${c.id}/import" enctype="multipart/form-data">
-<label>ファイルから（CSV / Excel .xlsx）</label>
-<div class="row"><input type="file" name="csv" accept=".csv,.xlsx,text/csv"> <button class="btn sub">取り込む</button></div>
-<details style="margin-top:10px"><summary style="cursor:pointer">スプレッドシートを貼り付け／URLで取り込む</summary>
-<div style="padding:8px 2px">
-<label>スプレッドシート・Excelからコピーして貼り付け（1行目は見出し）</label>
+<label>① ファイルから（CSV / Excel .xlsx）</label>
+<input type="file" name="csv" accept=".csv,.xlsx,text/csv">
+<label>② スプレッドシート・Excelからコピーして貼り付け（1行目は見出し）</label>
 <textarea name="pasted" style="min-height:90px" placeholder="企業名（タブ区切り）問い合わせフォーム 企業URL メール …"></textarea>
-<label>または Google スプレッドシートのURL</label>
+<label>③ または Google スプレッドシートのURL</label>
 <input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…">
 <p class="muted small">URLで取り込むには、スプレッドシートの共有を「リンクを知っている全員（閲覧可）」にしてください。</p>
-</div></details>
-<p class="muted">見出しは 企業名 / 問い合わせフォーム / 企業URL / メール / 大業界 / 小業界 / 都道府県 / 代表者名 に対応（順不同）。同一ドメイン・再送禁止期間内・除外リスト・官公庁等は自動で振り分けます。</p></form>
+<p><button class="btn">取り込む</button></p></form>
 ${extra.lastImport ? importReport(extra.lastImport) : ""}</div>
 
 <div class="card"><h2 style="margin-top:0">1-b. 事前チェック（送る前に連絡先を確認）${extra.scanning ? '<span class="tag sending"><span class="spin"></span>チェック中</span>' : extra.unscanned === 0 && extra.scanned > 0 ? '<span class="tag sent">チェック完了</span>' : ""}</h2>
