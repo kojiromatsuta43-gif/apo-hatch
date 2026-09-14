@@ -579,7 +579,6 @@ ${!st.configured
 export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
 <p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。</p>
-<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="g7" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a8a"/><stop offset=".45" stop-color="#e8102e"/><stop offset="1" stop-color="#8f0014"/></linearGradient></defs></svg>
 <div id="cab">
   <img class="bg" src="/assets/game/cabinet.jpg" alt="" draggable="false">
   <div class="win">
@@ -615,7 +614,7 @@ export function gameView(sentCount: number): string {
 #cab .reel .strip{will-change:transform}
 #cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(58px*var(--s));font-weight:900;line-height:1;color:#222}
 #cab .reel .cell img{width:calc(68px*var(--s));height:calc(68px*var(--s));object-fit:contain}
-#cab .reel .cell .s7{width:calc(66px*var(--s));height:calc(66px*var(--s));display:block}
+#cab .reel .cell img.s7{width:calc(150px*var(--s));height:calc(68px*var(--s));object-fit:contain}
 #cab .reel .cell .sbar{font-size:calc(24px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(8px*var(--s)) calc(14px*var(--s));border-radius:5px}
 #cab .reel.spinning .strip{filter:blur(1.1px)}
 #cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
@@ -649,7 +648,7 @@ export function gameView(sentCount: number): string {
 
   // ---- 図柄と配当 ----
   const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
-  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<svg class="s7" viewBox="0 0 64 64"><path d="M7 7h50l-7 13H33L21 59H6l19-39H7z" fill="url(#g7)" stroke="#2a0008" stroke-width="3.5" stroke-linejoin="round"/><path d="M11 11h40l-2.5 4.5H13z" fill="#fff" opacity=".6"/><path d="M48 40l2.6 6.4 6.9.5-5.3 4.4 1.7 6.7-5.9-3.7-5.9 3.7 1.7-6.7-5.3-4.4 6.9-.5z" fill="#ffd23f" stroke="#8a5a00" stroke-width="1.4" stroke-linejoin="round"/></svg>' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
+  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<img class="s7" src="/assets/game/seven.png" alt="7" draggable="false">' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
   const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
   const LEN = REEL.length, CELL = 70.67;
   const PAY = { B: 8, "7": 30, R: 10, L: 5 };

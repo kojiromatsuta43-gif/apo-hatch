@@ -1,6 +1,6 @@
 {
-  "version": "0.3.20",
-  "notes": "アポスロット: バッタ×3の効果音を専用の音に差し替え（チェリーと別の音になりました）",
+  "version": "0.3.21",
+  "notes": "アポスロット: 7の図柄を指定の画像に差し替えました",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T18:25:14.000Z"
+  "published_at": "2026-09-14T18:30:53.000Z"
 }
