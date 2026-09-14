@@ -3,6 +3,7 @@ import express from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
@@ -10,11 +11,14 @@ import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.j
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser } from "./engine.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, errKind, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
+// ゲームの音声など静的アセット（src の1つ上の assets/ を配信）
+const ASSETS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets");
+app.use("/assets", express.static(ASSETS_DIR, { maxAge: "1h" }));
 app.use(authMiddleware);
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const db = getDb();
@@ -602,6 +606,9 @@ app.post("/suppressions/:id/delete", (req, res) => {
   db.prepare(`DELETE FROM form_suppressions WHERE id=? AND ${sc.sql}`).run(Number(req.params.id), ...sc.args);
   redirectWith(res, "/suppressions", "削除しました");
 });
+// ミニゲーム（誰でも遊べる息抜き）
+app.get("/game", (req, res) => res.send(layout("アポスロット", gameView(), takeFlash(req), navUser(req), updateReady)));
+
 app.get("/settings", requireAdmin, (req, res) => res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig()), takeFlash(req), navUser(req), updateReady)));
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);

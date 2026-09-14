@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -569,4 +569,135 @@ ${!st.configured
     : `<p class="muted">最新版です。</p>`}
 <form method="post" action="/update/check" class="inline"><button class="btn sub">いま確認する</button></form>
 </div>`;
+}
+
+/** ミニゲーム: 蜂・バッタのオリジナル・スロット（待ち時間の息抜き用）。
+ *  実在のパチスロ機（ジャグラー等）のデザイン・キャラクター・ロゴは使わず、
+ *  当ツールの蜂(アポハッチ)・バッタ(アポバッタ)を使った独自デザイン。機構だけ参考にしている。 */
+export function gameView(): string {
+  return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
+<p class="muted">CSV確認などの待ち時間の息抜きに。仮想コインで遊ぶだけで、課金や送信は一切ありません。</p>
+<div id="slot">
+<div class="slot-top"><div class="peka" id="peka">GOGO! BATTA</div></div>
+<div class="reels" id="reels">
+  <div class="reel" id="r0"><div class="strip"></div></div>
+  <div class="reel" id="r1"><div class="strip"></div></div>
+  <div class="reel" id="r2"><div class="strip"></div></div>
+  <div class="payline"></div>
+</div>
+<div class="meters">
+  <div class="meter"><span>CREDIT</span><b id="credit">0</b></div>
+  <div class="meter"><span>BET</span><b id="bet">3</b></div>
+  <div class="meter"><span>WIN</span><b id="win">0</b></div>
+</div>
+<div class="controls">
+  <button class="btn" id="insert">1000円投入（コイン50枚）</button>
+  <button class="btn lever" id="lever" disabled>レバーON（回す）</button>
+</div>
+<div class="stops">
+  <button class="stopbtn" data-i="0" disabled>STOP</button>
+  <button class="stopbtn" data-i="1" disabled>STOP</button>
+  <button class="stopbtn" data-i="2" disabled>STOP</button>
+</div>
+<div class="msg" id="msg">「1000円投入」で50枚チャージして、レバーONで回そう！</div>
+<div class="rules muted small">
+・BET 3枚／回　・🦗×3=+8枚　・🐝×3=リプレイ（次回転ぶんBET不要）　・7×3=+20枚　・🔔×3=+5枚<br>
+・毎回転1/30で「GOGO! BATTA」当選 → +50枚（点滅演出）
+</div>
+</div>
+<audio id="sndSpin" src="/assets/game/spin.mp3" preload="auto"></audio>
+<audio id="sndStop" src="/assets/game/stop.mp3" preload="auto"></audio>
+<audio id="sndBonus" src="/assets/game/bonus.mp3" preload="auto"></audio>
+<style>
+#slot{max-width:520px;margin:0 auto;background:linear-gradient(#2b1e5a,#140d34);border:3px solid var(--honey);border-radius:16px;padding:16px;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.slot-top{height:54px;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+.peka{font-weight:800;font-size:26px;letter-spacing:1px;color:#3a2f6e;text-shadow:none;transition:none}
+.peka.on{color:#ff45d0;text-shadow:0 0 8px #ff45d0,0 0 18px #6a5cff,0 0 30px #6a5cff;animation:peka .18s steps(2) infinite}
+@keyframes peka{50%{opacity:.35}}
+.reels{position:relative;display:flex;gap:8px;justify-content:center;background:#fff;border-radius:10px;padding:10px;overflow:hidden}
+.reel{width:96px;height:108px;overflow:hidden;background:#faf7ef;border:2px solid var(--hive-200);border-radius:8px}
+.reel .strip{display:flex;flex-direction:column}
+.reel .cell{height:108px;display:flex;align-items:center;justify-content:center;font-size:56px;line-height:1}
+.reel.spinning .strip{animation:spin .18s linear infinite}
+@keyframes spin{from{transform:translateY(0)}to{transform:translateY(-108px)}}
+.payline{position:absolute;left:8px;right:8px;top:50%;height:3px;background:rgba(255,70,70,.7);transform:translateY(-1.5px);pointer-events:none}
+.meters{display:flex;gap:8px;margin:12px 0}
+.meter{flex:1;background:#0c0722;border:1px solid #3a2f6e;border-radius:8px;padding:6px 8px;text-align:center}
+.meter span{display:block;font-size:11px;color:#a99fe0}.meter b{font-size:22px;color:#ffe36e;font-variant-numeric:tabular-nums}
+.controls{display:flex;gap:8px;margin-bottom:8px}.controls .btn{flex:1}
+.lever{background:#e53}.lever:disabled{opacity:.5}
+.stops{display:flex;gap:8px}
+.stopbtn{flex:1;height:52px;border-radius:50px;border:3px solid #7a1a1a;background:radial-gradient(circle at 50% 35%,#ff6b6b,#c62828);color:#fff;font-weight:800;font-size:15px;cursor:pointer}
+.stopbtn:disabled{opacity:.4;cursor:default}
+.msg{margin:12px 0 6px;text-align:center;font-weight:700;min-height:22px}
+.rules{margin-top:6px;color:#c9c1e8}
+</style>
+<script>
+(() => {
+  const SYM = ["🐝","🦗","7","🔔","🍒","🍇"]; // 🐝=リプレイ相当 / 🦗=ブドウ相当(+8) はオリジナル図柄
+  const reels = [0,1,2].map((i)=>document.getElementById("r"+i));
+  const strips = reels.map((r)=>r.querySelector(".strip"));
+  const stopBtns = [...document.querySelectorAll(".stopbtn")];
+  const $=(id)=>document.getElementById(id);
+  const snd=(id)=>{const a=$(id);try{a.currentTime=0;a.play().catch(()=>{});}catch(e){}};
+  let credit=0, freeSpin=false, result=[0,0,0], spinning=[false,false,false], stopOrder=0, bonusThisSpin=false;
+
+  function rnd(n){return Math.floor(Math.random()*n);}
+  function setCell(i,sym){ strips[i].innerHTML='<div class="cell">'+sym+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div>'; }
+  function paint(){ $("credit").textContent=credit; $("bet").textContent=freeSpin?"0(REP)":"3"; }
+  [0,1,2].forEach(i=>setCell(i,SYM[i%SYM.length]));
+  paint();
+
+  $("insert").onclick=()=>{ credit=50; freeSpin=false; $("win").textContent=0; $("msg").textContent="レバーONで回そう！"; paint(); $("lever").disabled=false; };
+
+  $("lever").onclick=()=>{
+    if(spinning.some(Boolean)) return;
+    const cost=freeSpin?0:3;
+    if(credit<cost){ $("msg").textContent="コインが足りません。「1000円投入」でチャージ！"; return; }
+    credit-=cost; freeSpin=false; $("win").textContent=0; $("msg").textContent="ストップを押して止めよう"; paint();
+    // 今回転のボーナス抽選（1/30）
+    bonusThisSpin = rnd(30)===0;
+    $("peka").classList.remove("on");
+    // 各リールの最終出目を決定（ボーナス当選時は演出のみ・払い出しは別途）
+    result=[rnd(SYM.length),rnd(SYM.length),rnd(SYM.length)];
+    stopOrder=0;
+    snd("sndSpin");
+    reels.forEach((r,i)=>{ r.classList.add("spinning"); spinning[i]=true; strips[i].innerHTML='<div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div><div class="cell">'+SYM[rnd(SYM.length)]+'</div>'; });
+    $("lever").disabled=true;
+    stopBtns.forEach(b=>b.disabled=false);
+  };
+
+  stopBtns.forEach(btn=>btn.onclick=()=>{
+    const i=Number(btn.dataset.i);
+    if(!spinning[i]) return;
+    spinning[i]=false; btn.disabled=true;
+    reels[i].classList.remove("spinning");
+    setCell(i, SYM[result[i]]);
+    snd("sndStop");
+    stopOrder++;
+    if(!spinning.some(Boolean)) judge();
+  });
+
+  function judge(){
+    $("lever").disabled=false;
+    const [a,b,c]=result.map(x=>SYM[x]);
+    let winCoins=0, rep=false, msg="ハズレ…もう一回！";
+    if(a===b&&b===c){
+      if(a==="🦗"){winCoins=8; msg="🦗×3！ +8枚";}
+      else if(a==="🐝"){rep=true; msg="🐝×3！ リプレイ（次回転ぶんBET不要）";}
+      else if(a==="7"){winCoins=20; msg="7×3！ +20枚";}
+      else if(a==="🔔"){winCoins=5; msg="🔔×3！ +5枚";}
+      else {winCoins=3; msg=a+"×3！ +3枚";}
+    }
+    // ボーナス当選（1/30）: 出目に関係なく点滅演出＋加算
+    if(bonusThisSpin){
+      $("peka").classList.add("on"); snd("sndBonus");
+      winCoins+=50; msg="🎉 GOGO! BATTA 当選！ +50枚";
+    }
+    if(winCoins>0){ credit+=winCoins; $("win").textContent=winCoins; }
+    if(rep){ freeSpin=true; }
+    $("msg").textContent=msg; paint();
+  }
+})();
+</script>`;
 }
