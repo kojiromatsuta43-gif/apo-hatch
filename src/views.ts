@@ -27,6 +27,8 @@ table{width:100%;border-collapse:collapse;background:#fff}th,td{border-bottom:1p
 .spin{display:inline-block;width:11px;height:11px;border:2px solid #90CAF9;border-top-color:#1565C0;border-radius:50%;animation:sp .9s linear infinite;vertical-align:-1px;margin-right:5px}@keyframes sp{to{transform:rotate(360deg)}}
 .bar{height:16px;background:var(--honey-50);border:1px solid var(--hive-200);border-radius:999px;overflow:hidden;margin:8px 0 4px;max-width:560px}.bar i{display:block;height:100%;background:var(--honey);border-radius:999px;transition:width .6s ease}
 tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--honey)}
+.histbtn{background:none;border:1px solid var(--hive-200);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--hive-600);cursor:pointer;margin-top:3px}
+tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 .card.testcard{background:var(--honey-50);border-color:var(--honey)}
 .errkind{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:#FFF3E0;color:#B26A00;margin-right:4px;white-space:nowrap}
 #fo-chara{position:fixed;right:18px;bottom:16px;display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:999px;background:transparent;transition:background .35s;pointer-events:none;z-index:50}
@@ -247,7 +249,22 @@ ${extra.statusFilter || extra.outcomeFilter || extra.qFilter ? `<a class="btn su
 </form>
 <p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
 <table><tr><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
-${jobs.map((j) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""}</td></tr>`).join("")}
+${(() => {
+    // 同じ「会社名＋送信先」への複数回の送信は、最新の1行だけを代表として表示し、
+    // 古い履歴は ▽(N件) の折りたたみに集約する（一覧は updated_at 降順なので先頭が最新）
+    type G = { rep: Job; hist: Job[] };
+    const byKey = new Map<string, G>();
+    const groups: G[] = [];
+    for (const j of jobs) {
+      const key = j.is_test ? `test-${j.id}` : `${j.company_name}||${j.form_url || j.email || j.domain}`;
+      const g = byKey.get(key);
+      if (!g) { const ng = { rep: j, hist: [] as Job[] }; byKey.set(key, ng); groups.push(ng); }
+      else g.hist.push(j);
+    }
+    const repRow = (j: Job, hist: Job[]) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}${hist.length ? `<br><button type="button" class="histbtn" data-t="${j.id}" data-n="${hist.length}" onclick="foHist(this)">▽(${hist.length}件)</button>` : ""}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""}</td></tr>`;
+    const histRow = (repId: number, h: Job) => `<tr class="histrow hist-${repId}" hidden><td></td><td colspan="8" class="small muted">└ ${esc(h.updated_at ?? "")} ${statusTag(h.status)} ${errKindTag(h)}${esc((h.result_text || "").split("\n")[0].slice(0, 60))} <a href="/jobs/${h.id}">詳細</a></td></tr>`;
+    return groups.map((g) => repRow(g.rep, g.hist) + g.hist.map((h) => histRow(g.rep.id, h)).join("")).join("");
+  })()}
 </table>
 <script>
 async function foExportCsv(){
@@ -265,6 +282,12 @@ async function foExportCsv(){
 }
 </script>
 <script>
+// ▽(N件): 同じ送信先への過去の送信履歴を開閉する（開閉状態は保存しない）
+function foHist(btn){
+  const open = btn.classList.toggle("open");
+  document.querySelectorAll(".hist-" + btn.dataset.t).forEach((r) => { r.hidden = !open; });
+  btn.textContent = (open ? "△(" : "▽(") + btn.dataset.n + "件)";
+}
 // 前回表示から更新された行をハイライト（ブラウザごとに localStorage で覚える）
 (()=>{try{
   const key="fo_seen_${c.id}";const last=localStorage.getItem(key)||"";let max=last;
