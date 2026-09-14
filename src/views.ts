@@ -595,9 +595,9 @@ export function gameView(sentCount: number): string {
   <div class="betlamp" id="bl1" style="top:calc(607px*var(--s))"></div>
   <div class="replamp" id="replamp"></div>
   <button class="lever" id="lever" disabled title="レバー"></button>
-  <button class="stopbtn" data-i="0" style="left:calc(339px*var(--s))" disabled></button>
-  <button class="stopbtn" data-i="1" style="left:calc(444px*var(--s))" disabled></button>
-  <button class="stopbtn" data-i="2" style="left:calc(546px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="0" style="left:calc(333px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="1" style="left:calc(438px*var(--s))" disabled></button>
+  <button class="stopbtn" data-i="2" style="left:calc(540px*var(--s))" disabled></button>
 </div>
 <div class="gmsg" id="msg">…</div>
 <div class="gctl"><button class="btn small" id="sync">送信数を反映</button> <span class="muted small">送信 <b id="sent">${sentCount}</b>件</span></div>
@@ -612,9 +612,9 @@ export function gameView(sentCount: number): string {
 #cab .win{position:absolute;left:calc(183px*var(--s));top:calc(479px*var(--s));width:calc(607px*var(--s));height:calc(212px*var(--s));display:flex;gap:calc(10px*var(--s));background:#111;border-radius:calc(6px*var(--s));overflow:hidden}
 #cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#fffdf6}
 #cab .reel .strip{will-change:transform}
-#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(72px*var(--s));font-weight:900;line-height:1;color:#222}
-#cab .reel .cell img{width:calc(86px*var(--s));height:calc(86px*var(--s));object-fit:contain}
-#cab .reel .cell img.s7{width:calc(180px*var(--s));height:calc(82px*var(--s));object-fit:contain}
+#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(58px*var(--s));font-weight:900;line-height:1;color:#222}
+#cab .reel .cell img{width:calc(68px*var(--s));height:calc(68px*var(--s));object-fit:contain}
+#cab .reel .cell img.s7{width:calc(150px*var(--s));height:calc(68px*var(--s));object-fit:contain}
 #cab .reel .cell .sbar{font-size:calc(24px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(8px*var(--s)) calc(14px*var(--s));border-radius:5px}
 #cab .reel.spinning .strip{filter:blur(1.1px)}
 #cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
@@ -627,12 +627,12 @@ export function gameView(sentCount: number): string {
 #cab .betlamp.on{box-shadow:0 0 calc(18px*var(--s)) calc(6px*var(--s)) rgba(255,230,80,.85)}
 #cab .replamp{position:absolute;left:calc(818px*var(--s));top:calc(536px*var(--s));width:calc(92px*var(--s));height:calc(36px*var(--s));border-radius:8px;pointer-events:none}
 #cab .replamp.on{box-shadow:0 0 calc(16px*var(--s)) calc(4px*var(--s)) rgba(80,200,255,.9)}
-#cab .lever{position:absolute;left:calc(201px*var(--s));top:calc(870px*var(--s));width:calc(70px*var(--s));height:calc(70px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
+#cab .lever{position:absolute;left:calc(196px*var(--s));top:calc(865px*var(--s));width:calc(80px*var(--s));height:calc(80px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
 #cab .lever:not(:disabled){box-shadow:0 0 calc(14px*var(--s)) calc(4px*var(--s)) rgba(255,255,140,.75);animation:leverpulse 1.2s ease-in-out infinite}
 @keyframes leverpulse{50%{box-shadow:0 0 calc(6px*var(--s)) calc(2px*var(--s)) rgba(255,255,140,.4)}}
 #cab .lever:active{transform:scale(.92)}
 #cab .lever:disabled{cursor:default;background:rgba(0,0,0,.35);animation:none}
-#cab .stopbtn{position:absolute;top:calc(864px*var(--s));width:calc(62px*var(--s));height:calc(62px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
+#cab .stopbtn{position:absolute;top:calc(858px*var(--s));width:calc(74px*var(--s));height:calc(74px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
 #cab .stopbtn:not(:disabled){box-shadow:0 0 calc(16px*var(--s)) calc(5px*var(--s)) rgba(90,255,120,.85)}
 #cab .stopbtn:active{transform:scale(.9)}
 #cab .stopbtn:disabled{cursor:default;background:rgba(0,0,0,.45)}
