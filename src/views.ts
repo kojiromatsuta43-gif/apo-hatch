@@ -679,11 +679,12 @@ export function gameView(sentCount: number): string {
   ["spin","stop","bonus","bgm","grape","replay","tenpai","cherry"].forEach((n) => loadSnd(n, "/assets/game/" + n + ".mp3"));
   document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
-  const SPINSYMS = ["B","H","7","C","L","R"];
-  const CELL = 70.67;
+  // 従来の固定リール配列（各リール共通の図柄band）。回転中はこの並びが上→下へスクロールする
+  const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
+  const LEN = REEL.length, CELL = 70.67;
   const pos = [0,0,0], spinning = [false,false,false];
   let grid = [null,null,null];
-  function fillSpin(i) { let h = ""; for (let k = 0; k < 24; k++) h += cellHTML(rndOf(SPINSYMS)); strips[i].innerHTML = h; }
+  function buildBand(i) { let h = ""; for (let k = 0; k < LEN * 2; k++) h += cellHTML(REEL[k % LEN]); strips[i].innerHTML = h; }
   function showGrid(i) { const g = grid[i]; strips[i].style.transform = "translateY(0px)"; strips[i].innerHTML = cellHTML(g[0]) + cellHTML(g[1]) + cellHTML(g[2]); }
   [0,1,2].forEach((i) => { grid[i] = [rndOf(FILLER),rndOf(FILLER),rndOf(FILLER)]; showGrid(i); });
   const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.72;
@@ -692,8 +693,8 @@ export function gameView(sentCount: number): string {
     const dt = Math.min(40, t - last) / 1000; last = t;
     for (let i = 0; i < 3; i++) {
       if (!spinning[i]) continue;
-      pos[i] = (pos[i] + (26 + i * 2) * dt) % SPINSYMS.length;
-      strips[i].style.transform = "translateY(" + (-(pos[i] % 1) * CELL * s()) + "px)";
+      pos[i] = (pos[i] + (24 + i * 2) * dt) % LEN; // 下方向へスクロール（cell/秒）
+      strips[i].style.transform = "translateY(" + (-(pos[i]) * CELL * s()) + "px)";
     }
     requestAnimationFrame(loop);
   }
@@ -775,7 +776,7 @@ export function gameView(sentCount: number): string {
     lampOffIfNeeded();
     buildGrid();
     play("spin");
-    for (let i = 0; i < 3; i++) { spinning[i] = true; reels[i].classList.add("spinning"); fillSpin(i); }
+    for (let i = 0; i < 3; i++) { spinning[i] = true; reels[i].classList.add("spinning"); pos[i] = Math.random() * LEN; buildBand(i); }
     stopBtns.forEach((b) => (b.disabled = false));
     paint(); $("lever").disabled = true;
   };
