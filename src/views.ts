@@ -114,7 +114,7 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number })[], provider: string) {
+export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string) {
   return `<h1>キャンペーン</h1>
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
@@ -126,8 +126,8 @@ ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 
 <li>会社リスト（CSV / Excel / スプレッドシート）を<b>取り込み</b>、テスト送信で確認してから開始</li>
 </ol>
 <p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
-<table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
+<table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? esc(String(c.last_sent).slice(0, 16)) : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
 </table>`}`;
 }
 
@@ -181,7 +181,21 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 <label>件名（件名欄があるフォーム用）</label><input type="text" name="subject_text" value="${d("subject_text", "ショート動画制作サービスのご案内")}">
 <label>本文テンプレート</label>
 <p class="muted">使える差し込み: {{会社名}} {{代表者}}（無ければ「ご担当者様」） {{業種}} {{都道府県}} {{自社名}} {{担当者}} {{自社メール}} {{自社電話}} {{自社URL}} {{AI冒頭}} {{資料リンク}}</p>
-<textarea name="template_text" style="min-height:320px">${d("template_text")}</textarea>
+<div style="margin-bottom:6px"><label class="inline small">例文を挿入:
+<select id="tplpreset" style="width:auto;padding:4px 8px"><option value="">選ぶと本文欄に入ります…</option><option value="standard">標準（サービス案内）</option><option value="hybrid">ハイブリッド用（冒頭AI＋本文）</option><option value="short">短め（要点だけ）</option></select></label>
+<span class="muted small">※ 今の本文がある場合は置き換わります</span></div>
+<textarea name="template_text" id="tpltext" style="min-height:320px">${d("template_text")}</textarea>
+<script>
+(() => {
+  const T = {
+    standard: "{{会社名}}\\n{{代表者}}\\n\\nはじめてご連絡いたします。{{自社名}}の{{担当者}}と申します。\\n{{業種}}に役立つサービスをご案内できればと存じ、ご連絡しました。\\n\\n（ここに、提供内容・相手にとってのメリットを1〜2行で具体的に）\\n\\nご興味があれば、下記までご返信ください。資料の送付や簡単なご説明も可能です。\\n\\n{{自社名}} {{担当者}}\\nメール: {{自社メール}}\\n電話: {{自社電話}}\\n{{自社URL}}\\n\\n※ ご不要の場合は、お手数ですが本メールにご返信ください。以後のご連絡は控えます。",
+    hybrid: "{{会社名}}\\n{{代表者}}\\n\\n{{AI冒頭}}\\n\\n{{自社名}}の{{担当者}}と申します。（ここに、提供内容・相手にとってのメリットを1〜2行で）\\n\\nご興味があればご返信ください。\\n\\n{{自社名}} {{担当者}}\\nメール: {{自社メール}} / 電話: {{自社電話}}\\n{{自社URL}}\\n\\n※ ご不要の場合はご返信ください。以後の連絡は控えます。",
+    short: "{{会社名}} {{代表者}}\\n\\n{{自社名}}の{{担当者}}と申します。{{業種}}向けの（サービス名）についてご案内です。\\n（要点を1行）\\n\\nご興味があればご返信ください。{{自社メール}} / {{自社電話}}\\n※不要な場合はご返信ください。",
+  };
+  const sel = document.getElementById("tplpreset"), ta = document.getElementById("tpltext");
+  if (sel && ta) sel.addEventListener("change", () => { const v = T[sel.value]; if (v && (!ta.value.trim() || confirm("本文を例文で置き換えますか？（今の内容は消えます）"))) ta.value = v; sel.value = ""; });
+})();
+</script>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
 <div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1" ${Number(defaults.weekdays_only ?? 1) ? "selected" : ""}>はい</option><option value="0" ${defaults.weekdays_only !== undefined && !Number(defaults.weekdays_only) ? "selected" : ""}>土日も送る</option></select></div></div>
 <div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0" ${Number(defaults.ignore_refusal ?? 0) ? "" : "selected"}>送らない（推奨）</option><option value="1" ${Number(defaults.ignore_refusal ?? 0) ? "selected" : ""}>送る（クレームの恐れあり）</option></select></div><div></div></div>
