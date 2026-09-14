@@ -34,7 +34,7 @@ const RULES: [Category, RegExp][] = [
   ["kana_first", /((フリガナ|ふりがな|カナ|kana|メイ)(.{0,6})?(名|めい|メイ|first|mei\b)|(名|めい).{0,6}(フリガナ|ふりがな|カナ|kana)|kana_mei|mei_kana|kana_first|first_kana|firstkana)/i],
   ["kana", /(フリガナ|ふりがな|カナ|kana|furigana|よみ|ヨミ|ruby|phonetic)/i],
   ["name_last", /(姓|苗字|名字|lastname|last_name|last-name|family|\bsei\b|surname)/i],
-  ["name_first", /(^|[^氏会社品件題法人職媒])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i],
+  ["name_first", /(^|[^氏会社品件題法人職媒校体])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i], // 校体: 「学校名」「団体名」を下の名前と誤判定した事故の対策
   ["company", /(会社|企業|法人|社名|貴社|御社|団体|組織|屋号|店舗名|店名|company|corp|organization|organisation|firm)/i],
   ["department", /(部署|部門|department|division)/i],
   ["position", /(役職|職位|position|title.*役)/i],
@@ -84,6 +84,14 @@ const COLLECT_SCRIPT = `
       // カスタムデザインで本体が隠れている（opacity:0 / 画面外）ことが多いので、ラベルの可視性で判断
       const lab = el.closest('label') || (el.id ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null);
       if (lab) { const lr = lab.getBoundingClientRect(); const ls = getComputedStyle(lab); return lr.width > 0 && lr.height > 0 && ls.display !== 'none' && ls.visibility !== 'hidden'; }
+      // labelに包まれていないMUI/Jicoo型（input自体はopacity:0で、見えているのは親のコントロール）: 親2階層までの可視性で判断
+      if (st.display === 'none' || el.getAttribute('aria-hidden') === 'true') return false; // display:none は隠し欄とみなす
+      let anc = el.parentElement;
+      for (let i = 0; i < 2 && anc; i++, anc = anc.parentElement) {
+        const ar = anc.getBoundingClientRect(); const as = getComputedStyle(anc);
+        if (ar.width > 0 && ar.height > 0 && as.display !== 'none' && as.visibility !== 'hidden' && as.opacity !== '0') return true;
+      }
+      return false;
     }
     if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') return false;
     if (el.getAttribute('aria-hidden') === 'true') return false;
@@ -105,6 +113,14 @@ const COLLECT_SCRIPT = `
     if (el.getAttribute('aria-labelledby')) { const l = document.getElementById(el.getAttribute('aria-labelledby')); if (l) parts.push(l.innerText); }
     let prev = el.previousSibling; let hops = 0;
     while (prev && hops < 3) { const t = (prev.textContent || '').trim(); if (t) { if (t.length <= 12) parts.push(t); break; } prev = prev.previousSibling; hops++; }
+    // labelに包まれていないカスタム選択肢（Jicoo等）: 選択肢の文字が親コンテナ側にあるので、短いテキストなら拾う
+    if (!parts.length && (el.type === 'radio' || el.type === 'checkbox')) {
+      let anc = el.parentElement;
+      for (let i = 0; i < 2 && anc; i++, anc = anc.parentElement) {
+        const t = (anc.innerText || '').trim();
+        if (t) { if (t.length <= 24) parts.push(t); break; }
+      }
+    }
     return parts.join(' ');
   };
   // 周辺の見出し。確度の高い順に見て、最初に見つかったものだけ使う（複数を混ぜると別の欄の言葉を拾う）
@@ -116,14 +132,16 @@ const COLLECT_SCRIPT = `
     // 直前の兄弟ブロック（<p>会社名</p><input> や <div class=label>）
     let sib = el.previousElementSibling; let hops = 0;
     while (sib && hops < 2) { const t = (sib.innerText || '').trim(); if (t && t.length <= 40 && !sib.querySelector('input,textarea,select')) return t; sib = sib.previousElementSibling; hops++; }
-    // 汎用: 親ブロック内のテキスト（短いもの）
-    let box = el.parentElement; hops = 0;
-    while (box && hops < 3) {
+    // 汎用: 親ブロック内のテキスト（短いもの）。
+    // 内側の箱が注意書きだけ（「※個人の方は…」等）でラベル本体がその外側にあるサイト（Jicoo等）があるため、
+    // 条件を満たす箱のうち一番外側のものを採用する（inputsが2個以下という制約で隣の欄の文言は混ざらない）
+    let box = el.parentElement; hops = 0; let best = '';
+    while (box && hops < 5) {
       const t = (box.innerText || '').trim();
-      if (t && t.length < 60 && box.querySelectorAll('input,textarea,select').length <= 2) return t;
+      if (t && t.length < 80 && box.querySelectorAll('input,textarea,select').length <= 2) best = t;
       box = box.parentElement; hops++;
     }
-    return '';
+    return best;
   };
   // 前回の採番を消す（段階式フォームで古い要素と番号が重なるのを防ぐ）
   document.querySelectorAll('[data-fo-idx]').forEach((e) => e.removeAttribute('data-fo-idx'));
@@ -142,13 +160,30 @@ const COLLECT_SCRIPT = `
     const sig = own + ' || ' + labelText(el).replace(/\\s+/g, ' ').slice(0, 200);
     const required = el.required || el.getAttribute('aria-required') === 'true' || /必須|required|\\*/.test(labelText(el).slice(0, 60)) || /required|必須/i.test(el.className);
     const options = el.tagName === 'SELECT' ? Array.from(el.options).map(o => ({ value: o.value, text: (o.textContent || '').trim() })) : [];
-    // ラジオ・チェックボックスの「設問見出し」: fieldsetのlegend → 包んでいるlabelの外側の見出し、の順で探す
+    // ラジオ・チェックボックスの「設問見出し」: fieldsetのlegend → グループ全体を包む箱の直前にある見出し → labelの外側、の順で探す
     let glabel = '';
     if (type === 'radio' || type === 'checkbox') {
       const fs2 = el.closest('fieldset');
       const legend = fs2 ? fs2.querySelector('legend') : null;
       if (legend && legend.innerText.trim()) glabel = legend.innerText.trim();
-      else { const wrap2 = el.closest('label'); glabel = labelText(wrap2 || el); }
+      else {
+        // fieldsetが無いレイアウト（Jicoo等）: 選択肢群をまとめて包む箱まで上がり、その手前の見出しを拾う
+        let gc = el.parentElement; let h2 = 0;
+        while (gc && gc.querySelectorAll("input[type='radio'],input[type='checkbox']").length < 2 && h2 < 6) { gc = gc.parentElement; h2++; }
+        for (let up = 0; gc && up < 2 && !glabel; up++, gc = gc.parentElement) {
+          let ps = gc.previousElementSibling; let k = 0; let note = '';
+          while (ps && k < 3) {
+            const t = (ps.innerText || '').trim();
+            if (t && t.length < 80 && !ps.querySelector('input,textarea,select')) {
+              // 「※複数選択可…」のような注意書きは見出しではないので、さらに手前を見る
+              if (/^[※（(]/.test(t)) { note = note || t; } else { glabel = t; break; }
+            }
+            ps = ps.previousElementSibling; k++;
+          }
+          if (!glabel && note) glabel = note;
+        }
+        if (!glabel) { const wrap2 = el.closest('label'); glabel = labelText(wrap2 || el); }
+      }
       glabel = (glabel || '').replace(/\\s+/g, ' ').slice(0, 80);
     }
     out.push({ idx: i, tag: el.tagName.toLowerCase(), type, name: el.getAttribute('name') || '', id: el.id || '', sig, required, options, checked: !!el.checked, formIndex: forms.indexOf(el.closest('form')), maxlength: Number(el.getAttribute('maxlength') || 0), placeholder: el.getAttribute('placeholder') || '', inputmode: el.getAttribute('inputmode') || '', pattern: el.getAttribute('pattern') || '', glabel });
