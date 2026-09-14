@@ -259,6 +259,7 @@ export type JobStatus =
   | "skip_suppressed"
   | "skip_duplicate"
   | "skip_optout"
+  | "skip_cancelled"
   | "failed";
 
 export type Job = {
@@ -302,6 +303,7 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
   skip_suppressed: "除外リスト",
   skip_duplicate: "90日以内に送信済",
   skip_optout: "配信停止済",
+  skip_cancelled: "キャンセル",
   failed: "失敗",
 };
 

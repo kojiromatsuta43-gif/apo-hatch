@@ -33,14 +33,8 @@ function pick(row: Record<string, string>, keys: string[]): string {
   return "";
 }
 
-export function parseCompanyCsv(buf: Buffer | string): CompanyRow[] {
-  let text = typeof buf === "string" ? buf : buf.toString("utf8");
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  // Shift_JIS のExcel出力対策: 文字化けが目立つ場合は再デコード
-  if (typeof buf !== "string" && /�/.test(text.slice(0, 2000))) {
-    text = new TextDecoder("shift_jis").decode(buf);
-  }
-  const rows = parse(text, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true }) as Record<string, string>[];
+/** ヘッダー付きレコード配列を CompanyRow[] に変換（CSV・Excel・貼り付けで共通） */
+export function rowsToCompanies(rows: Record<string, string>[]): CompanyRow[] {
   return rows
     .map((r) => ({
       company_name: pick(r, ALIASES.company_name),
@@ -53,6 +47,67 @@ export function parseCompanyCsv(buf: Buffer | string): CompanyRow[] {
       representative: pick(r, ALIASES.representative),
     }))
     .filter((r) => r.company_name);
+}
+
+export function parseCompanyCsv(buf: Buffer | string): CompanyRow[] {
+  let text = typeof buf === "string" ? buf : buf.toString("utf8");
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  // Shift_JIS のExcel出力対策: 文字化けが目立つ場合は再デコード
+  if (typeof buf !== "string" && /�/.test(text.slice(0, 2000))) {
+    text = new TextDecoder("shift_jis").decode(buf);
+  }
+  // タブ区切り（TSV・スプレッドシートからの貼り付け）も自動判定
+  const firstLine = text.slice(0, text.indexOf("\n") >= 0 ? text.indexOf("\n") : text.length);
+  const delimiter = firstLine.includes("\t") && !firstLine.includes(",") ? "\t" : ",";
+  const rows = parse(text, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true, delimiter }) as Record<string, string>[];
+  return rowsToCompanies(rows);
+}
+
+/** 2次元配列（1行目ヘッダー）をレコード配列にする */
+function gridToRecords(grid: string[][]): Record<string, string>[] {
+  if (grid.length < 2) return [];
+  const header = grid[0].map((h) => (h ?? "").trim());
+  return grid.slice(1).map((row) => {
+    const rec: Record<string, string> = {};
+    header.forEach((h, i) => { if (h) rec[h] = (row[i] ?? "").trim(); });
+    return rec;
+  });
+}
+
+/** Excel(.xlsx) を読む。新しい依存を足さず、既存の adm-zip で中身のXMLを直接パースする */
+export async function parseCompanyXlsx(buf: Buffer): Promise<CompanyRow[]> {
+  const AdmZip = (await import("adm-zip")).default;
+  const zip = new AdmZip(buf);
+  const readXml = (name: string) => zip.getEntry(name)?.getData().toString("utf8") ?? "";
+  const decode = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n))).replace(/&amp;/g, "&");
+  // 共有文字列テーブル
+  const shared: string[] = [];
+  const ss = readXml("xl/sharedStrings.xml");
+  for (const si of ss.match(/<si>[\s\S]*?<\/si>/g) ?? []) {
+    const parts = si.match(/<t[^>]*>([\s\S]*?)<\/t>/g)?.map((t) => decode(t.replace(/<[^>]+>/g, ""))) ?? [];
+    shared.push(parts.join(""));
+  }
+  // 最初のシート
+  let sheetXml = readXml("xl/worksheets/sheet1.xml");
+  if (!sheetXml) { for (const e of zip.getEntries()) { if (/xl\/worksheets\/.*\.xml$/.test(e.entryName)) { sheetXml = e.getData().toString("utf8"); break; } } }
+  const colNum = (ref: string) => { const m = ref.match(/^([A-Z]+)/); if (!m) return 0; let n = 0; for (const ch of m[1]) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
+  const grid: string[][] = [];
+  for (const rowXml of sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) ?? []) {
+    const cells: string[] = [];
+    for (const cXml of rowXml.match(/<c[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) ?? []) {
+      const ref = (cXml.match(/r="([A-Z]+\d+)"/) ?? [])[1] ?? "";
+      const isStr = /t="s"/.test(cXml);
+      const isInline = /t="inlineStr"/.test(cXml);
+      const raw = (cXml.match(/<v>([\s\S]*?)<\/v>/) ?? [])[1] ?? (cXml.match(/<t[^>]*>([\s\S]*?)<\/t>/) ?? [])[1] ?? "";
+      let val = decode(raw);
+      if (isStr) val = shared[Number(raw)] ?? "";
+      else if (isInline) val = decode((cXml.match(/<t[^>]*>([\s\S]*?)<\/t>/) ?? [])[1] ?? "");
+      const ci = colNum(ref);
+      cells[ci] = val;
+    }
+    grid.push(Array.from(cells, (v) => v ?? ""));
+  }
+  return rowsToCompanies(gridToRecords(grid));
 }
 
 export type ExcludedRow = { company: string; reason: string; where: string };

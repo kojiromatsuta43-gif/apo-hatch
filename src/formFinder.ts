@@ -26,10 +26,28 @@ export const HAS_FORM_SCRIPT = `
     const btn = Array.from(document.querySelectorAll('button, input[type=submit]')).find(b => /送信|確認|submit|send|次へ/i.test((b.innerText || b.value || '')));
     if (btn) return true;
   }
+  // formタグ無し・textarea無しの疑似フォーム（JSで独自送信）: 見えている入力欄が3つ以上＋メール欄＋送信ボタンらしき要素
+  const allInputs = Array.from(document.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=search]), textarea')).filter(isVisible);
+  const hasMail2 = allInputs.some((i) => /mail|メール|e-?mail/i.test((i.getAttribute('name') || '') + (i.getAttribute('type') || '') + (i.getAttribute('placeholder') || '') + (i.id || '')));
+  const submitLike = Array.from(document.querySelectorAll('button, input[type=submit], [role=button], a')).some((b) => /送信|確認|申し込|申込|submit|send|問い?合わ?せる|内容を確認/i.test(((b.innerText || b.value || b.getAttribute('aria-label') || '')).trim()) && isVisible(b));
+  if (allInputs.length >= 3 && hasMail2 && submitLike) return true;
   return false;
 })()`;
 
-export async function pageHasContactForm(page: Page): Promise<boolean> {
+// 「お問い合わせはこちら」等、クリックするとモーダル/パネルでフォームが開くトリガーを探して押す
+const CLICK_TRIGGER_SCRIPT = `
+(() => {
+  const re = /(お問い?合わ?せ(はこちら|する|フォーム)?|問合せ|ご相談|ご依頼|資料請求|contact\\s*(us|form)?|inquiry|メールで(送る|問い合わせ)|フォームを開く|入力フォーム)/i;
+  const isVisible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const cands = Array.from(document.querySelectorAll('button, a, [role=button], [onclick], [class*=contact], [class*=btn]'))
+    .filter((el) => isVisible(el) && re.test(((el.innerText || el.getAttribute('aria-label') || el.value || '')).trim().slice(0, 40)) && (el.innerText || '').length < 30);
+  if (!cands.length) return false;
+  cands[0].scrollIntoView({ block: 'center' });
+  cands[0].click();
+  return true;
+})()`;
+
+async function scanFrames(page: Page): Promise<boolean> {
   // 本体 → 埋め込み iframe（Googleフォーム・フォーム作成サービス等）の順に見る
   for (const fr of page.frames()) {
     try {
@@ -38,6 +56,25 @@ export async function pageHasContactForm(page: Page): Promise<boolean> {
       /* クロスオリジン等 */
     }
   }
+  return false;
+}
+
+export async function pageHasContactForm(page: Page): Promise<boolean> {
+  if (await scanFrames(page)) return true;
+  // JSで後から描画されるフォーム: 少し待って再スキャン（合計最大約4秒）
+  for (let i = 0; i < 3; i++) {
+    await page.waitForTimeout(1200);
+    if (await scanFrames(page)) return true;
+  }
+  // 「お問い合わせはこちら」等をクリックしてモーダル/パネルを開いてから再スキャン
+  try {
+    const clicked = await page.evaluate(CLICK_TRIGGER_SCRIPT).catch(() => false);
+    if (clicked) {
+      await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(1200);
+      if (await scanFrames(page)) return true;
+    }
+  } catch { /* ignore */ }
   return false;
 }
 

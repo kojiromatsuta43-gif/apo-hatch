@@ -4,7 +4,7 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
-import { parseCompanyCsv, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
+import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
@@ -267,19 +267,45 @@ app.get("/campaigns/:id/test", (req, res) => {
   res.send(layout(`テスト送信 | ${c.name}`, testView(c, tests), takeFlash(req), navUser(req), updateReady));
 });
 
-app.post("/campaigns/:id/import", upload.single("csv"), (req, res) => {
+app.post("/campaigns/:id/import", upload.single("csv"), async (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
-  if (!req.file) return redirectWith(res, `/campaigns/${id}`, "CSVが選択されていません");
+  const pasted = String(req.body.pasted ?? "").trim();
+  const sheetUrl = String(req.body.sheet_url ?? "").trim();
   try {
-    const rows = parseCompanyCsv(req.file.buffer);
+    let rows;
+    let srcLabel = "";
+    if (req.file && /\.xlsx$/i.test(req.file.originalname)) {
+      rows = await parseCompanyXlsx(req.file.buffer); srcLabel = "Excel";
+    } else if (req.file) {
+      rows = parseCompanyCsv(req.file.buffer); srcLabel = "CSV";
+    } else if (pasted) {
+      rows = parseCompanyCsv(pasted); srcLabel = "貼り付け";
+    } else if (sheetUrl) {
+      const csv = await fetchGoogleSheetCsv(sheetUrl); rows = parseCompanyCsv(csv); srcLabel = "スプレッドシート";
+    } else {
+      return redirectWith(res, `/campaigns/${id}`, "ファイル・貼り付け・スプレッドシートURLのいずれかを指定してください");
+    }
     const s = importRowsToCampaign(id, rows);
     lastImports.set(id, s);
-    redirectWith(res, `/campaigns/${id}`, `CSV ${rows.length}行を読み込みました`);
+    redirectWith(res, `/campaigns/${id}`, `${srcLabel}から ${rows.length}行を読み込みました`);
   } catch (e) {
     redirectWith(res, `/campaigns/${id}`, `取り込みエラー: ${String((e as Error).message)}`);
   }
 });
+
+// GoogleスプレッドシートのURLをCSV書き出しURLに変換して取得する（共有＝リンクを知っている全員が閲覧可、が前提）
+async function fetchGoogleSheetCsv(url: string): Promise<string> {
+  const m = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!m) throw new Error("GoogleスプレッドシートのURLではありません");
+  const gid = (url.match(/[#&?]gid=(\d+)/) ?? [])[1] ?? "0";
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
+  const r = await fetch(exportUrl, { redirect: "follow" });
+  if (!r.ok) throw new Error(`スプレッドシートを取得できません（${r.status}）。共有設定を「リンクを知っている全員（閲覧可）」にしてください`);
+  const text = await r.text();
+  if (/<html|<!doctype/i.test(text.slice(0, 200))) throw new Error("スプレッドシートが非公開です。共有設定を「リンクを知っている全員（閲覧可）」にしてください");
+  return text;
+}
 
 app.post("/campaigns/:id/preview", async (req, res) => {
   const id = Number(req.params.id);
@@ -426,6 +452,22 @@ app.get("/jobs/:id", (req, res) => {
   const c = db.prepare("SELECT * FROM form_campaigns WHERE id=?").get(j.campaign_id) as Campaign;
   res.send(layout(j.company_name, jobView(j, c), takeFlash(req), navUser(req), updateReady));
 });
+// 待機中の1社をキャンセル（本送信の対象から外す）
+app.post("/jobs/:id/cancel", (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  if (j.status === "queued") db.prepare("UPDATE form_jobs SET status='skip_cancelled', result_text='キャンセルしました', updated_at=datetime('now') WHERE id=?").run(id);
+  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} をキャンセルしました`);
+});
+// 待機中の全社を一括キャンセル
+app.post("/campaigns/:id/cancel-queued", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const r = db.prepare("UPDATE form_jobs SET status='skip_cancelled', result_text='一括キャンセル', updated_at=datetime('now') WHERE campaign_id=? AND status='queued' AND is_test=0").run(id);
+  redirectWith(res, `/campaigns/${id}`, `待機中 ${r.changes} 件をキャンセルしました`);
+});
+
 // 失敗ジョブの宛先・会社名を直して、その場で送り直す（一覧・詳細の「修正して再送信」）
 app.post("/jobs/:id/fix", async (req, res) => {
   const id = Number(req.params.id);
