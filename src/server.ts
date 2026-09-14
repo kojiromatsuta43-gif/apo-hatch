@@ -589,7 +589,10 @@ app.post("/jobs/:id/retry", async (req, res) => {
 app.get("/senders", (req, res) => {
   const sc = scope(req);
   const list = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout("送信者", sendersView(list), takeFlash(req), navUser(req), updateReady));
+  // 各送信者を使っているキャンペーン数（編集・使い回しの判断材料。集計するだけの追加表示）
+  const usage: Record<number, number> = {};
+  for (const r of db.prepare(`SELECT sender_id, COUNT(*) n FROM campaigns GROUP BY sender_id`).all() as { sender_id: number; n: number }[]) usage[r.sender_id] = r.n;
+  res.send(layout("送信者", sendersView(list, usage), takeFlash(req), navUser(req), updateReady));
 });
 app.get("/senders/:id", (req, res) => {
   const s = ownedSender(req, Number(req.params.id));

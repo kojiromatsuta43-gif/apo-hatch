@@ -156,10 +156,10 @@ export function senderForm(s?: Partial<SenderProfile>) {
 <p><button class="btn">保存</button>${s?.id ? ` <button class="btn sub" formaction="/senders/${s.id}/test" formmethod="post">メール設定を確認</button>` : ""}</p></form>`;
 }
 
-export function sendersView(list: SenderProfile[]) {
+export function sendersView(list: SenderProfile[], usage: Record<number, number> = {}) {
   return `<h1>送信者プロフィール</h1><p class="muted">フォームに入力される「差出人」です。クライアントの送信はクライアント自身の名義で行います。</p>
-<table><tr><th>ID</th><th>ラベル</th><th>会社</th><th>担当者</th><th>メール</th><th>メール送信</th><th></th></tr>
-${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.company)}</td><td>${esc(s.person)}</td><td>${esc(s.email)}</td><td class="small">${s.smtp_user && s.smtp_pass ? `Gmail等（${esc(s.smtp_user)}）` : "未設定（フォームのみ）"}</td><td><a class="btn sub small" href="/senders/${s.id}">編集</a></td></tr>`).join("")}
+<table><tr><th>ID</th><th>ラベル</th><th>会社</th><th>担当者</th><th>メール</th><th>メール送信</th><th>利用中</th><th></th></tr>
+${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.company)}</td><td>${esc(s.person)}</td><td>${esc(s.email)}</td><td class="small">${s.smtp_user && s.smtp_pass ? `Gmail等（${esc(s.smtp_user)}）` : "未設定（フォームのみ）"}</td><td class="small">${usage[s.id] ? `${usage[s.id]} キャンペーン` : '<span class="muted">未使用</span>'}</td><td><a class="btn sub small" href="/senders/${s.id}">編集</a></td></tr>`).join("")}
 </table><h2>新規追加</h2><div class="card">${senderForm()}</div>`;
 }
 
