@@ -119,6 +119,16 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
+${(() => {
+    // 全キャンペーン横断のサマリー。rows から集計するだけなので、この即時関数を消せば丸ごと外せる
+    if (rows.length === 0) return "";
+    const totSent = rows.reduce((a, c) => a + c.sent, 0);
+    const totReact = rows.reduce((a, c) => a + c.reactions, 0);
+    const totQueued = rows.reduce((a, c) => a + c.queued, 0);
+    const inProgress = rows.filter((c) => c.queued > 0).length;
+    const rate = totSent ? ((totReact / totSent) * 100).toFixed(1) : "0.0";
+    return `<div class="stats"><div class="stat">キャンペーン<b>${rows.length}<span style="font-size:12px;font-weight:400">件</span></b>${inProgress ? `<span class="muted small">未送信あり ${inProgress}</span>` : ""}</div><div class="stat">送信済<b style="color:var(--ok)">${totSent}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">待機<b>${totQueued}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">反応<b>${totReact}</b><span class="muted small">全体 ${rate}%</span></div></div>`;
+  })()}
 ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 style="margin-top:0">はじめての方へ（3ステップ）</h2>
 <ol style="margin:0;padding-left:1.2em;line-height:1.9">
 <li><b>送信者</b>を登録（会社名・担当者・メール・電話）→ <a href="/senders">送信者ページ</a></li>

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.30",
-  "notes": "CSV・Excel・貼り付けの取り込みに「プレビュー確認ステップ」を追加（登録前に先頭数件と件数内訳を確認してから確定）",
+  "version": "0.3.31",
+  "notes": "キャンペーン一覧の上部に全体サマリーを追加（全キャンペーンの合計送信・待機・反応・全体反応率）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T22:06:51.213Z"
+  "published_at": "2026-09-14T22:11:58.224Z"
 }
