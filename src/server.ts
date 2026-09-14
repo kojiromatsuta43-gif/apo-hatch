@@ -464,6 +464,33 @@ app.post("/jobs/:id/cancel", (req, res) => {
   if (j.status === "queued") db.prepare("UPDATE form_jobs SET status='skip_cancelled', result_text='キャンセルしました', updated_at=datetime('now') WHERE id=?").run(id);
   redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} をキャンセルしました`);
 });
+// キャンペーンを複製（設定・文面をコピー。会社リストや送信履歴はコピーしない）
+app.post("/campaigns/:id/duplicate", (req, res) => {
+  const id = Number(req.params.id);
+  const c = ownedCampaign(req, id);
+  if (!c) return res.status(404).send("not found");
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, attach_path, attach_name, status)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')`).run(me(req).id, c.name + " のコピー", c.sender_id, c.mode, c.subject_text, c.template_text, c.ai_instruction, c.daily_limit, c.send_window_start, c.send_window_end, c.weekdays_only, c.channel, c.email_daily_limit, c.resend_days, c.ignore_refusal, c.material_url, c.attach_path, c.attach_name);
+  redirectWith(res, `/campaigns/${Number(r.lastInsertRowid)}`, "キャンペーンを複製しました。会社リストは空なので、CSVを取り込んでください");
+});
+
+// 失敗した会社をまとめて「待機中」に戻す（このあと「開始」で再送信）
+app.post("/campaigns/:id/requeue-failed", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const r = db.prepare("UPDATE form_jobs SET status='queued', result_text='', updated_at=datetime('now') WHERE campaign_id=? AND is_test=0 AND status IN ('failed','skip_no_form')").run(id);
+  redirectWith(res, `/campaigns/${id}`, `失敗していた ${r.changes} 件を待機中に戻しました。「開始」で再送信できます`);
+});
+
+// 手動で送れた会社を「送信済み（手動）」にする（手動送信リストの消し込み用）
+app.post("/jobs/:id/mark-sent", (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  db.prepare("UPDATE form_jobs SET status='sent', result_text='手動で送信済みにしました', sent_at=datetime('now'), updated_at=datetime('now') WHERE id=?").run(id);
+  redirectWith(res, `/jobs/${id}`, `${j.company_name} を「送信済み（手動）」にしました`);
+});
+
 // 待機中の全社を一括キャンセル
 app.post("/campaigns/:id/cancel-queued", (req, res) => {
   const id = Number(req.params.id);

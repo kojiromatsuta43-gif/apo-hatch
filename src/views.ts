@@ -119,9 +119,16 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
+${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 style="margin-top:0">はじめての方へ（3ステップ）</h2>
+<ol style="margin:0;padding-left:1.2em;line-height:1.9">
+<li><b>送信者</b>を登録（会社名・担当者・メール・電話）→ <a href="/senders">送信者ページ</a></li>
+<li><b>新しいキャンペーン</b>を作成（送り方・文面を設定）→ <a href="/campaigns/new">作成する</a></li>
+<li>会社リスト（CSV / Excel / スプレッドシート）を<b>取り込み</b>、テスト送信で確認してから開始</li>
+</ol>
+<p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a></td></tr>`).join("")}
-</table>`;
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
+</table>`}`;
 }
 
 export function senderForm(s?: Partial<SenderProfile>) {
@@ -258,7 +265,7 @@ ${extra.preview ? `<p class="muted">${esc(extra.preview.job.company_name)}（${e
 <div class="card"><h2 style="margin-top:0">3. 本送信</h2>
 ${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline" data-busy><button class="btn" data-busytext="送信を開始しています…">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
-${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
+${cnt("failed") + cnt("skip_no_form") > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${cnt("failed") + cnt("skip_no_form")} 件を待機中に戻します。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${cnt("failed") + cnt("skip_no_form")}件）</button></form> ` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
 <p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。ワーカーを別プロセスで動かす場合は <code>npm run worker</code>。</p></div>
 
 <h2>送信一覧（最新200件）</h2>
@@ -365,6 +372,7 @@ export function jobView(j: Job, c: Campaign) {
 <div class="row"><div class="card"><b>フォームURL:</b> <a href="${esc(j.form_url)}" target="_blank">${esc(j.form_url)}</a><br><b>企業URL:</b> ${esc(j.site_url)}<br><b>業種:</b> ${esc(j.industry)} / ${esc(j.sub_industry)}<br><b>試行:</b> ${j.attempts}回 <b>送信:</b> ${esc(j.sent_at ?? "-")}
 <h2>結果・ログ ${errKind(j) ? `<span class="errkind">${esc(errKind(j))}</span>` : ""}</h2><pre>${esc(j.result_text)}</pre>
 <form method="post" action="/jobs/${j.id}/retry" class="inline" data-busy><button class="btn sub" data-busytext="再試行中…">再試行</button></form>
+${j.status !== "sent" ? `<form method="post" action="/jobs/${j.id}/mark-sent" class="inline" onsubmit="return confirm('この会社を「送信済み（手動）」にします。手動で送った分の消し込みに使ってください。よろしいですか？')"><button class="btn sub">手動で送信済みにする</button></form>` : ""}
 ${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_captcha" ? `
 <div class="card" id="fix" style="margin-top:14px;background:var(--honey-50)"><h2 style="margin-top:0">修正して再送信</h2>
 <p class="muted">フォームURLの間違い（別ページに正しいフォームがある等）を直して、その場で送り直せます。</p>
