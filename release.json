@@ -1,6 +1,6 @@
 {
-  "version": "0.3.21",
-  "notes": "アポスロット: 7の図柄を指定の画像に差し替えました",
+  "version": "0.3.22",
+  "notes": "アポスロット: 7が3つ揃ったときの音楽を、ループではなく1回だけ再生して止まるようにしました",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T18:30:53.000Z"
+  "published_at": "2026-09-14T18:39:02.000Z"
 }

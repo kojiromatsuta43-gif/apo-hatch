@@ -786,8 +786,8 @@ export function gameView(sentCount: number): string {
     lastWin = payout; credit += payout; if (rep) freeSpin = true;
     save(); paint(); betLamps(false); target.fill(null);
     say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
-    // 効果音: 7揃い(ボーナス)は次のレバーまで音楽ループ、それ以外は1つだけ鳴らす
-    if (sevens || bonus) playLoop("bgm");
+    // 効果音: 7揃い(ボーナス)はBGMを1回再生（ループしない）、それ以外は1つだけ鳴らす
+    if (sevens || bonus) play("bgm");
     else if (batta) play("grape");
     else if (rep) play("replay");
     else if (cherry) play("cherry");
