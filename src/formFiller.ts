@@ -96,11 +96,15 @@ const COLLECT_SCRIPT = `
     if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0') return false;
     if (el.getAttribute('aria-hidden') === 'true') return false;
     const r = el.getBoundingClientRect();
-    // 画面外に飛ばしてあるハニーポット（left:-9999px 等）は触らない
-    if (r.right <= 0 || r.bottom <= 0) return false;
+    // 画面外に飛ばしてあるハニーポット（left:-9999px 等）は触らない。
+    // 注意: フォーム入力後にページがスクロールすると、正規の欄でも rect.top/bottom が負になる（画面の上に隠れるだけ）。
+    // これを honeypot と誤判定しないよう、ドキュメント座標（scrollを足す）で -1000px より外に飛ばされているものだけ除外する。
+    const docLeft = r.left + window.scrollX;
+    const docTop = r.top + window.scrollY;
+    if (docLeft < -1000 || docTop < -1000 || docLeft > document.documentElement.scrollWidth + 1000) return false;
     // 親が画面外・高さゼロで隠しているケース
     let p = el.parentElement; let hops = 0;
-    while (p && hops < 4) { const pr = p.getBoundingClientRect(); const ps = getComputedStyle(p); if (ps.display === 'none' || ps.visibility === 'hidden' || (pr.width === 0 && pr.height === 0 && ps.overflow === 'hidden') || pr.right <= 0) return false; p = p.parentElement; hops++; }
+    while (p && hops < 4) { const pr = p.getBoundingClientRect(); const ps = getComputedStyle(p); if (ps.display === 'none' || ps.visibility === 'hidden' || (pr.width === 0 && pr.height === 0 && ps.overflow === 'hidden') || (pr.left + window.scrollX) < -1000) return false; p = p.parentElement; hops++; }
     if (el.type === 'radio' || el.type === 'checkbox') return r.width > 0 || r.height > 0;
     return r.width > 0 && r.height > 0;
   };
