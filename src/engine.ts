@@ -4,7 +4,7 @@ import path from "node:path";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, type PendingQuestion } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, type PendingQuestion } from "./formFiller.js";
 import { llm } from "./message.js";
 
 export type SubmitInput = {
@@ -127,6 +127,19 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
             r.unsure,
           );
         }
+      }
+    }
+
+    // React系フォーム（Jicoo等）: fill() の値セットが認識されず送信ボタンが無効のまま、というケースがある。
+    // その場合はキーボードの実打鍵方式で入れ直して、ボタンが有効になるか確かめる。
+    if (await allSubmitButtonsDisabled(target)) {
+      log.push("送信ボタンが無効 → キーボード入力方式で入れ直し（React系フォーム対策）");
+      const again2 = await collectFields(target);
+      const rt = await fillFields(target, again2, { sender: input.sender, subject: input.subject, message: input.message }, { normalize: true, mode: "type" });
+      log.push(`入れ直し: ${rt.filled.join(",") || "なし"}`);
+      await page.waitForTimeout(800);
+      if (await allSubmitButtonsDisabled(target)) {
+        return done("failed", "フォームの入力チェックを通過できず、送信ボタンが有効になりません\nスクリーンショットで未入力・エラー表示になっている欄を確認してください");
       }
     }
 

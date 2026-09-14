@@ -266,7 +266,7 @@ function fitMessage(message: string, max: number): string {
 }
 
 /** 収集した項目に値を入れる。戻り値は入力レポート */
-export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean; normalize?: boolean } = {}): Promise<FillReport> {
+export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean; normalize?: boolean; mode?: "fill" | "type" } = {}): Promise<FillReport> {
   const s = v.sender;
   // normalize 時は「カナのスペース除去」などの修正ルールを通す（送信エラー後の埋め直し用）
   const nz = (cat: Category, value: string) => (opts.normalize ? applyFixups(cat, value) : value);
@@ -288,7 +288,18 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
   const setText = async (f: FieldInfo, value: string) => {
     if (!value) return false;
     try {
-      await loc(f).fill(value, { timeout: 4000 });
+      if (opts.mode === "type") {
+        // React系フォーム（Jicoo等）は fill() の値セットを認識しないことがあるので、実際のキー入力で入れる。
+        // 既存値はキーボードで全選択→削除して消す（fill("") はReactの制御下だと消えないことがある）
+        const l = loc(f);
+        await l.click({ timeout: 3000 }).catch(() => {});
+        await l.press("ControlOrMeta+a").catch(() => {});
+        await l.press("Delete").catch(() => {});
+        await l.pressSequentially(value, { delay: 5, timeout: 20000 });
+        await l.evaluate((e) => (e as HTMLElement).blur()).catch(() => {});
+      } else {
+        await loc(f).fill(value, { timeout: 4000 });
+      }
       return true;
     } catch (e) {
       report.log.push(`fill失敗 idx=${f.idx}: ${String(e).slice(0, 80)}`);
@@ -382,9 +393,27 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
 async function ensureChecked(target: Page | Frame, f: FieldInfo): Promise<boolean> {
   const el = target.locator(`[data-fo-idx="${f.idx}"]`).first();
   const isOn = () => el.evaluate((e) => (e as HTMLInputElement).checked).catch(() => false);
-  try { await el.check({ timeout: 2500, force: true }); } catch {}
+  // まず label / label[for] の実クリック（React系はこれでないと状態が更新されない）
+  try { await el.check({ timeout: 2000 }); } catch {}
   if (await isOn()) return true;
-  if (f.id) { try { await target.locator(`label[for="${f.id}"]`).first().click({ timeout: 2000, force: true }); } catch {} }
+  if (f.id) { try { await target.locator(`label[for="${f.id}"]`).first().click({ timeout: 1500 }); } catch {} }
+  if (await isOn()) return true;
+  // React系（Jicoo/MUI等）: 入力本体は透明。見えている祖先要素（選択肢の見た目）を実クリックすると onChange が発火する
+  try {
+    const box = await el.evaluateHandle((e) => {
+      let a: Element = e;
+      for (let p = e.parentElement, i = 0; i < 3 && p; i++, p = p.parentElement) {
+        const r = p.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) { a = p; break; }
+      }
+      return a;
+    });
+    const handle = box.asElement();
+    if (handle) await handle.click({ timeout: 1500 }).catch(() => {});
+  } catch {}
+  if (await isOn()) return true;
+  // 最後の手段: force クリック → JSで直接ON＋イベント発火
+  try { await el.check({ timeout: 1500, force: true }); } catch {}
   if (await isOn()) return true;
   try { await el.evaluate((e) => { const i = e as HTMLInputElement; const lab = i.closest("label"); if (lab) lab.click(); if (!i.checked) { i.checked = true; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new Event("change", { bubbles: true })); } }); } catch {}
   return isOn();
@@ -576,6 +605,25 @@ const BUTTONS_SCRIPT = `
 })()`;
 
 type Btn = { idx: number; text: string; type: string; inForm: boolean; disabled: boolean };
+
+/** 送信系ボタンはあるのに全部 disabled か（React系フォームが入力を認識していないサイン） */
+export async function allSubmitButtonsDisabled(target: Page | Frame): Promise<boolean> {
+  return target.evaluate(
+    ([submitSrc, backSrc]) => {
+      const submitRe = new RegExp(submitSrc, "i");
+      const backRe = new RegExp(backSrc, "i");
+      const cands = Array.from(document.querySelectorAll("button, input[type=submit]")).filter((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return false;
+        const text = ((el as HTMLElement).innerText || (el as HTMLInputElement).value || "").trim();
+        if (backRe.test(text)) return false;
+        return (el.getAttribute("type") || "").toLowerCase() === "submit" || submitRe.test(text);
+      });
+      return cands.length > 0 && cands.every((el) => (el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true");
+    },
+    [SUBMIT_RE.source, BACK_RE.source] as [string, string],
+  ).catch(() => false);
+}
 
 export async function clickNextButton(target: Page | Frame, page: Page, log: string[]): Promise<"confirm" | "submit" | "none"> {
   const btns = (await target.evaluate(BUTTONS_SCRIPT)) as Btn[];
