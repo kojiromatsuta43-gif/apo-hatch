@@ -1,6 +1,6 @@
 {
-  "version": "0.3.34",
-  "notes": "送信者一覧が開けなかった不具合を修正（v0.3.32の後）／設定画面に「データの概要」(送信者・キャンペーン・登録企業・送信済・除外の件数)を追加",
+  "version": "0.3.35",
+  "notes": "キャンペーン一覧の最終送信欄に「今日／昨日／N日前」の経過表示を追加（放置ぎみのキャンペーンに気づきやすく）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T23:18:06.104Z"
+  "published_at": "2026-09-14T23:21:18.999Z"
 }
