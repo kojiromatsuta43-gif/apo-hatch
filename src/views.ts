@@ -491,7 +491,11 @@ if(!cur||cur.dataset.p!==p)sel.value=first.value;}
 foAiModels();
 </script></div>
 
-<div class="card"><h2 style="margin-top:0">NGワード（1行1語）</h2><form method="post" action="/settings"><textarea name="ng_words">${esc(ngWords.join("\n"))}</textarea><p><button class="btn">保存</button></p></form></div>`;
+<div class="card"><h2 style="margin-top:0">NGワード（1行1語）</h2><form method="post" action="/settings"><textarea name="ng_words">${esc(ngWords.join("\n"))}</textarea><p><button class="btn">保存</button></p></form></div>
+
+<div class="card"><h2 style="margin-top:0">データのバックアップ</h2>
+<p class="muted">送信者・キャンペーン・送信履歴を1つのファイル（JSON）に書き出します。PCの買い替え前や、記録の保管にどうぞ。安全のため、SMTPのアプリパスワードとAIのAPIキーは含みません。<b>書き出しのみで、読み込み（復元）機能はありません。</b></p>
+<a class="btn sub" href="/backup.json">バックアップを書き出す</a></div>`;
 }
 
 // ================= ログイン関連の画面 =================

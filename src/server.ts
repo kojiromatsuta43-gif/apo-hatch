@@ -576,13 +576,31 @@ app.get("/senders/:id", (req, res) => {
   res.send(layout("送信者を編集", `<h1>送信者を編集</h1><div class="card">${senderForm(s)}</div>`, takeFlash(req), navUser(req), updateReady));
 });
 const SENDER_COLS = ["label", "company", "industry", "person", "person_kana", "email", "reply_email", "tel", "postal", "address", "url", "from_email", "smtp_user", "smtp_host", "smtp_port"];
+// 送信者フォームの簡易チェック。問題があれば日本語メッセージ、無ければ null
+function validateSender(body: Record<string, unknown>): string | null {
+  const g = (k: string) => String(body[k] ?? "").trim();
+  if (!g("company")) return "会社名を入力してください";
+  if (!g("person")) return "担当者名を入力してください";
+  const email = g("email");
+  if (!email) return "メールを入力してください";
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return "メールアドレスの形式が正しくありません（例: sales@example.co.jp）";
+  const re = g("reply_email");
+  if (re && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(re)) return "返信受付メールの形式が正しくありません";
+  const tel = g("tel");
+  if (tel && !/^[0-9０-９\-ー－()（） 　]+$/.test(tel)) return "電話番号は数字とハイフンで入力してください";
+  return null;
+}
 app.post("/senders", (req, res) => {
+  const err = validateSender(req.body);
+  if (err) return redirectWith(res, "/senders", err);
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
   db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim());
   redirectWith(res, "/senders", "送信者を追加しました");
 });
 app.post("/senders/:id", (req, res) => {
   if (!ownedSender(req, Number(req.params.id))) return res.status(403).send(DENIED);
+  const verr = validateSender(req.body);
+  if (verr) return redirectWith(res, `/senders/${Number(req.params.id)}`, verr);
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
   const pass = String(req.body.smtp_pass ?? "").trim();
   db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, ...(pass ? [pass] : []), Number(req.params.id));
@@ -635,6 +653,20 @@ app.post("/suppressions/:id/delete", (req, res) => {
   db.prepare(`DELETE FROM form_suppressions WHERE id=? AND ${sc.sql}`).run(Number(req.params.id), ...sc.args);
   redirectWith(res, "/suppressions", "削除しました");
 });
+// データのバックアップ書き出し（自分の送信者・キャンペーン・送信履歴をJSONで。復元機能は付けない）
+// 認証情報（SMTPアプリパスワード・AIキー）は安全のため含めない
+app.get("/backup.json", (req, res) => {
+  const sc = scope(req);
+  const senders = db.prepare(`SELECT id, ${SENDER_COLS.join(", ")} FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args);
+  const campaigns = db.prepare(`SELECT * FROM form_campaigns WHERE ${sc.sql} ORDER BY id`).all(...sc.args);
+  const jobs = db.prepare(`SELECT j.* FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE ${sc.sql.replace("owner_user_id", "c.owner_user_id")} AND j.is_test=0 ORDER BY j.id`).all(...sc.args);
+  const out = { app: "apo-hatch", version: currentVersion(), exported_at: new Date().toISOString(), note: "バックアップ（閲覧用）。SMTPパスワード・AIキーは含みません。復元機能はありません。", senders, campaigns, jobs };
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.setHeader("content-disposition", `attachment; filename=apo-hatch-backup-${stamp}.json`);
+  res.send(JSON.stringify(out, null, 2));
+});
+
 // ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
 app.get("/game", (req, res) => {
   const sc = scope(req);
