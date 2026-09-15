@@ -1,6 +1,6 @@
 {
-  "version": "0.3.35",
-  "notes": "キャンペーン一覧の最終送信欄に「今日／昨日／N日前」の経過表示を追加（放置ぎみのキャンペーンに気づきやすく）",
+  "version": "0.3.36",
+  "notes": "文面チェックに「件名が長すぎ（30字超）」「長文なのに改行が無い」の注意を追加（どちらも警告のみで送信は止めません）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-14T23:21:18.999Z"
+  "published_at": "2026-09-15T00:20:10.375Z"
 }

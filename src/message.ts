@@ -252,5 +252,9 @@ export function lintMessage(message: string, subject: string, channel: "form" | 
   if (!/(@|メール|mail)/i.test(message)) out.push({ level: "warn", text: "連絡先（メールアドレス）が本文にありません" });
   if (channel !== "form" && !/(不要|停止|配信|ご連絡は控え)/.test(message)) out.push({ level: "warn", text: "「不要な場合はご連絡ください」の一文がありません" });
   if (!subject.trim()) out.push({ level: "warn", text: "件名が空です" });
+  // 件名が長いとメール一覧で途中で切れて読まれにくい（全角30文字が目安）
+  else if (subject.trim().length > 30) out.push({ level: "warn", text: `件名が長めです（${subject.trim().length}文字）。30文字以内だと一覧で切れずに読まれやすくなります` });
+  // 改行の無い長文は読みにくい（段落で区切ると開封後に読んでもらいやすい）
+  if (len >= 200 && !message.includes("\n")) out.push({ level: "warn", text: "本文に改行がありません。2〜3段落に分けると読みやすくなります" });
   return out;
 }
