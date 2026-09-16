@@ -61,10 +61,27 @@ async function scanFrames(page: Page): Promise<boolean> {
 
 export async function pageHasContactForm(page: Page): Promise<boolean> {
   if (await scanFrames(page)) return true;
-  // JSで後から描画されるフォーム: 少し待って再スキャン（合計最大約4秒）
-  for (let i = 0; i < 3; i++) {
-    await page.waitForTimeout(1200);
+  // JSで後から描画されるフォーム: 少し待って再スキャン
+  for (let i = 0; i < 2; i++) {
+    await page.waitForTimeout(1000);
     if (await scanFrames(page)) return true;
+  }
+  // スクロールしないと現れないフォーム（画面に入ったときだけ描画される遅延読み込みの埋め込み等。
+  // 実例: リンクを開いてスクロールするとフォームが出るサイトが「フォーム無し」判定になっていた）。
+  // ページ下端まで段階的にスクロールして、その都度スキャンし直す。
+  try {
+    const { total, step } = await page.evaluate(() => ({
+      total: document.documentElement.scrollHeight,
+      step: Math.max(400, Math.floor(window.innerHeight * 0.8)),
+    }));
+    for (let y = step; y < total + step && y < 30000; y += step) {
+      await page.evaluate((yy) => window.scrollTo(0, yy), y);
+      await page.waitForTimeout(350);
+      if (await scanFrames(page)) return true;
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+  } catch {
+    /* 遷移中・閉じたページ等は無視 */
   }
   return false;
 }
