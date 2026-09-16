@@ -114,7 +114,7 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string) {
+export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, shareUrls: string[] = []) {
   // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
@@ -131,6 +131,10 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
+${shareUrls.length ? `<details class="card" style="padding:10px 14px;margin:10px 0"><summary style="cursor:pointer"><b>他の人のPCから開くには</b> <span class="muted small">（アドレス欄の localhost のリンクは、相手のPCでは「サーバーに接続できません」になります）</span></summary>
+<p class="small" style="margin:8px 0 4px">同じWi-Fi・社内ネットワークにいる人は、次のURLで開けます（おまけゲームは出ない版）。ログインは「ユーザー管理」で作ったアカウントで。</p>
+${shareUrls.map((u) => `<p style="margin:4px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="user-select:all">${esc(u)}</code><button type="button" class="btn sub small" onclick="(navigator.clipboard?navigator.clipboard.writeText('${esc(u)}'):Promise.reject()).then(()=>{this.textContent='コピーしました'}).catch(()=>{prompt('このURLをコピーしてください','${esc(u)}')})">コピー</button></p>`).join("")}
+<p class="muted small" style="margin:6px 0 0">※ このPCの電源が入っていて、アポハッチくんが起動している間だけ開けます。1つ目（PC名）のURLで開けない場合は、数字のURLを使ってください（数字はWi-Fiにつなぎ直すと変わることがあります）。社外の人や、別のネットワーク（ゲストWi-Fi・テザリング等）からは開けません。</p></details>` : ""}
 ${(() => {
     // 全キャンペーン横断のサマリー。rows から集計するだけなので、この即時関数を消せば丸ごと外せる
     if (rows.length === 0) return "";

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.64",
-  "notes": "送信の途中でアプリが止まったメールは、送信済みフォルダを自動で確認して「送信済み」か「待機（続きから自動送信）」に戻す",
+  "version": "0.3.65",
+  "notes": "キャンペーン一覧に「他の人のPCから開くURL」を表示（localhostのリンクは他のPCでは開けないため）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T17:00:25.837Z"
+  "published_at": "2026-09-16T17:10:39.881Z"
 }

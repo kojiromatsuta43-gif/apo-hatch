@@ -3,6 +3,7 @@ import express from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
@@ -203,6 +204,22 @@ app.post("/users/:id/toggle", requireAdmin, (req, res) => {
 });
 
 // ---- campaigns ----
+/** 他のPC（同じWi-Fi・社内LAN）から開くためのURL。
+ *  画面のアドレス欄の http://localhost:… は「自分のPC」の意味なので、そのまま人に送ると相手のPCでは「サーバーに接続できません」になる。
+ *  このPCの名前（.local）とIPアドレスでのURLを出す。IPはWi-Fiにつなぎ直すと変わることがあるので、名前のURLを先に出す */
+function shareUrls(): string[] {
+  const port = process.env.GAME !== "0" && process.env.GAME !== "off" && CLEAN_PORT !== Number(process.env.PORT ?? 3210) ? CLEAN_PORT : Number(process.env.PORT ?? 3210);
+  const urls: string[] = [];
+  const host = os.hostname();
+  if (/\.local$/i.test(host)) urls.push(`http://${host}:${port}`);
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list ?? []) {
+      if (a.family === "IPv4" && !a.internal && !a.address.startsWith("169.254.")) urls.push(`http://${a.address}:${port}`);
+    }
+  }
+  return urls;
+}
+
 app.get("/", (req, res) => {
   const rows = db.prepare(`SELECT c.*, s.label sender_label,
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0) total,
@@ -211,7 +228,7 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.outcome IN ('replied','appointment')) reactions,
       (SELECT MAX(sent_at) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') last_sent
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.group_name='' , c.group_name, c.id DESC`).all(...scope(req).args) as any[];
-  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel()), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel(), shareUrls()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
@@ -1008,6 +1025,8 @@ app.listen(PORT, () => {
 if (process.env.GAME !== "0" && process.env.GAME !== "off" && CLEAN_PORT !== PORT) {
   const clean = app.listen(CLEAN_PORT, () => {
     console.log(`  ├ 共有用（ゲーム非表示）URL: http://localhost:${CLEAN_PORT}`);
+    const lan = shareUrls();
+    if (lan.length) console.log(`  ├ 他の人のPCから（同じWi-Fi・社内LAN）: ${lan.join("  /  ")}`);
   });
   clean.on("error", (e: NodeJS.ErrnoException) => {
     console.log(`  ※ 共有用URL(${CLEAN_PORT})は開けませんでした（${e.code}）。メインURLはそのまま使えます。`);
