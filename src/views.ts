@@ -157,14 +157,17 @@ export function senderForm(s?: Partial<SenderProfile>) {
   const v = (k: keyof SenderProfile) => esc(s?.[k] ?? "");
   return `<form method="post" action="/senders${s?.id ? `/${s.id}` : ""}">
 <div class="row"><div><label>ラベル（管理用）</label><input type="text" name="label" value="${v("label")}" placeholder="社内用 / ○○社用" required></div><div><label>会社名 *</label><input type="text" name="company" value="${v("company")}" required></div></div>
-<div class="row"><div><label>業種</label><input type="text" name="industry" value="${v("industry")}"></div><div><label>担当者名 *（姓と名の間にスペース）</label><input type="text" name="person" value="${v("person")}" placeholder="松田 幸次郎" required></div></div>
-<div class="row"><div><label>担当者名ふりがな（カタカナ、姓 名）</label><input type="text" name="person_kana" value="${v("person_kana")}" placeholder="マツダ コウジロウ"></div><div><label>メール *（フォームに入力するアドレス）</label><input type="email" name="email" value="${v("email")}" required></div></div>
+<div class="row"><div><label>業種</label><input type="text" name="industry" value="${v("industry")}"></div><div><label>担当者名 *（姓と名の間にスペース）</label><input type="text" name="person" value="${v("person")}" placeholder="田中 太郎" required></div></div>
+<div class="row"><div><label>担当者名フリガナ</label><input type="text" name="person_kana" value="${v("person_kana")}" placeholder="タナカ タロウ"></div><div><label>メール *（フォームに入力するアドレス）</label><input type="email" name="email" value="${v("email")}" required></div></div>
 <div class="row"><div><label>返信受付メール（本文に載せる。空なら上と同じ）</label><input type="email" name="reply_email" value="${v("reply_email")}"></div><div><label>電話（ハイフン区切り）</label><input type="text" name="tel" value="${v("tel")}" placeholder="03-1234-5678"><p class="muted" style="color:var(--ng)">⚠ フォームでは電話番号が必須になっていることが多く、未入力のままだとかなりの確率で送信エラーになります。必ず入力してください。</p></div></div>
 <div class="row3"><div><label>郵便番号</label><input type="text" name="postal" value="${v("postal")}" placeholder="114-0001"></div><div><label>住所（都道府県から）</label><input type="text" name="address" value="${v("address")}"></div><div><label>自社URL</label><input type="url" name="url" value="${v("url")}"></div></div>
 <h2>メールで送る場合の設定（任意。フォームだけなら不要）</h2>
 <p class="muted">Googleアカウントで2段階認証をオンにし「アプリパスワード」を発行して貼り付けてください。営業専用のアドレスを使うのが安全です（無料Gmailは1日500通、Workspaceは2,000通まで）。</p>
 <div class="row3"><div><label>送信用メールアドレス（Gmail等）</label><input type="text" name="smtp_user" value="${v("smtp_user")}" placeholder="sales@example.co.jp"></div><div><label>アプリパスワード（保存済みなら空のまま）</label><input type="password" name="smtp_pass" value="" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div><div><label>差出人として表示するアドレス（空なら左と同じ）</label><input type="text" name="from_email" value="${v("from_email")}"></div></div>
-<details class="small muted"><summary>Gmail以外のメールサーバー</summary><div class="row"><div><label>SMTPホスト</label><input type="text" name="smtp_host" value="${esc(s?.smtp_host ?? "smtp.gmail.com")}"></div><div><label>ポート（465 or 587）</label><input type="number" name="smtp_port" value="${esc(s?.smtp_port ?? 465)}"></div></div></details>
+<details class="small muted"><summary>Gmail以外のメールサーバー</summary><div class="row"><div><label>SMTPホスト</label><input type="text" name="smtp_host" value="${esc(s?.smtp_host ?? "smtp.gmail.com")}" placeholder="smtp.gmail.com"></div><div><label>ポート（465 or 587）</label><input type="number" name="smtp_port" value="${esc(s?.smtp_port ?? 465)}" placeholder="465"></div></div>
+<p class="muted small" style="margin:6px 0 0"><b>SMTPホストとは：</b>メールを送り出すサーバーのアドレスです。プロバイダごとに決まっています。<br>
+例）Gmail・Google Workspace＝<code>smtp.gmail.com</code>／Outlook・Microsoft365＝<code>smtp.office365.com</code>／Yahoo!メール＝<code>smtp.mail.yahoo.co.jp</code>／iCloud＝<code>smtp.mail.me.com</code><br>
+<b>確認方法：</b>お使いのメールの設定画面で「送信サーバー（SMTP）」の欄を見るか、「（プロバイダ名） SMTP 設定」で検索してください。分からなければ、送信専用に無料のGmailを1つ作るのが一番かんたんです（その場合はこの欄は変更不要）。</p></details>
 <p><button class="btn">保存</button>${s?.id ? ` <button class="btn sub" formaction="/senders/${s.id}/test" formmethod="post">メール設定を確認</button>` : ""}</p></form>`;
 }
 
