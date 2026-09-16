@@ -38,6 +38,11 @@ export async function launchBrowser(): Promise<Browser> {
     headless: process.env.HEADLESS !== "0",
     executablePath: process.env.CHROMIUM_PATH || undefined,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+    // 終了の合図（Ctrl+C 等）でブラウザを勝手に閉じない。閉じると送信の途中で失敗・誤判定になるため、
+    // アプリ側（server.ts の終了処理）で送信中の会社が終わるのを待ってから閉じる
+    handleSIGINT: false,
+    handleSIGTERM: false,
+    handleSIGHUP: false,
   });
 }
 

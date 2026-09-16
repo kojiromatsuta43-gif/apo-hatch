@@ -1072,11 +1072,13 @@ app.post("/update", requireAdmin, async (req, res) => {
 
 // ---- 終了時（Ctrl+C・ターミナルを閉じる等）: 送信中の会社が終わるまで待ってから止める ----
 // 2回目の Ctrl+C ならすぐ止める（待ちきれない場合用）
-let stopping = false;
+let stopping = 0;
 for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(sig, () => {
-    if (stopping) process.exit(130);
-    stopping = true;
+    // ターミナルの Ctrl+C はアプリと起動役（run.mjs）の両方に届き、起動役からも渡されるので、2秒以内の重複は同じ1回とみなす
+    if (stopping && Date.now() - stopping > 2000) process.exit(130);
+    if (stopping) return;
+    stopping = Date.now();
     console.log("\n[apo-hatch] 送信中の会社があれば終わるまで待ってから終了します（すぐ止めるにはもう一度 Ctrl+C）");
     drainForShutdown().finally(() => process.exit(0));
   });

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.68",
-  "notes": "送信一覧の絞り込みに一致する全件（200件を超える分も）を削除／前回の取り込み分を一覧で見て一括削除／日時を東京の時刻で表示",
+  "version": "0.3.69",
+  "notes": "アプリの終了・再起動・アップデートで、送信中の会社を途中で切らずに送り終えてから止まるように修正",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T17:36:43.437Z"
+  "published_at": "2026-09-16T17:44:28.154Z"
 }
