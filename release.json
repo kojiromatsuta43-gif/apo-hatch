@@ -1,6 +1,6 @@
 {
-  "version": "0.3.66",
-  "notes": "「他の人のPCから開くURL」をユーザー管理の画面に移動",
+  "version": "0.3.67",
+  "notes": "取り込み履歴から、間違えて取り込んだ分を全件削除できるように／「選択した会社を削除」を送信一覧の絞り込みの下に移動",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T17:14:41.696Z"
+  "published_at": "2026-09-16T17:32:25.117Z"
 }

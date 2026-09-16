@@ -325,7 +325,7 @@ app.get("/campaigns/:id", (req, res) => {
   const retryTargets = retryTargetJobs(id);
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -384,7 +384,8 @@ app.post("/campaigns/:id/import-confirm", (req, res) => {
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   const pending = pendingImports.get(id);
   if (!pending) return redirectWith(res, `/campaigns/${id}`, "プレビューの有効期限が切れました。もう一度取り込んでください");
-  const s = importRowsToCampaign(id, pending.rows);
+  const importId = db.prepare("INSERT INTO form_imports(campaign_id, src_label, rows_count) VALUES(?,?,?)").run(id, pending.srcLabel, pending.rows.length).lastInsertRowid as number;
+  const s = importRowsToCampaign(id, pending.rows, { importId });
   pendingImports.delete(id);
   lastImports.set(id, s);
   redirectWith(res, `/campaigns/${id}`, `${pending.srcLabel}から ${pending.rows.length}行を取り込みました`);
@@ -629,6 +630,69 @@ app.post("/campaigns/:id/requeue-failed", (req, res) => {
 
 // 手動で送れた会社を「送信済み（手動）」にする（手動送信リストの消し込み用）
 // 間違って取り込んだ会社などを送信一覧から完全に消す（記録ごと削除。送信済みを消すとその会社への再送防止は効かなくなる）
+// ---- 取り込み履歴と、取り込み単位・全件の削除 ----
+// 一覧は200件までしか出ないため、2000件などを間違えて取り込むと「選択して削除」では消しきれなかった。
+export type ImportBatch = { key: string; label: string; at: string; total: number; sent: number; queued: number };
+
+/** このキャンペーンの取り込み履歴（新しい順）。取り込み記録がある分は1回ずつ、
+ *  記録の無い昔の分は、登録時刻が2分以内に続いている会社を1回ぶんとしてまとめる */
+function importHistory(campaignId: number): ImportBatch[] {
+  const out: ImportBatch[] = [];
+  for (const r of db.prepare(`SELECT i.id, i.src_label, i.created_at, COUNT(j.id) total, COALESCE(SUM(j.status='sent'),0) sent, COALESCE(SUM(j.status='queued'),0) queued
+    FROM form_imports i JOIN form_jobs j ON j.import_id=i.id AND j.is_test=0 WHERE i.campaign_id=? GROUP BY i.id`).all(campaignId) as { id: number; src_label: string; created_at: string; total: number; sent: number; queued: number }[]) {
+    out.push({ key: `i${r.id}`, label: r.src_label || "取り込み", at: r.created_at, total: r.total, sent: r.sent, queued: r.queued });
+  }
+  const legacy = db.prepare("SELECT id, status, created_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND import_id IS NULL ORDER BY id").all(campaignId) as { id: number; status: string; created_at: string }[];
+  let cur: { from: number; to: number; at: string; last: number; total: number; sent: number; queued: number } | null = null;
+  const flush = () => { if (cur) out.push({ key: `r${cur.from}-${cur.to}`, label: "取り込み（記録前）", at: cur.at, total: cur.total, sent: cur.sent, queued: cur.queued }); };
+  for (const j of legacy) {
+    const t = Date.parse(String(j.created_at).replace(" ", "T") + "Z");
+    if (!cur || !(t - cur.last <= 120_000)) { flush(); cur = { from: j.id, to: j.id, at: j.created_at, last: t, total: 0, sent: 0, queued: 0 }; }
+    cur.to = j.id; cur.last = t; cur.total++;
+    if (j.status === "sent") cur.sent++;
+    if (j.status === "queued") cur.queued++;
+  }
+  flush();
+  return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+}
+
+function deleteJobsWhere(campaignId: number, sql: string, args: (string | number)[]): number {
+  const ids = (db.prepare(`SELECT id FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${sql}`).all(campaignId, ...args) as { id: number }[]).map((r) => r.id);
+  if (!ids.length) return 0;
+  db.transaction(() => { for (let i = 0; i < ids.length; i += 500) { const part = ids.slice(i, i + 500); db.prepare(`DELETE FROM form_jobs WHERE id IN (${part.map(() => "?").join(",")})`).run(...part); } })();
+  for (const jid of ids) fs.rmSync(path.join(SCREENSHOT_DIR, `job-${jid}.png`), { force: true });
+  return ids.length;
+}
+
+// 取り込み1回ぶんを全件削除
+app.post("/campaigns/:id/imports/delete", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中は削除できません。先に止めてから削除してください");
+  const key = String(req.body.key ?? "");
+  let n = 0;
+  let m: RegExpMatchArray | null;
+  if ((m = key.match(/^i(\d+)$/))) {
+    n = deleteJobsWhere(id, "import_id=?", [Number(m[1])]);
+    db.prepare("DELETE FROM form_imports WHERE id=? AND campaign_id=?").run(Number(m[1]), id);
+  } else if ((m = key.match(/^r(\d+)-(\d+)$/))) {
+    n = deleteJobsWhere(id, "import_id IS NULL AND id BETWEEN ? AND ?", [Number(m[1]), Number(m[2])]);
+  } else return redirectWith(res, `/campaigns/${id}`, "削除する取り込みが分かりませんでした");
+  lastImports.delete(id);
+  redirectWith(res, `/campaigns/${id}`, `取り込んだ会社 ${n} 件を削除しました`);
+});
+
+// このキャンペーンの会社を全件削除（キャンペーン自体と設定・文面は残す）
+app.post("/campaigns/:id/jobs/delete-all", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中は削除できません。先に止めてから削除してください");
+  const n = deleteJobsWhere(id, "1=1", []);
+  db.prepare("DELETE FROM form_imports WHERE campaign_id=?").run(id);
+  lastImports.delete(id);
+  redirectWith(res, `/campaigns/${id}`, `このキャンペーンの会社 ${n} 件をすべて削除しました（キャンペーンの設定・文面は残っています）`);
+});
+
 // 選択した会社をまとめて削除（記録ごと）。このキャンペーンに属するジョブだけを対象にする
 app.post("/campaigns/:id/bulk-delete", (req, res) => {
   const id = Number(req.params.id);

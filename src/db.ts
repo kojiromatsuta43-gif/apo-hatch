@@ -193,6 +193,16 @@ function migrate(db: Database.Database) {
   addCol("sender_profiles", "tel_required_only", "INTEGER NOT NULL DEFAULT 0");
   // キャンペーンのグループ名。同じグループ内では同じ会社に重ねて送らない（フォーム用とメール用で分けた場合など）。空=グループなし
   addCol("form_campaigns", "group_name", "TEXT NOT NULL DEFAULT ''");
+  // 取り込み1回ぶんの記録。間違えて取り込んだとき、その取り込みで入った会社をまとめて消せるようにする
+  db.exec(`CREATE TABLE IF NOT EXISTS form_imports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    src_label TEXT NOT NULL DEFAULT '',
+    rows_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  // どの取り込みで入った会社か（form_imports.id）。この列ができる前に取り込んだ会社は NULL（取り込み時刻の近さで1回ぶんとみなす）
+  addCol("form_jobs", "import_id", "INTEGER");
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。

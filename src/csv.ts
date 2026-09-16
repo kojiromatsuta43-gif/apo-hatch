@@ -115,15 +115,15 @@ export type ExcludedRow = { company: string; reason: string; where: string };
 export type ImportSummary = { added: number; addedForm: number; addedEmail: number; excluded: number; suppressed: number; duplicated: number; noUrl: number; excludedRows: ExcludedRow[]; noEntity: string[] };
 
 /** 企業行をキャンペーンのジョブとして登録。チャネル（フォーム／メール）を振り分け、除外・重複は理由を残す */
-export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opts: { dryRun?: boolean } = {}): ImportSummary {
+export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opts: { dryRun?: boolean; importId?: number } = {}): ImportSummary {
   const db = getDb();
   const campaign = db.prepare("SELECT channel, resend_days, group_name FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number; group_name: string } | undefined;
   const resendDays = campaign?.resend_days ?? 90;
   const mode = channelMode(campaign?.channel);
   const summary: ImportSummary = { added: 0, addedForm: 0, addedEmail: 0, excluded: 0, suppressed: 0, duplicated: 0, noUrl: 0, excludedRows: [], noEntity: [] };
   const insert = db.prepare(`
-    INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, sub_industry, prefecture, representative, domain, channel, email, status, result_text)
-    VALUES(@campaign_id, @company_name, @form_url, @site_url, @industry, @sub_industry, @prefecture, @representative, @domain, @channel, @email, @status, @result_text)`);
+    INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, sub_industry, prefecture, representative, domain, channel, email, status, result_text, import_id)
+    VALUES(@campaign_id, @company_name, @form_url, @site_url, @industry, @sub_industry, @prefecture, @representative, @domain, @channel, @email, @status, @result_text, @import_id)`);
   const isSuppressed = db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?");
   const isOptedOut = db.prepare("SELECT 1 FROM email_optouts WHERE email=?");
   const recentlySent = db.prepare("SELECT 1 FROM form_jobs WHERE sent_at > datetime('now', ?) AND domain=? AND status='sent' AND is_test=0");
@@ -160,7 +160,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opt
         // 「株式会社」などの法人格が無い社名は警告用に控える（事前チェックでHPから自動補完される）
         if (!hasEntity(r.company_name) && summary.noEntity.length < 300) summary.noEntity.push(r.company_name);
       }
-      if (!opts.dryRun) insert.run({ ...r, campaign_id: campaignId, domain, channel, email: hasEmail ? r.email : "", status, result_text: reason });
+      if (!opts.dryRun) insert.run({ ...r, campaign_id: campaignId, domain, channel, email: hasEmail ? r.email : "", status, result_text: reason, import_id: opts.importId ?? null });
     }
   });
   tx();
