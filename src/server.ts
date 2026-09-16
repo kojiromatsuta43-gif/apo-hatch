@@ -338,11 +338,12 @@ async function fetchGoogleSheetCsv(url: string): Promise<string> {
   const id = m[1];
   const gid = (url.match(/[#&?]gid=(\d+)/) ?? [])[1];
   const headers = { "User-Agent": "Mozilla/5.0 (compatible; apo-hatch/1.0)", Accept: "text/csv,*/*" };
-  const candidates = [
-    `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid ?? "0"}`,
-    `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${gid ? `&gid=${gid}` : ""}`,
-    `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv`, // gid不明なら先頭シート
-  ];
+  // 実測: export は「存在しないgid」だと400を返す（URLに #gid= が無いとき gid=0 を決め打ちすると、
+  // 先頭タブのgidが0でないシートで400になる）。gid不明なら gid を付けずに先頭シートを取る。
+  const base = `https://docs.google.com/spreadsheets/d/${id}`;
+  const candidates = gid
+    ? [`${base}/export?format=csv&gid=${gid}`, `${base}/gviz/tq?tqx=out:csv&gid=${gid}`, `${base}/export?format=csv`, `${base}/gviz/tq?tqx=out:csv`]
+    : [`${base}/export?format=csv`, `${base}/gviz/tq?tqx=out:csv`];
   let lastStatus = 0, sawLogin = false;
   for (const u of candidates) {
     let r: Response;

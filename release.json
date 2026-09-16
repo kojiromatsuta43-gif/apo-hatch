@@ -1,6 +1,6 @@
 {
-  "version": "0.3.41",
-  "notes": "Googleスプレッドシート取り込みを強化（正しく共有していても400になる問題への対策：User-Agent付与＋gviz方式へ自動フォールバック＋非公開/ログイン画面の検知）",
+  "version": "0.3.42",
+  "notes": "スプレッドシート取り込みの400エラーを修正（URLに #gid= が無いとき先頭タブを正しく取得。gid=0決め打ちが原因だった）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T06:45:21.179Z"
+  "published_at": "2026-09-16T06:50:17.140Z"
 }
