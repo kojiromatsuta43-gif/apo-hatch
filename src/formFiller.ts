@@ -34,9 +34,10 @@ const RULES: [Category, RegExp][] = [
   ["kana_first", /((フリガナ|ふりがな|カナ|kana|メイ)(.{0,6})?(名|めい|メイ|first|mei\b)|(名|めい).{0,6}(フリガナ|ふりがな|カナ|kana)|kana_mei|mei_kana|kana_first|first_kana|firstkana)/i],
   ["kana", /(フリガナ|ふりがな|カナ|kana|furigana|よみ|ヨミ|ruby|phonetic)/i],
   ["name_last", /(姓|苗字|名字|lastname|last_name|last-name|family|\bsei\b|surname)/i],
-  ["name_first", /(^|[^氏会社品件題法人職媒校体])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i], // 校体: 「学校名」「団体名」を下の名前と誤判定した事故の対策
-  ["company", /(会社|企業|法人|社名|貴社|御社|団体|組織|屋号|店舗名|店名|company|corp|organization|organisation|firm)/i],
+  // 部署名は「〜名」で下の名前に当たってしまうので、名前の判定より先に見る（「部署名」に下の名前が入る事故の対策）
   ["department", /(部署|部門|department|division)/i],
+  ["name_first", /(^|[^氏会社品件題法人職媒校体署門舗設院織課局室属])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i], // 校体: 「学校名」「団体名」、署門舗…: 「部署名」「店舗名」「施設名」等を下の名前と誤判定した事故の対策
+  ["company", /(会社|企業|法人|社名|貴社|御社|団体|組織|屋号|店舗名|店名|company|corp|organization|organisation|firm)/i],
   ["position", /(役職|職位|position|title.*役)/i],
   ["name", /(氏名|お名前|名前|担当者|ご担当|your-name|\bname\b|fullname|full_name|full-name)/i],
   ["tel", /(電話|tel|phone|携帯|mobile|連絡先番号)/i],
@@ -629,6 +630,8 @@ const BACK_RE = /(戻る|修正|back|edit|訂正|キャンセル|cancel|リセ�
 const CONFIRM_END_RE = /(確認(する|します|画面へ|画面に進む|へ進む|へ)?|confirm)[\s>＞»→▶]*$/i;
 // 押したあとに出る確認画面の文言（ボタン名で見分けられなかったときの保険）
 const CONFIRM_PAGE_RE = /(下記の?内容で送信|以下の内容で送信|下記の内容でよろしければ|以下の内容でよろしければ|入力内容(を|の)?(ご)?確認|内容をご確認|[「『]送信(する)?[」』]\s*ボタンを押)/;
+// ページ内ポップアップの確認文言（入力欄は後ろに残ったままなので「フォームが消えた」判定とは別に見る）
+const CONFIRM_MODAL_RE = /(送信|この内容で|以下の内容で|下記の内容で|お問い?合わ?せ).{0,25}(よろしいですか|よろしいでしょうか)/;
 
 const BUTTONS_SCRIPT = `
 (() => {
@@ -643,13 +646,19 @@ const BUTTONS_SCRIPT = `
     if (!/^(BUTTON|INPUT|A)$/.test(el.tagName) && ((el.innerText || '').trim().length > 40 || el.querySelector('input,textarea,select'))) continue;
     const text = (el.innerText || el.value || el.getAttribute('alt') || el.getAttribute('aria-label') || el.getAttribute('title') || el.className || '').trim().replace(/\\s+/g,' ').slice(0, 60);
     el.setAttribute('data-fo-btn', String(i));
-    out.push({ idx: i, text, type: (el.getAttribute('type') || el.tagName).toLowerCase(), inForm: !!el.closest('form'), disabled: !!el.disabled });
+    // ページ内ポップアップ（確認ダイアログ等）の中のボタンか。明示的なダイアログ要素か、画面に固定表示された重なり（position:fixed で z-index が高い）の中
+    let inDialog = !!el.closest('dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true],[class*="modal"],[class*="Modal"],[class*="dialog"],[class*="Dialog"],[class*="popup"],[class*="lightbox"]');
+    for (let a = el.parentElement; !inDialog && a && a !== document.body; a = a.parentElement) {
+      const cs = getComputedStyle(a);
+      if (cs.position === 'fixed' && Number(cs.zIndex) >= 10) inDialog = true;
+    }
+    out.push({ idx: i, text, type: (el.getAttribute('type') || el.tagName).toLowerCase(), inForm: !!el.closest('form'), disabled: !!el.disabled, inDialog });
     i++;
   }
   return out;
 })()`;
 
-type Btn = { idx: number; text: string; type: string; inForm: boolean; disabled: boolean };
+type Btn = { idx: number; text: string; type: string; inForm: boolean; disabled: boolean; inDialog: boolean };
 
 /** 送信系ボタンはあるのに全部 disabled か（React系フォームが入力を認識していないサイン） */
 export async function allSubmitButtonsDisabled(target: Page | Frame): Promise<boolean> {
@@ -672,7 +681,12 @@ export async function allSubmitButtonsDisabled(target: Page | Frame): Promise<bo
 
 export async function clickNextButton(target: Page | Frame, page: Page, log: string[]): Promise<"confirm" | "submit" | "none"> {
   const btns = (await target.evaluate(BUTTONS_SCRIPT)) as Btn[];
-  const usable = btns.filter((b) => !BACK_RE.test(b.text) && !b.disabled);
+  let usable = btns.filter((b) => !BACK_RE.test(b.text) && !b.disabled);
+  // 確認ポップアップが開いていれば、その中の送信・確認ボタンを優先する（di-v.co.jp の実例:
+  // 「送信する」→ ページ内に「この内容で送信します。よろしいですか？」が出て、その中の「送信」を押す必要があった。
+  // 後ろに残っている元のボタンを押しても先に進まない）
+  const inDialog = usable.filter((b) => b.inDialog && (SUBMIT_RE.test(b.text) || CONFIRM_RE.test(b.text)));
+  if (inDialog.length) usable = inDialog;
   const confirm = usable.find((b) => CONFIRM_RE.test(b.text) && (!SUBMIT_RE.test(b.text) || CONFIRM_END_RE.test(b.text.trim())));
   const submit = usable.find((b) => SUBMIT_RE.test(b.text)) ?? usable.find((b) => b.type === "submit" && b.inForm);
   const target_ = confirm ?? submit;
@@ -799,6 +813,9 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
     if (!(beforeCompact && beforeCompact.includes(phrase.replace(/\s+/g, "")))) {
       return { status: "failed", detail: `入力エラー: ${phrase}` };
     }
+  }
+  if (afterSubmit && CONFIRM_MODAL_RE.test(compact) && !CONFIRM_MODAL_RE.test(beforeCompact)) {
+    return { status: "unsure", detail: "確認画面（ポップアップ）で止まっている" };
   }
   const fieldsNow = (await collectFields(page)).length;
   // 入力欄が無くなっても、確認画面（「下記の内容で送信します」等）なら送信済みではない。呼び出し側でもう一度送信ボタンを押す

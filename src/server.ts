@@ -9,7 +9,7 @@ import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressi
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
-import { launchBrowser } from "./engine.js";
+import { launchBrowser, openAndFill } from "./engine.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
 import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
@@ -646,6 +646,27 @@ app.post("/jobs/:id/answer", async (req, res) => {
     redirectWith(res, `/jobs/${id}`, `再送信エラー: ${String((e as Error).message)}`);
   } finally {
     await browser.close().catch(() => {});
+  }
+});
+
+// 画面にブラウザを開いてフォームを入力した状態で止める（送信はしない）。人が確認して送るための補助
+app.post("/jobs/:id/assist", async (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(403).send(DENIED);
+  const c = loadCampaignFull(req, j.campaign_id);
+  if (!c) return res.status(404).send("not found");
+  try {
+    // 文面は一度作ったもの（message_used）を優先。無ければ作る（HP本文はキャッシュがあれば使う）
+    const site = (db.prepare("SELECT title, text FROM site_cache WHERE domain=?").get(j.domain) as { title: string; text: string } | undefined) ?? { title: "", text: "" };
+    const comp = await composeMessage(j, c.sender, c, site);
+    const message = j.message_used || comp.message;
+    const r = await openAndFill({ formUrl: j.form_url, siteUrl: j.site_url, sender: c.sender, subject: comp.subject, message });
+    redirectWith(res, `/jobs/${id}`, r.ok
+      ? `ブラウザを開いて${r.detail}。送信したら「手動で送信済みにする」を押してください`
+      : `ブラウザを開きました：${r.detail}`);
+  } catch (e) {
+    redirectWith(res, `/jobs/${id}`, `ブラウザを開けませんでした: ${String((e as Error).message ?? e).slice(0, 150)}`);
   }
 });
 

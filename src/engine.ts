@@ -47,6 +47,51 @@ export async function newContext(browser: Browser): Promise<BrowserContext> {
   return ctx;
 }
 
+/** 画面にブラウザを開き、問い合わせフォームを探して入力した状態で止める（送信ボタンは押さない）。
+ *  CAPTCHA 等で自動送信できない会社を、人が内容を確認して送るための補助。
+ *  headless/keepOpen はテスト用（通常は画面に開いたまま、利用者がウィンドウを閉じるまで残す）。 */
+export async function openAndFill(
+  input: { formUrl: string; siteUrl: string; sender: SenderProfile; subject: string; message: string },
+  opts: { headless?: boolean; keepOpen?: boolean } = {},
+): Promise<{ ok: boolean; detail: string; page?: Page; close: () => Promise<void> }> {
+  const browser = await chromium.launch({ headless: opts.headless ?? false, executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] });
+  const close = async () => { await browser.close().catch(() => {}); };
+  const ctx = await browser.newContext({ userAgent: UA, locale: "ja-JP", viewport: null, ignoreHTTPSErrors: true });
+  ctx.setDefaultTimeout(15000);
+  const page = await ctx.newPage();
+  try {
+    const formPage = await findContactForm(page, input.formUrl, input.siteUrl);
+    if (!formPage) {
+      // 見つからなくても、人が探せるようにサイトは開いたままにする
+      if (!page.url().startsWith("http")) await page.goto(input.formUrl || input.siteUrl, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
+      return { ok: false, detail: "問い合わせフォームが見つからなかったので、サイトだけ開きました", page, close };
+    }
+    let target: Page | Frame = page;
+    let fields = await collectFields(page);
+    if (!fields.some((f) => classify(f) === "message")) {
+      for (const fr of page.frames()) {
+        if (fr === page.mainFrame()) continue;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const ff = await Promise.race([collectFields(fr), new Promise<FieldInfo[]>((res) => { timer = setTimeout(() => res([]), 5000); })]);
+          if (ff.some((f) => classify(f) === "message")) { target = fr; fields = ff; break; }
+        } catch {} finally { if (timer) clearTimeout(timer); }
+      }
+    }
+    const report = await fillFields(target, fields, { sender: input.sender, subject: input.subject, message: input.message }, { requireMessage: false });
+    // 送信ボタンは押さない。入力した欄が見えるように先頭の入力欄までスクロール
+    await page.evaluate(() => document.querySelector("[data-fo-idx]")?.scrollIntoView({ block: "center" })).catch(() => {});
+    const detail = report.filled.length
+      ? `${report.filled.length}項目を入力しました${report.unfilled.length ? `（入力できなかった項目 ${report.unfilled.length}）` : ""}。内容を確認して送信してください`
+      : "フォームは見つかりましたが、入力できる項目がありませんでした";
+    return { ok: report.filled.length > 0, detail, page, close };
+  } catch (e) {
+    return { ok: false, detail: `途中でエラー: ${String((e as Error).message ?? e).slice(0, 120)}`, page, close };
+  } finally {
+    if (opts.keepOpen === false) await close();
+  }
+}
+
 export async function submitToCompany(browser: Browser, input: SubmitInput): Promise<SubmitResult> {
   const log: string[] = [];
   const ctx = await newContext(browser);

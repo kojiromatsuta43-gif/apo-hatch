@@ -15,7 +15,7 @@ const { DEFAULT_TEMPLATE } = await import("../src/message.js");
 
 const received: Record<string, Record<string, string>> = {};
 const simpleHits: Record<string, string>[] = [];
-let itadakiHits = 0, cfm1Hits = 0, cfm2Hits = 0, recapHits = 0;
+let itadakiHits = 0, cfm1Hits = 0, cfm2Hits = 0, recapHits = 0, modalHits = 0;
 
 const page = (title: string, body: string) => `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${title}</title></head><body><header><nav><a href="/">ホーム</a> <a href="/company">会社概要</a> <a href="/recruit">採用情報</a> <a href="/simple">お問い合わせ</a></nav></header>${body}<footer>© Test Co.</footer></body></html>`;
 
@@ -197,6 +197,13 @@ const server = http.createServer(async (req, res) => {
     <script>document.getElementById('f').addEventListener('submit',function(e){e.preventDefault();document.getElementById('f').style.display='none';var d=document.createElement('div');d.style.cssText='position:fixed;top:40px;left:40px;z-index:9999';d.innerHTML='<iframe src="about:blank#recaptcha/api2/bframe" width="400" height="580"></iframe>';document.body.appendChild(d);});</script>`));
   if (p === "/recap" && req.method === "POST") { recapHits++; return send(page("完了", `<h1>送信完了</h1>`)); }
 
+  // 20. 送信ボタン → ページ内ポップアップ「この内容で送信します。よろしいですか？」→ ポップアップ内の「送信」（di-v.co.jp の実例）。
+  //     ポップアップの「送信」を押したときだけ confirmed=1 が付き、それ以外のPOSTはエラーにする（後ろの元ボタンを押しても通らない）
+  if (p === "/modal" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1>
+    <form id="mf" method="post" action="/modal"><input type="hidden" name="confirmed" id="cf" value=""><p>会社名 <input name="co"></p><p>お名前 <input name="nm"></p><p>メール <input type="email" name="mail"></p><p>内容 <textarea name="msg"></textarea></p><button type="button" id="open">送信する</button></form>
+    <script>document.getElementById('open').onclick=function(){if(document.getElementById('ov'))return;var d=document.createElement('div');d.id='ov';d.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:flex;align-items:center;justify-content:center';d.innerHTML='<div style="background:#fff;padding:20px"><p>この内容で送信します。よろしいですか？</p><button type="button" id="cancel">キャンセル</button> <button type="button" id="go">送信</button></div>';document.body.appendChild(d);document.getElementById('cancel').onclick=function(){d.remove();};document.getElementById('go').onclick=function(){document.getElementById('cf').value='1';document.getElementById('mf').submit();};};</script>`));
+  if (p === "/modal" && req.method === "POST") { const b = await parseBody(req); if (b.confirmed !== "1") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p class="error">確認画面から送信してください</p>`)); modalHits++; return send(page("完了", `<h1>送信完了</h1><p>お問い合わせを受け付けました。</p>`)); }
+
   // 14. Cloudflare 風のブラウザ確認ページ
   if (p === "/challenge") return send(`<!doctype html><html><head><meta charset="utf-8"><title>Just a moment...</title></head><body><h1>Checking your browser before accessing the site.</h1><form><textarea name="x"></textarea><input name="y"><button>Continue</button></form></body></html>`);
 
@@ -237,6 +244,7 @@ const rows: import("../src/csv.js").CompanyRow[] = [
   { company_name: "確認ボタン社", form_url: `${base}/cfm1`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "確認画面文言社", form_url: `${base}/cfm2`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "送信後認証社", form_url: `${base}/recap`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "確認ポップアップ社", form_url: `${base}/modal`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
 ];
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
@@ -244,11 +252,11 @@ const alias = (i: number, host: string) => { rows[i].form_url = rows[i].form_url
 // 以前は 127.0.0.2〜14 を使っていたが、macOSでは sudo ifconfig lo0 alias が必要で再起動のたびに消えるため、
 // 何も設定しなくても 127.0.0.1 に解決される <名前>.localhost 方式に変更した。
 alias(1, "e2.localhost"); alias(2, "e3.localhost"); alias(3, "e4.localhost"); alias(4, "e5.localhost");
-alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost"); alias(15, "e15.localhost"); alias(16, "e16.localhost"); alias(17, "e17.localhost"); alias(18, "e18.localhost"); alias(19, "e19.localhost");
+alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost"); alias(15, "e15.localhost"); alias(16, "e16.localhost"); alias(17, "e17.localhost"); alias(18, "e18.localhost"); alias(19, "e19.localhost"); alias(20, "e20.localhost");
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
-assert.equal(summary.added, 19);
+assert.equal(summary.added, 20);
 assert.equal(summary.excluded, 1);
 
 const browser = await launchBrowser();
@@ -330,6 +338,8 @@ assert.equal(results["確認画面文言社"], "sent", "ボタン名で分から
 assert.equal(cfm2Hits, 1, "確認画面を送信済みと誤判定せず最終送信まで届く");
 assert.equal(results["送信後認証社"], "skip_captcha", "送信時に画像認証が出たら未送信（CAPTCHA）");
 assert.equal(recapHits, 0, "画像認証で止まり実際には送られていない");
+assert.equal(results["確認ポップアップ社"], "sent", "送信後のページ内ポップアップ「よろしいですか？」の中の送信を押す");
+assert.equal(modalHits, 1, "ポップアップ経由で1回だけ届く");
 
 // 事前チェック（フォーム探索・お断り・メール発見）
 {
