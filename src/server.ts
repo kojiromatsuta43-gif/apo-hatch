@@ -329,17 +329,33 @@ app.post("/campaigns/:id/import-cancel", (req, res) => {
   redirectWith(res, `/campaigns/${id}`, "取り込みを取り消しました");
 });
 
-// GoogleスプレッドシートのURLをCSV書き出しURLに変換して取得する（共有＝リンクを知っている全員が閲覧可、が前提）
+// GoogleスプレッドシートのURLをCSVで取得する（共有＝リンクを知っている全員が閲覧可、が前提）。
+// Googleはサーバーからの素の要求（User-Agent無し）を400で弾くことがあるためUAを付け、
+// export で失敗しても gviz 方式にフォールバックする（一部シートで export が400/HTMLを返すため）。
 async function fetchGoogleSheetCsv(url: string): Promise<string> {
   const m = url.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if (!m) throw new Error("GoogleスプレッドシートのURLではありません");
-  const gid = (url.match(/[#&?]gid=(\d+)/) ?? [])[1] ?? "0";
-  const exportUrl = `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv&gid=${gid}`;
-  const r = await fetch(exportUrl, { redirect: "follow" });
-  if (!r.ok) throw new Error(`スプレッドシートを取得できません（${r.status}）。共有設定を「リンクを知っている全員（閲覧可）」にしてください`);
-  const text = await r.text();
-  if (/<html|<!doctype/i.test(text.slice(0, 200))) throw new Error("スプレッドシートが非公開です。共有設定を「リンクを知っている全員（閲覧可）」にしてください");
-  return text;
+  if (!m) throw new Error("GoogleスプレッドシートのURLではありません。ブラウザのアドレスバーのURL（/spreadsheets/d/… を含む）を貼ってください");
+  const id = m[1];
+  const gid = (url.match(/[#&?]gid=(\d+)/) ?? [])[1];
+  const headers = { "User-Agent": "Mozilla/5.0 (compatible; apo-hatch/1.0)", Accept: "text/csv,*/*" };
+  const candidates = [
+    `https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=${gid ?? "0"}`,
+    `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${gid ? `&gid=${gid}` : ""}`,
+    `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv`, // gid不明なら先頭シート
+  ];
+  let lastStatus = 0, sawLogin = false;
+  for (const u of candidates) {
+    let r: Response;
+    try { r = await fetch(u, { redirect: "follow", headers }); } catch { continue; }
+    const finalUrl = (r as any).url || "";
+    if (/accounts\.google\.com|ServiceLogin/i.test(finalUrl)) { sawLogin = true; continue; }
+    if (!r.ok) { lastStatus = r.status; continue; }
+    const text = await r.text();
+    if (/^\s*<(!doctype|html)/i.test(text.slice(0, 200))) { sawLogin = true; continue; } // ログイン/エラーHTML
+    if (text.trim()) return text;
+  }
+  if (sawLogin) throw new Error("スプレッドシートが非公開のようです。共有を「リンクを知っている全員（閲覧可）」にしてから、対象タブを開いた状態のURL（末尾に #gid=… が付きます）を貼ってください");
+  throw new Error(`スプレッドシートを取得できません（${lastStatus || "不明"}）。共有を「リンクを知っている全員（閲覧可）」にし、対象タブを開いた状態のURL（末尾 #gid=… 付き）を貼ってください。うまくいかない場合はCSV書き出し（ファイル→ダウンロード→CSV）でも取り込めます`);
 }
 
 app.post("/campaigns/:id/preview", async (req, res) => {
