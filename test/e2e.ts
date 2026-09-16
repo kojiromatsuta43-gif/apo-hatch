@@ -166,6 +166,16 @@ const server = http.createServer(async (req, res) => {
     <p>内容 <textarea name="msg" maxlength="120"></textarea></p><button>送信</button></form>`));
   if (p === "/strictnum" && req.method === "POST") { const b = await parseBody(req); if (!/^\d+$/.test(b.tel ?? "")) return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p>いつもご利用ありがとうございます。</p><p class="error">電話番号は半角数字で入力してください</p>`)); received.strictnum = b; return send(page("完了", `<h1>送信完了</h1>`)); }
 
+  // 15. 「姓・名」ラベル1つに入力欄2つ（di-v.co.jp の実例）＋「フリガナ（セイ・メイ）」も同じ形。
+  //     欄を単独判定すると2欄とも「姓」になり「松田 松田」と入る事故があった。同じ値ならエラーにする
+  if (p === "/seimei" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/seimei"><table>
+    <tr><th>会社名</th><td><input type="text" name="co"></td></tr>
+    <tr><th>姓・名</th><td><input type="text" name="nm1"> <input type="text" name="nm2"></td></tr>
+    <tr><th>フリガナ（セイ・メイ）</th><td><input type="text" name="kn1"> <input type="text" name="kn2"></td></tr>
+    <tr><th>メールアドレス</th><td><input type="email" name="mail"></td></tr>
+    <tr><th>お問い合わせ内容</th><td><textarea name="msg"></textarea></td></tr></table><button>送信</button></form>`));
+  if (p === "/seimei" && req.method === "POST") { const b = await parseBody(req); if (!b.nm1 || !b.nm2 || b.nm1 === b.nm2 || (b.kn1 && b.kn1 === b.kn2)) return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p class="error">姓と名を正しく入力してください</p>`)); received.seimei = b; return send(page("完了", `<h1>送信完了</h1><p>お問い合わせを受け付けました。</p>`)); }
+
   // 14. Cloudflare 風のブラウザ確認ページ
   if (p === "/challenge") return send(`<!doctype html><html><head><meta charset="utf-8"><title>Just a moment...</title></head><body><h1>Checking your browser before accessing the site.</h1><form><textarea name="x"></textarea><input name="y"><button>Continue</button></form></body></html>`);
 
@@ -201,6 +211,7 @@ const rows: import("../src/csv.js").CompanyRow[] = [
   { company_name: "オーバーレイ社", form_url: `${base}/overlay`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "半角数字社", form_url: `${base}/strictnum`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "チャレンジ社", form_url: `${base}/challenge`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "姓名一体社", form_url: `${base}/seimei`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
 ];
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
@@ -208,11 +219,11 @@ const alias = (i: number, host: string) => { rows[i].form_url = rows[i].form_url
 // 以前は 127.0.0.2〜14 を使っていたが、macOSでは sudo ifconfig lo0 alias が必要で再起動のたびに消えるため、
 // 何も設定しなくても 127.0.0.1 に解決される <名前>.localhost 方式に変更した。
 alias(1, "e2.localhost"); alias(2, "e3.localhost"); alias(3, "e4.localhost"); alias(4, "e5.localhost");
-alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost");
+alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost"); alias(15, "e15.localhost");
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
-assert.equal(summary.added, 14);
+assert.equal(summary.added, 15);
 assert.equal(summary.excluded, 1);
 
 const browser = await launchBrowser();
@@ -283,6 +294,9 @@ assert.equal(results["半角数字社"], "sent", "半角数字のみの電話 + 
 assert.equal(received.strictnum.tel, "0312345678");
 assert.ok(received.strictnum.msg.length <= 120 && received.strictnum.msg.length > 40, "本文がmaxlengthに収まる");
 assert.equal(results["チャレンジ社"], "skip_captcha", "ブラウザ確認ページはスキップ");
+assert.equal(results["姓名一体社"], "sent", "「姓・名」ラベル1つに欄2つ");
+assert.equal(received.seimei.nm1, "松田", "左の欄は姓"); assert.equal(received.seimei.nm2, "幸次郎", "右の欄は名");
+assert.equal(received.seimei.kn1, "マツダ", "左のカナはセイ"); assert.equal(received.seimei.kn2, "コウジロウ", "右のカナはメイ");
 
 // 事前チェック（フォーム探索・お断り・メール発見）
 {

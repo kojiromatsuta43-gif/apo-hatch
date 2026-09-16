@@ -216,7 +216,8 @@ function splitName(full: string): [string, string] {
   if (parts.length >= 2) return [parts[0], parts.slice(1).join(" ")];
   const n = full.trim();
   if (n.length >= 3) return [n.slice(0, Math.min(2, n.length - 1)), n.slice(Math.min(2, n.length - 1))];
-  return [n, n];
+  // 分けられない短い名前で [n, n] を返すと「田中 田中」になる。名は空にして未入力扱いにする
+  return [n, ""];
 }
 function splitTel(tel: string): string[] {
   const digits = tel.replace(/[^\d]/g, "");
@@ -287,6 +288,37 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
   // 段階式フォームの1ページ目（本文欄はまだ出ていない）は、見えている欄を全部対象にする
   const scoped = msgField ? fields.filter((f) => f.formIndex === msgField.formIndex) : fields;
 
+  // 項目の種類。欄を1つずつ単独で判定すると、「姓・名」のように1つのラベルに入力欄が2つ並ぶフォームで
+  // 2欄とも「姓」になり「田中 田中」と送ってしまう（実例: di-v.co.jp の name_last#2,name_last#3）。
+  // 同様に「フリガナ」＋「メイ」で セイ欄にフルネーム・メイ欄に崩れた値が入った例もある。
+  // 隣り合う2欄が同じ系統（名前／カナ）で「左=姓・右=名」になっていなければ、左を姓・右を名に振り分ける。
+  const catMap = new Map<number, Category>();
+  for (const f of scoped) catMap.set(f.idx, classify(f));
+  const textLike = scoped.filter((f) => f.tag === "input" && !["radio", "checkbox", "hidden", "submit", "button", "reset", "image", "file"].includes(f.type));
+  const looksPaired = (a: FieldInfo, b: FieldInfo) => {
+    if (/(姓|苗字|名字).{0,4}名|セイ.{0,4}メイ|last.{0,12}first|first.{0,12}last/i.test(`${a.sig} ${b.sig}`)) return true;
+    const base = (n: string) => n.replace(/(\[\d+\]|[_-]?\d+)$/, "");
+    return Boolean(a.name && b.name && a.name !== b.name && base(a.name) === base(b.name));
+  };
+  const family = (c: Category | undefined) => (c === "name" || c === "name_last" || c === "name_first" ? "name" : c === "kana" || c === "kana_last" || c === "kana_first" ? "kana" : null);
+  for (let i = 0; i + 1 < textLike.length; i++) {
+    const a = textLike[i], b = textLike[i + 1];
+    if (a.formIndex !== b.formIndex) continue;
+    const ca = catMap.get(a.idx), cb = catMap.get(b.idx), fam = family(ca);
+    if (!fam || fam !== family(cb)) continue;
+    const last = `${fam}_last` as Category, first = `${fam}_first` as Category;
+    if (ca === last && cb === first) { i++; continue; } // 正しく判定済み
+    const kind = (c: Category | undefined) => (c === last ? "L" : c === first ? "F" : "G"); // G=区別なし（氏名・フリガナ）
+    const k = kind(ca) + kind(cb);
+    // LL/FF/GF/LG は明らかに姓名の2欄。GG は「お名前 [ ][ ]」のようにラベル共有か name が連番のときだけ。FL（名→姓の順）はそのまま
+    if (k === "LL" || k === "FF" || k === "GF" || k === "LG" || (k === "GG" && looksPaired(a, b))) {
+      catMap.set(a.idx, last); catMap.set(b.idx, first);
+      report.log.push(`姓名を振り分け: idx${a.idx}=${last} idx${b.idx}=${first}（元 ${ca},${cb}）`);
+      i++;
+    }
+  }
+  const catOf = (f: FieldInfo): Category => catMap.get(f.idx) ?? classify(f);
+
   const counters: Record<string, number> = {};
   const loc = (f: FieldInfo) => target.locator(`[data-fo-idx="${f.idx}"]`);
   const setText = async (f: FieldInfo, value: string) => {
@@ -322,7 +354,7 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
   const handledRadio = new Set<string>();
 
   for (const f of scoped) {
-    const cat = classify(f);
+    const cat = catOf(f);
     if (cat === "ignore") continue;
     const nth = (counters[cat] = (counters[cat] ?? 0) + 1);
     let ok = false;
