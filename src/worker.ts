@@ -2,10 +2,10 @@
 // 本体組み込み時は Railway の別サービス（form-worker）としてこのファイルを動かし、DBだけ共有／APIで取りに行く。
 import fs from "node:fs";
 import type { Browser } from "playwright";
-import { getDb, allowsEmailFallback, findGroupDuplicate, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
+import { getDb, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
-import { hasEntity, extractLegalName } from "./company.js";
+import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
 
 const running = new Map<number, { stop: boolean }>();
@@ -68,10 +68,21 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
   const db = getDb();
   const job = db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
   const { campaign, sender } = loadCampaign(job.campaign_id);
-  // 事前チェックを通っていない場合の保険: 社名に法人格が無ければ、キャッシュ済みのHP本文から正式名称を補う（通信もAIも不要）
+  // 社名に法人格（株式会社など）が無ければ、会社のホームページの表記から正式名称を補う（AI不要・0円）。
+  // 事前チェックはフォームの会社だけが対象なので、メール送信の会社はここで補う（以前は補われていなかった）。
+  // まずキャッシュ済みのHP本文、無ければブラウザを使わずにHPの文字だけを読む。URLが無ければメールのドメイン（フリーメールは除く）
   if (!job.is_test && !hasEntity(job.company_name)) {
     const cached = db.prepare("SELECT title, text FROM site_cache WHERE domain=?").get(job.domain) as { title: string; text: string } | undefined;
-    const legal = cached ? extractLegalName(job.company_name, `${cached.title}\n${cached.text}`) : null;
+    let legal = cached ? extractLegalName(job.company_name, `${cached.title}\n${cached.text}`) : null;
+    const siteUrl = job.site_url || (job.domain && !FREE_MAIL_DOMAINS.has(job.domain) ? `https://${job.domain}/` : "");
+    if (!legal && siteUrl) {
+      const found = await findLegalNameFromSite(job.company_name, siteUrl.startsWith("http") ? siteUrl : `https://${siteUrl}`);
+      legal = found.legal;
+      // 文字が十分に取れたときだけキャッシュする（AI文面用にも使われるため、中身の薄いページは残さない）
+      if (!cached && job.domain && found.top.text.length > 200) {
+        db.prepare("INSERT INTO site_cache(domain,title,text) VALUES(?,?,?) ON CONFLICT(domain) DO NOTHING").run(job.domain, found.top.title, found.top.text);
+      }
+    }
     if (legal) { db.prepare("UPDATE form_jobs SET company_name=? WHERE id=?").run(legal, jobId); job.company_name = legal; }
   }
   // 今回が再試行で、前回が失敗系だったら「直前の失敗」を覚えておく（送信済みになったとき履歴として見せる）

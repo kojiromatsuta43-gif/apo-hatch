@@ -207,7 +207,12 @@ const server = http.createServer(async (req, res) => {
   // 14. Cloudflare 風のブラウザ確認ページ
   if (p === "/challenge") return send(`<!doctype html><html><head><meta charset="utf-8"><title>Just a moment...</title></head><body><h1>Checking your browser before accessing the site.</h1><form><textarea name="x"></textarea><input name="y"><button>Continue</button></form></body></html>`);
 
-  if (p === "/company") return send(page("会社概要", `<h1>会社概要</h1>`));
+  // 21. メール送信の会社の社名補完用（ブラウザを使わずにHPの文字だけを読む）。
+  //     /legal-utf8: フッターに正式名称。/legal-sjis: 古いサイトに多い Shift_JIS（文字コード判定の確認）。
+  //     /legal-sub: トップには無く /company/ にだけ正式名称（会社概要ページまで見に行くかの確認）
+  if (p === "/legal-utf8") return send(`<!doctype html><html><head><meta charset="utf-8"><title>ホーム</title></head><body><p>ようこそ</p><footer>Copyright &copy; 2026 株式会社メール補完 All Rights Reserved.</footer></body></html>`);
+  if (p === "/legal-sjis") { res.writeHead(200, { "content-type": "text/html" }); return res.end(Buffer.from("3c21646f63747970652068746d6c3e3c68746d6c3e3c686561643e3c6d65746120636861727365743d2253686966745f4a4953223e3c7469746c653e837a815b83803c2f7469746c653e3c2f686561643e3c626f64793e3c703e82e682a482b182bb3c2f703e3c666f6f7465723e436f707972696768742026636f70793b2032303236208a948eae89ef8ed0835683748367835783588fa48e9620416c6c205269676874732052657365727665642e3c2f666f6f7465723e3c2f626f64793e3c2f68746d6c3e", "hex")); }
+  if (p === "/company" || p === "/company/") return send(page("会社概要", `<h1>会社概要</h1><p>商号 合同会社サブページ</p>`));
   if (p === "/recruit") return send(page("採用情報", `<h1>採用情報</h1><form method="post" action="/recruit"><input name="name"><textarea name="pr"></textarea><button>応募する</button></form>`));
   send(page("404", "<h1>Not Found</h1>"), 404);
 });
@@ -377,6 +382,29 @@ assert.equal(again.duplicated, 1);
   importRowsToCampaign(f1, [{ ...row("個人A", "", "a.taro@gmail.com") }]);
   const s4 = importRowsToCampaign(f2, [{ ...row("個人B", "", "b.hanako@gmail.com") }, { ...row("個人A", "", "a.taro@gmail.com") }]);
   assert.equal(s4.added, 1, "フリーメールは同じドメインでも別アドレスなら別の会社"); assert.equal(s4.duplicated, 1, "同じアドレスは重複");
+}
+
+// メール送信の会社でも、社名に法人格が無ければHPの表記から補う（AI不要）。送信は dryRun で行わない
+{
+  const cid = db.prepare(`INSERT INTO form_campaigns(name,sender_id,mode,subject_text,template_text,channel) VALUES(?,?,?,?,?,?)`).run("メール補完", senderId, "template", "件名", DEFAULT_TEMPLATE, "email_only").lastInsertRowid as number;
+  const mkRow = (company: string, site: string, email: string): import("../src/csv.js").CompanyRow => ({ company_name: company, form_url: "", site_url: site, email, industry: "", sub_industry: "", prefecture: "", representative: "" });
+  importRowsToCampaign(cid, [
+    mkRow("メール補完", `http://m1.localhost:${port}/legal-utf8`, "info@m1.example.jp"),
+    mkRow("シフトジス商事", `http://m2.localhost:${port}/legal-sjis`, "info@m2.example.jp"),
+    mkRow("サブページ", `http://m3.localhost:${port}/top-without-name`, "info@m3.example.jp"),
+    mkRow("株式会社そのまま", `http://m4.localhost:${port}/legal-utf8`, "info@m4.example.jp"),
+    mkRow("見つからない社", `http://m5.localhost:${port}/legal-utf8`, "info@m5.example.jp"),
+  ]);
+  const b3 = await launchBrowser();
+  try {
+    for (const j of db.prepare("SELECT id FROM form_jobs WHERE campaign_id=?").all(cid) as { id: number }[]) await processJob(b3, j.id, { dryRun: true });
+  } finally { await b3.close(); }
+  const names = (db.prepare("SELECT company_name FROM form_jobs WHERE campaign_id=? ORDER BY id").all(cid) as { company_name: string }[]).map((r) => r.company_name);
+  assert.equal(names[0], "株式会社メール補完", "メールの会社もHPのフッターから法人格を補う");
+  assert.equal(names[1], "株式会社シフトジス商事", "Shift_JIS のサイトでも読める");
+  assert.equal(names[2], "合同会社サブページ", "トップに無ければ会社概要ページ（/company/）から補う");
+  assert.equal(names[3], "株式会社そのまま", "すでに法人格があれば変えない");
+  assert.equal(names[4], "見つからない社", "HPに表記が無ければそのまま");
 }
 
 server.close();

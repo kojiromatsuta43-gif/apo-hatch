@@ -30,3 +30,54 @@ export function extractLegalName(name: string, text: string): string | null {
   if (!count.size) return null;
   return [...count.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
+
+
+// ---- ブラウザを使わずにホームページの文字だけを読む（メール送信の会社でも社名を補えるように。AI不要・0円）----
+const LITE_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+function htmlToText(html: string): { title: string; text: string } {
+  const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").trim();
+  const body = html
+    .replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&copy;/g, "©").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/[ \t　]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n");
+  return { title, text: body.slice(0, 20000) };
+}
+
+/** URL の HTML を取得して文字にする（文字コードは HTTP ヘッダ → meta charset の順で判定。Shift_JIS の古いサイト対策）。失敗時は空 */
+export async function fetchSiteTextLite(url: string, timeoutMs = 7000): Promise<{ title: string; text: string }> {
+  try {
+    const r = await fetch(url, { headers: { "User-Agent": LITE_UA, Accept: "text/html,*/*", "Accept-Language": "ja" }, redirect: "follow", signal: AbortSignal.timeout(timeoutMs) });
+    if (!r.ok || !/html|text/i.test(r.headers.get("content-type") || "text/html")) return { title: "", text: "" };
+    const buf = new Uint8Array(await r.arrayBuffer());
+    const head = new TextDecoder("latin1").decode(buf.slice(0, 4000));
+    let cs = (r.headers.get("content-type")?.match(/charset=([\w-]+)/i)?.[1] || head.match(/<meta[^>]+charset=["']?([\w-]+)/i)?.[1] || "utf-8").toLowerCase();
+    if (/sjis|x-sjis|shift-jis/.test(cs)) cs = "shift_jis";
+    let html: string;
+    try { html = new TextDecoder(cs).decode(buf); } catch { html = new TextDecoder("utf-8").decode(buf); }
+    return htmlToText(html);
+  } catch {
+    return { title: "", text: "" };
+  }
+}
+
+/** 社名に法人格が無いとき、会社のホームページ（トップ → よくある会社概要ページ）の表記から正式名称を探す。
+ *  見つからなければ null。text は site_cache に残せるようトップページ分を返す */
+export async function findLegalNameFromSite(name: string, siteUrl: string): Promise<{ legal: string | null; top: { title: string; text: string } }> {
+  let origin = "";
+  try { origin = new URL(siteUrl).origin; } catch { return { legal: null, top: { title: "", text: "" } }; }
+  const top = await fetchSiteTextLite(siteUrl);
+  let legal = extractLegalName(name, `${top.title}\n${top.text}`);
+  // 末尾スラッシュ有り・無しの片方でしか開けないサイトがあるので両方見る
+  for (const p of ["/company/", "/company", "/about/", "/company.html", "/corporate/", "/profile/"]) {
+    if (legal) break;
+    const sub = await fetchSiteTextLite(origin + p, 5000);
+    if (sub.text) legal = extractLegalName(name, `${sub.title}\n${sub.text}`);
+  }
+  return { legal, top };
+}
