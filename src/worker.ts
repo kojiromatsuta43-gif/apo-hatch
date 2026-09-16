@@ -167,7 +167,9 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
           const j = await processJob(browser, next.id);
           processed++;
           opts.onProgress?.(j);
-          if (j.status === "failed" && j.attempts < 2 && /(例外|timeout|Timeout|net::|ECONN|socket|接続|判定不能)/.test(j.result_text)) {
+          // 自動再試行は「送信前の通信エラー」だけ。「送信後の判定不能」は送信ボタンを押し済みで、
+          // 実際には届いていることが多い（例: 完了文言を知らなかっただけ）。再試行すると同じ会社に二重送信になるため除外する
+          if (j.status === "failed" && j.attempts < 2 && !/送信後の判定不能/.test(j.result_text) && /(例外|timeout|Timeout|net::|ECONN|socket|接続)/.test(j.result_text)) {
             db.prepare("UPDATE form_jobs SET status='queued', result_text=? WHERE id=?").run(`再試行待ち: ${j.result_text.split("\n")[0]}`, j.id);
           }
         } catch (e) {

@@ -15,6 +15,7 @@ const { DEFAULT_TEMPLATE } = await import("../src/message.js");
 
 const received: Record<string, Record<string, string>> = {};
 const simpleHits: Record<string, string>[] = [];
+let itadakiHits = 0;
 
 const page = (title: string, body: string) => `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${title}</title></head><body><header><nav><a href="/">ホーム</a> <a href="/company">会社概要</a> <a href="/recruit">採用情報</a> <a href="/simple">お問い合わせ</a></nav></header>${body}<footer>© Test Co.</footer></body></html>`;
 
@@ -176,6 +177,11 @@ const server = http.createServer(async (req, res) => {
     <tr><th>お問い合わせ内容</th><td><textarea name="msg"></textarea></td></tr></table><button>送信</button></form>`));
   if (p === "/seimei" && req.method === "POST") { const b = await parseBody(req); if (!b.nm1 || !b.nm2 || b.nm1 === b.nm2 || (b.kn1 && b.kn1 === b.kn2)) return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p class="error">姓と名を正しく入力してください</p>`)); received.seimei = b; return send(page("完了", `<h1>送信完了</h1><p>お問い合わせを受け付けました。</p>`)); }
 
+  // 16. 完了ページが同じURLで「お問い合わせいただきありがとうございます。担当者より、追ってご連絡いたします。」だけ（aidas.co.jp の実例）。
+  //     以前は完了と判定できず「判定不能→失敗」になり、自動再試行で二重送信していた。POST回数も数える
+  if (p === "/itadaki" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p>お電話でのお問い合わせ：03-0000-0000</p><form method="post" action="/itadaki"><p>会社名 <input name="co"></p><p>お名前 <input name="nm"></p><p>メール <input type="email" name="mail"></p><p>内容 <textarea name="msg"></textarea></p><button>送信</button></form>`));
+  if (p === "/itadaki" && req.method === "POST") { received.itadaki = await parseBody(req); itadakiHits++; return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p>お電話でのお問い合わせ：03-0000-0000</p><p>お問い合わせいただきありがとうございます。<br>担当者より、追ってご連絡いたします。</p>`)); }
+
   // 14. Cloudflare 風のブラウザ確認ページ
   if (p === "/challenge") return send(`<!doctype html><html><head><meta charset="utf-8"><title>Just a moment...</title></head><body><h1>Checking your browser before accessing the site.</h1><form><textarea name="x"></textarea><input name="y"><button>Continue</button></form></body></html>`);
 
@@ -212,6 +218,7 @@ const rows: import("../src/csv.js").CompanyRow[] = [
   { company_name: "半角数字社", form_url: `${base}/strictnum`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "チャレンジ社", form_url: `${base}/challenge`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "姓名一体社", form_url: `${base}/seimei`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "御礼文言社", form_url: `${base}/itadaki`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
 ];
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
@@ -219,11 +226,11 @@ const alias = (i: number, host: string) => { rows[i].form_url = rows[i].form_url
 // 以前は 127.0.0.2〜14 を使っていたが、macOSでは sudo ifconfig lo0 alias が必要で再起動のたびに消えるため、
 // 何も設定しなくても 127.0.0.1 に解決される <名前>.localhost 方式に変更した。
 alias(1, "e2.localhost"); alias(2, "e3.localhost"); alias(3, "e4.localhost"); alias(4, "e5.localhost");
-alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost"); alias(15, "e15.localhost");
+alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); rows[10].site_url = rows[10].site_url.replace("127.0.0.1", "e10.localhost"); alias(11, "e11.localhost"); alias(12, "e12.localhost"); alias(13, "e13.localhost"); alias(14, "e14.localhost"); alias(15, "e15.localhost"); alias(16, "e16.localhost");
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
-assert.equal(summary.added, 15);
+assert.equal(summary.added, 16);
 assert.equal(summary.excluded, 1);
 
 const browser = await launchBrowser();
@@ -297,6 +304,8 @@ assert.equal(results["チャレンジ社"], "skip_captcha", "ブラウザ確認�
 assert.equal(results["姓名一体社"], "sent", "「姓・名」ラベル1つに欄2つ");
 assert.equal(received.seimei.nm1, "松田", "左の欄は姓"); assert.equal(received.seimei.nm2, "幸次郎", "右の欄は名");
 assert.equal(received.seimei.kn1, "マツダ", "左のカナはセイ"); assert.equal(received.seimei.kn2, "コウジロウ", "右のカナはメイ");
+assert.equal(results["御礼文言社"], "sent", "「お問い合わせいただきありがとうございます。担当者より追ってご連絡」で完了判定");
+assert.equal(itadakiHits, 1, "二重送信しない（POSTは1回だけ）");
 
 // 事前チェック（フォーム探索・お断り・メール発見）
 {

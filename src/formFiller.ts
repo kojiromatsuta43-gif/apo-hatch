@@ -703,7 +703,9 @@ export async function clickNextButton(target: Page | Frame, page: Page, log: str
 }
 
 // ---- 結果判定 ----
-const SUCCESS_RE = /(送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent)/i;
+// 「お問い合わせいただきありがとうございます。担当者より、追ってご連絡いたします。」（aidas.co.jp の実例）のように
+// 「〜いただき／頂きありがとう」「担当者より追ってご連絡」の形を知らず判定不能→失敗扱いになっていたため追加
+const SUCCESS_RE = /((お問い?合わ?せ|ご連絡|ご送信|送信|ご応募|ご依頼|ご相談|ご登録|お申し?込み)(を)?(いただき|頂き)(まして)?[、,]?(誠に|大変|本当に)?(ありがとう|有難う|有り難う)|(担当(者)?|スタッフ|係)(より|から)[、,]?(追って|改めて|折り返し|後ほど|のちほど)?[、,]?(ご?連絡|ご?返信|ご?回答)(いた|致|させていただ|を差し上げ)|追って(ご?連絡|ご?返信)(いた|致|させていただ)|送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent)/i;
 const SUCCESS_URL_RE = /(thanks|thank-?you|complete|completed|done|sent|success|finish|kanryo|kanryou|touroku_kanryo)/i;
 const ERROR_RE = /(入力してください|必須項目|未入力|正しく入力|形式が|不正|エラーが|error(s)? (occurred|found)|is required|invalid|入力内容に誤り|確認してください)/i;
 
