@@ -5,6 +5,18 @@ import { getDb } from "./db.js";
 
 export type Vars = Record<string, string>;
 
+/** 名前に「様」を付ける。連名（「真子 就有、石原 圭」「A／B」「A,B」「A および B」等）は一人ずつ「様」を付けて「、」でつなぐ。
+ *  すでに 様/さん/殿 が付いていれば重ねない。空なら「ご担当者様」。
+ *  「・」はカタカナ名の中（マイケル・ジョーダン）に出るため区切りとして扱わない。 */
+export function withSama(raw: string | null | undefined): string {
+  const parts = String(raw ?? "")
+    .split(/[、,，／/＆&]|[\s　]+(?:および|及び|と)[\s　]+/)
+    .map((x) => x.replace(/^[\s　]+|[\s　]+$/g, "").replace(/(様|さん|殿)$/, "").replace(/[\s　]+$/g, ""))
+    .filter(Boolean);
+  if (!parts.length) return "ご担当者様";
+  return parts.map((x) => `${x}様`).join("、");
+}
+
 export function buildVars(job: Pick<Job, "company_name" | "industry" | "sub_industry" | "prefecture" | "representative">, sender: SenderProfile): Vars {
   return {
     会社名: job.company_name,
@@ -14,7 +26,7 @@ export function buildVars(job: Pick<Job, "company_name" | "industry" | "sub_indu
     小業界: job.sub_industry,
     都道府県: job.prefecture,
     代表者名: job.representative,
-    代表者: job.representative ? `${job.representative}様` : "ご担当者様",
+    代表者: withSama(job.representative), // 連名は全員に様（「A、B様」にならないように）
     自社名: sender.company,
     担当者: sender.person,
     自社メール: sender.email,
@@ -24,7 +36,9 @@ export function buildVars(job: Pick<Job, "company_name" | "industry" | "sub_indu
 }
 
 export function renderTemplate(tpl: string, vars: Vars): string {
-  return tpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, k: string) => vars[k] ?? "");
+  // テンプレに「{{代表者名}}様」「{{代表者}}様」と書かれていても、連名で一人ずつ様が付く {{代表者}} に寄せる（様の重複も防ぐ）
+  const t = tpl.replace(/\{\{\s*代表者名?\s*\}\}[\s　]*様/g, "{{代表者}}");
+  return t.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, k: string) => vars[k] ?? "");
 }
 
 // ---- LLM ----
