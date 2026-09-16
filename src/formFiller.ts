@@ -728,7 +728,7 @@ export async function clickNextButton(target: Page | Frame, page: Page, log: str
 // ---- 結果判定 ----
 // 「お問い合わせいただきありがとうございます。担当者より、追ってご連絡いたします。」（aidas.co.jp の実例）のように
 // 「〜いただき／頂きありがとう」「担当者より追ってご連絡」の形を知らず判定不能→失敗扱いになっていたため追加
-const SUCCESS_RE = /((お問い?合わ?せ|ご連絡|ご送信|送信|ご応募|ご依頼|ご相談|ご登録|お申し?込み)(を)?(いただき|頂き)(まして)?[、,]?(誠に|大変|本当に)?(ありがとう|有難う|有り難う)|(担当(者)?|スタッフ|係)(より|から)[、,]?(追って|改めて|折り返し|後ほど|のちほど)?[、,]?(ご?連絡|ご?返信|ご?回答)(いた|致|させていただ|を差し上げ)|追って(ご?連絡|ご?返信)(いた|致|させていただ)|送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent)/i;
+const SUCCESS_RE = /((お問い?合わ?せ|ご連絡|ご送信|送信|ご応募|ご依頼|ご相談|ご登録|お申し?込み)(を)?(いただき|頂き)(まして)?[、,]?(誠に|大変|本当に)?(ありがとう|有難う|有り難う)|(担当(者)?|スタッフ|係)(より|から)[、,]?(追って|改めて|折り返し|後ほど|のちほど)?[、,]?(ご?連絡|ご?返信|ご?回答)(いた|致|させていただ|を差し上げ)|追って(ご?連絡|ご?返信)(いた|致|させていただ)|送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|(ご|お)?回答(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent)/i;
 const SUCCESS_URL_RE = /(thanks|thank-?you|complete|completed|done|sent|success|finish|kanryo|kanryou|touroku_kanryo)/i;
 const ERROR_RE = /(入力してください|必須項目|未入力|正しく入力|形式が|不正|エラーが|error(s)? (occurred|found)|is required|invalid|入力内容に誤り|確認してください)/i;
 
@@ -823,5 +823,21 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
     return { status: "unsure", detail: "確認画面で止まっている" };
   }
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
+  // 同じページのまま入力内容が全部消えて「ありがとうございました。」だけが出るフォーム（ページ遷移も完了文言の定型もない）。
+  // 以前は「判定不能→失敗」になり、利用者が手動で送り直して二重送信になっていた。
+  // 送信前より「ありがとうございま」が増えた（ヘッダーの「ご興味をお持ちいただき、ありがとうございます」等は送信前から在るので数に入らない）
+  // かつ、入力していた文字欄・本文欄が全て空になった場合だけ送信済みとみなす
+  if (afterSubmit && hadFieldsBefore > 0) {
+    const thanks = (s: string) => (s.match(/ありがとうございま|有難うございま|有り難うございま/g) || []).length;
+    if (thanks(compact) > thanks(beforeCompact)) {
+      let filled = 0;
+      for (const fr of page.frames()) {
+        const n = await evalFrame(fr, () => Array.from(document.querySelectorAll("textarea, input[type=text], input[type=email], input[type=tel], input:not([type])"))
+          .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && ((e as HTMLInputElement).value || "").trim() !== ""; }).length);
+        filled += n ?? 0;
+      }
+      if (filled === 0) return { status: "sent", detail: "入力内容が消えてお礼の文言が出た（同じページで完了表示）" };
+    }
+  }
   return { status: "unsure", detail: "完了もエラーも検知できず" };
 }
