@@ -78,6 +78,18 @@ function ownedJob(req: express.Request, id: number): Job | undefined {
 }
 const DENIED = "この画面を見る権限がありません";
 
+/** 「失敗した会社を再送信」の対象＝会社（ドメイン）ごとに最新のジョブが 失敗／フォーム無し のもの。
+ *  同じ会社の古い試行（その後に成功・別状態になった行）は含めない。一覧・件数・再送信の3か所で共通に使う。 */
+function retryTargetJobs(campaignId: number): { id: number; company_name: string; status: string; result_text: string }[] {
+  return db.prepare(`SELECT j.id, j.company_name, j.status, j.result_text FROM form_jobs j
+    WHERE j.campaign_id=? AND j.is_test=0
+      AND j.id = (SELECT x.id FROM form_jobs x WHERE x.campaign_id=j.campaign_id AND x.is_test=0
+                  AND COALESCE(NULLIF(x.domain,''),CAST(x.id AS TEXT)) = COALESCE(NULLIF(j.domain,''),CAST(j.id AS TEXT))
+                  ORDER BY x.updated_at DESC, x.id DESC LIMIT 1)
+      AND j.status IN ('failed','skip_no_form')
+    ORDER BY j.company_name`).all(campaignId) as { id: number; company_name: string; status: string; result_text: string }[];
+}
+
 /** スクリーンショットは自分のジョブのものだけ見せる（ファイル名 job-<id>.png） */
 app.get("/screenshots/:file", (req, res) => {
   const file = String(req.params.file);
@@ -259,7 +271,7 @@ app.get("/campaigns/:id", (req, res) => {
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
   // 「失敗した会社を再送信」の対象を一覧で見せる（どの会社が対象か分かるように）
-  const retryTargets = db.prepare("SELECT id, company_name, status, result_text FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status IN ('failed','skip_no_form') ORDER BY id").all(id) as { id: number; company_name: string; status: string; result_text: string }[];
+  const retryTargets = retryTargetJobs(id);
   res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets }), takeFlash(req), navUser(req), updateReady));
 });
 
@@ -528,18 +540,41 @@ app.post("/campaigns/:id/duplicate", (req, res) => {
 app.post("/campaigns/:id/requeue-failed", (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
-  const r = db.prepare("UPDATE form_jobs SET status='queued', result_text='', updated_at=datetime('now') WHERE campaign_id=? AND is_test=0 AND status IN ('failed','skip_no_form')").run(id);
-  redirectWith(res, `/campaigns/${id}`, `失敗していた ${r.changes} 件を待機中に戻しました。「開始」で再送信できます`);
+  // 会社単位・最新の結果が失敗のものだけを戻す（古い失敗行まで戻すと同じ会社に何度も送ってしまうため）
+  const targets = retryTargetJobs(id);
+  if (!targets.length) return redirectWith(res, `/campaigns/${id}`, "再送信の対象がありません");
+  const ph = targets.map(() => "?").join(",");
+  const r = db.prepare(`UPDATE form_jobs SET status='queued', result_text='', updated_at=datetime('now') WHERE id IN (${ph})`).run(...targets.map((t) => t.id));
+  redirectWith(res, `/campaigns/${id}`, `失敗していた ${r.changes} 社を待機中に戻しました。「開始」で再送信できます`);
 });
 
 // 手動で送れた会社を「送信済み（手動）」にする（手動送信リストの消し込み用）
 // 間違って取り込んだ会社などを送信一覧から完全に消す（記録ごと削除。送信済みを消すとその会社への再送防止は効かなくなる）
+// 選択した会社をまとめて削除（記録ごと）。このキャンペーンに属するジョブだけを対象にする
+app.post("/campaigns/:id/bulk-delete", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const raw = req.body.ids;
+  const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map((v: unknown) => Number(v)).filter((n: number) => Number.isInteger(n) && n > 0);
+  if (!ids.length) return redirectWith(res, `/campaigns/${id}`, "削除する会社が選択されていません");
+  const ph = ids.map(() => "?").join(",");
+  // 選んだ行の会社（ドメイン）ごと、履歴も含めてまとめて消す
+  const doms = (db.prepare(`SELECT DISTINCT domain FROM form_jobs WHERE campaign_id=? AND is_test=0 AND id IN (${ph}) AND domain<>''`).all(id, ...ids) as { domain: string }[]).map((r) => r.domain);
+  let changes = 0;
+  if (doms.length) changes += db.prepare(`DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND domain IN (${doms.map(() => "?").join(",")})`).run(id, ...doms).changes;
+  changes += db.prepare(`DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND id IN (${ph})`).run(id, ...ids).changes; // ドメインが無い行
+  redirectWith(res, `/campaigns/${id}`, `${changes} 件を送信一覧から削除しました`);
+});
+
 app.post("/jobs/:id/delete", (req, res) => {
   const id = Number(req.params.id);
   const j = ownedJob(req, id);
   if (!j) return res.status(404).send("not found");
-  db.prepare("DELETE FROM form_jobs WHERE id=?").run(id);
-  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} を送信一覧から削除しました`);
+  // 一覧では同じ会社（ドメイン）を1行にまとめているので、履歴もまとめて消す
+  const r = j.domain
+    ? db.prepare("DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND domain=?").run(j.campaign_id, j.domain)
+    : db.prepare("DELETE FROM form_jobs WHERE id=?").run(id);
+  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} の記録 ${r.changes} 件を送信一覧から削除しました`);
 });
 
 app.post("/jobs/:id/mark-sent", (req, res) => {
