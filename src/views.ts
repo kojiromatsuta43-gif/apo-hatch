@@ -605,6 +605,12 @@ ${issued ? `<div class="card" style="border-color:var(--honey);background:var(--
 <tr><th>初期パスワード</th><td><code style="font-size:15px">${esc(issued.password)}</code></td></tr></table>
 <p class="muted">初回ログイン時に本人がパスワードを変更する画面になります。</p></div>` : ""}
 <div class="card"><h2 style="margin-top:0">＋ アカウントを発行する</h2>
+<div class="muted small" style="background:var(--honey-50);border:1px solid var(--honey);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+<b>権限の違い</b><br>
+・<b>一般</b>：自分が作った<b>キャンペーン・送信者・送信履歴だけ</b>が見え、操作できます。他の人のデータや、ユーザー管理・設定（AIキー／NGワード）は見えません。日々の営業担当はこちら。<br>
+・<b>管理者</b>：<b>全ユーザーのデータ</b>が見え、<b>アカウントの発行・停止・パスワード再発行</b>や<b>設定（AIキー・NGワード）の変更</b>ができます。運用の責任者だけに付けてください。<br>
+※「営業お断り」の除外リストは、事故防止のため<b>全員で共通に突合</b>されます（各自の画面に出るのは自分が登録した分だけです）。
+</div>
 <form method="post" action="/users">
 <div class="row3">
 <div><label>ログインID（半角英数字）</label><input name="username" placeholder="tanaka" required></div>

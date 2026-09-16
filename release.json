@@ -1,6 +1,6 @@
 {
-  "version": "0.3.38",
-  "notes": "送信者プロフィール：SMTPホストに例と確認方法の説明を追加／担当者名の例を「田中 太郎」に／「担当者名ふりがな」を「担当者名フリガナ」に変更（例：タナカ タロウ）",
+  "version": "0.3.39",
+  "notes": "ユーザー管理に権限（一般／管理者）の違いの説明を追加",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T05:53:34.535Z"
+  "published_at": "2026-09-16T06:14:26.505Z"
 }
