@@ -560,6 +560,25 @@ app.post("/jobs/:id/cancel", (req, res) => {
   redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} をキャンセルしました`);
 });
 // キャンペーンを複製（設定・文面をコピー。会社リストや送信履歴はコピーしない）
+// キャンペーンを削除（取り込んだ会社・送信履歴・スクリーンショット・添付資料も）。除外リストは共通なので残す。
+// 送信中・事前チェック中は、途中の処理と食い違わないよう削除させない
+app.post("/campaigns/:id/delete", (req, res) => {
+  const id = Number(req.params.id);
+  const c = ownedCampaign(req, id);
+  if (!c) return res.status(404).send("not found");
+  if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中のキャンペーンは削除できません。先に止めてから削除してください");
+  const jobIds = (db.prepare("SELECT id FROM form_jobs WHERE campaign_id=?").all(id) as { id: number }[]).map((r) => r.id);
+  db.transaction(() => {
+    db.prepare("DELETE FROM form_jobs WHERE campaign_id=?").run(id);
+    db.prepare("DELETE FROM form_campaigns WHERE id=?").run(id);
+  })();
+  for (const jid of jobIds) fs.rmSync(path.join(SCREENSHOT_DIR, `job-${jid}.png`), { force: true });
+  if (c.attach_path && path.resolve(c.attach_path).startsWith(path.resolve(MATERIAL_DIR))) fs.rmSync(c.attach_path, { force: true });
+  pendingImports.delete(id);
+  lastImports.delete(id);
+  redirectWith(res, "/", `キャンペーン「${c.name}」を削除しました（取り込んだ会社 ${jobIds.length} 件の記録も削除）`);
+});
+
 app.post("/campaigns/:id/duplicate", (req, res) => {
   const id = Number(req.params.id);
   const c = ownedCampaign(req, id);

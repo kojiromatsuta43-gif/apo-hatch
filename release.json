@@ -1,6 +1,6 @@
 {
-  "version": "0.3.58",
-  "notes": "キャンペーンのグループに、昔のキャンペーンもチェックで選んで入れられるように（外すとグループから外れます）",
+  "version": "0.3.59",
+  "notes": "キャンペーンを削除できるように（一覧・編集画面。取り込んだ会社・送信履歴も削除。送信中は削除不可）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T13:54:24.161Z"
+  "published_at": "2026-09-16T14:02:28.374Z"
 }

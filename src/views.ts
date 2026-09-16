@@ -149,7 +149,7 @@ ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 
 </ol>
 <p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(String(c.last_sent).slice(0, 16))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(String(c.last_sent).slice(0, 16))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form> <form method="post" action="/campaigns/${c.id}/delete" class="inline" data-n="${esc(c.name)}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。\\n取り込んだ会社 ${c.total} 件・送信済み ${c.sent} 件の記録もすべて消え、元に戻せません。${c.sent ? "\\n送信済みの会社への再送防止も効かなくなります。" : ""}\\nよろしいですか？')"><button class="btn sub small" style="color:var(--ng)">削除</button></form></td></tr>`).join("")}
 </table>`}`;
 }
 
@@ -240,7 +240,10 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 <h2>資料の添付（任意）</h2>
 <p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>
 <div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg">${defaults.attach_name ? `<p class="muted small">現在の添付: <b>${d("attach_name")}</b>（新しいファイルを選ぶと置き換わります）</p>` : ""}</div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" value="${d("material_url")}" placeholder="https://（Googleドライブ等の共有リンク）"><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
-<p><button class="btn">${editId ? "保存する" : "作成する"}</button></p></form>`;
+<p><button class="btn">${editId ? "保存する" : "作成する"}</button></p></form>
+${editId ? `<div class="card" style="border-color:var(--ng);margin-top:18px"><h2 style="margin-top:0;color:var(--ng)">キャンペーンを削除</h2>
+<p class="muted small">このキャンペーンと、取り込んだ会社・送信履歴・スクリーンショット・添付資料をすべて削除します。<b>元に戻せません。</b><br>送信済みの記録も消えるため、その会社への「再送を止める期間」のチェックが効かなくなります。除外リスト（営業お断り等）は全キャンペーン共通なので残ります。</p>
+<form method="post" action="/campaigns/${editId}/delete" data-n="${d("name")}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。取り込んだ会社・送信履歴もすべて消え、元に戻せません。よろしいですか？')"><button class="btn danger">このキャンペーンを削除する</button></form></div>` : ""}`;
 }
 
 /** CSV取込の結果。何件入ったかだけでなく、除外された会社名まで出す */
