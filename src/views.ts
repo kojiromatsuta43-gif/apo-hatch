@@ -149,7 +149,7 @@ ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 
 </ol>
 <p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a></td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(String(c.last_sent).slice(0, 16))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(String(c.last_sent).slice(0, 16))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form></td></tr>`).join("")}
 </table>`}`;
 }
 
@@ -179,11 +179,13 @@ ${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.compa
 </table><h2>新規追加</h2><div class="card">${senderForm()}</div>`;
 }
 
-export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number) {
+export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number, groups: string[] = []) {
   const d = (k: keyof Campaign, fb: unknown = "") => esc(defaults[k] ?? fb);
   return `<h1>${editId ? `キャンペーンを編集: ${d("name")}` : "新しいキャンペーン"}</h1>
 ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a></p><p class="muted">配信チャネルの変更は、<b>これから取り込む会社</b>に適用されます（取り込み済みの会社の振り分けは変わりません）。</p>` : ""}
 <form method="post" action="${editId ? `/campaigns/${editId}/edit` : "/campaigns"}" class="card" enctype="multipart/form-data">
+<label>グループ（任意）</label><input type="text" name="group_name" value="${d("group_name")}" list="fo-groups" placeholder="例：福岡 飲食 9月" style="max-width:420px"><datalist id="fo-groups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
+<p class="muted small" style="margin:4px 0 12px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・CAPTCHA</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
 <div class="row"><div><label>キャンペーン名</label><input type="text" name="name" value="${d("name")}" required placeholder="福岡 飲食 9月"></div>
 <div><label>送信者</label><select name="sender_id" required>${senders.map((s) => `<option value="${s.id}" ${defaults.sender_id === s.id ? "selected" : ""}>${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select>${senders.length ? "" : '<p class="muted">先に<a href="/senders">送信者</a>を登録してください</p>'}</div></div>
 <label>配信チャネル</label>
@@ -253,7 +255,7 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   const processed = total - cnt("queued");
   const sendPct = total ? Math.round((processed / total) * 100) : 0;
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""} <a class="btn sub small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">✏️ 編集</a></h1>
-<p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${({ template: "テンプレのみ", ai: "全文AI", hybrid: "ハイブリッド", tpl_ai: "テンプレ＋質問AI" } as Record<string, string>)[c.mode] ?? c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
+<p class="muted">${c.group_name ? `グループ: <b>${esc(c.group_name)}</b>（同じグループの別キャンペーンと送り先が重ならないようにしています） / ` : ""}送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${({ template: "テンプレのみ", ai: "全文AI", hybrid: "ハイブリッド", tpl_ai: "テンプレ＋質問AI" } as Record<string, string>)[c.mode] ?? c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 ${(() => {
     const att = extra.attempts ?? {};
     // 「確定件数（会社の重複を除いた実数）」を大きく、試行回数が上回るときだけ「試行 N回」を併記する

@@ -349,5 +349,25 @@ assert.equal(recapHits, 0, "画像認証で止まり実際には送られてい�
 const again = importRowsToCampaign(campaignId, [rows[0]]);
 assert.equal(again.duplicated, 1);
 
+// キャンペーングループ: 同じグループの別キャンペーンで待機中・送信済みの会社は取り込まない。
+// フォーム無し等（連絡できていない）の会社は取り込める。グループなしは従来どおり。フリーメールはアドレス単位で比べる
+{
+  const mk = (name: string, group: string) => db.prepare(`INSERT INTO form_campaigns(name,sender_id,mode,subject_text,template_text,group_name) VALUES(?,?,?,?,?,?)`).run(name, senderId, "template", "件名", DEFAULT_TEMPLATE, group).lastInsertRowid as number;
+  const row = (company: string, site: string, email = ""): import("../src/csv.js").CompanyRow => ({ company_name: company, form_url: "", site_url: site, email, industry: "", sub_industry: "", prefecture: "", representative: "" });
+  const gForm = mk("G-フォーム", "G1"), gMail = mk("G-メール", "G1"), other = mk("別グループ", "G2");
+  importRowsToCampaign(gForm, [row("グループ重複社", "https://dup-group.example.jp/"), row("フォーム無し社", "https://noform-group.example.jp/")]);
+  db.prepare("UPDATE form_jobs SET status='skip_no_form' WHERE campaign_id=? AND domain='noform-group.example.jp'").run(gForm);
+  const s2 = importRowsToCampaign(gMail, [row("グループ重複社", "https://dup-group.example.jp/"), row("フォーム無し社", "https://noform-group.example.jp/")]);
+  assert.equal(s2.duplicated, 1, "同じグループで待機中の会社は取り込まない");
+  assert.ok(s2.excludedRows.some((x) => x.reason.includes("同じグループの「G-フォーム」")), "理由にキャンペーン名");
+  assert.equal(s2.added, 1, "フォーム無しだった会社は同じグループでも取り込める");
+  const s3 = importRowsToCampaign(other, [row("グループ重複社", "https://dup-group.example.jp/")]);
+  assert.equal(s3.added, 1, "別グループなら取り込める");
+  const f1 = mk("G-フリー1", "G3"), f2 = mk("G-フリー2", "G3");
+  importRowsToCampaign(f1, [{ ...row("個人A", "", "a.taro@gmail.com") }]);
+  const s4 = importRowsToCampaign(f2, [{ ...row("個人B", "", "b.hanako@gmail.com") }, { ...row("個人A", "", "a.taro@gmail.com") }]);
+  assert.equal(s4.added, 1, "フリーメールは同じドメインでも別アドレスなら別の会社"); assert.equal(s4.duplicated, 1, "同じアドレスは重複");
+}
+
 server.close();
 console.log("\nALL OK");

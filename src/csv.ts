@@ -1,7 +1,7 @@
 import { hasEntity } from "./company.js";
 // 企業DB（COMPANY_DB.md の列名）や任意のCSVを取り込む。列名の別名に対応。
 import { parse } from "csv-parse/sync";
-import { domainOf, getDb, isExcludedDomain, channelMode } from "./db.js";
+import { domainOf, getDb, isExcludedDomain, channelMode, findGroupDuplicate } from "./db.js";
 
 export type CompanyRow = {
   company_name: string;
@@ -117,7 +117,7 @@ export type ImportSummary = { added: number; addedForm: number; addedEmail: numb
 /** 企業行をキャンペーンのジョブとして登録。チャネル（フォーム／メール）を振り分け、除外・重複は理由を残す */
 export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opts: { dryRun?: boolean } = {}): ImportSummary {
   const db = getDb();
-  const campaign = db.prepare("SELECT channel, resend_days FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number } | undefined;
+  const campaign = db.prepare("SELECT channel, resend_days, group_name FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number; group_name: string } | undefined;
   const resendDays = campaign?.resend_days ?? 90;
   const mode = channelMode(campaign?.channel);
   const summary: ImportSummary = { added: 0, addedForm: 0, addedEmail: 0, excluded: 0, suppressed: 0, duplicated: 0, noUrl: 0, excludedRows: [], noEntity: [] };
@@ -146,10 +146,15 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opt
       seen.add(domain);
       let status = "queued";
       let reason = "";
+      let groupHit: string | null = null;
       if (isExcludedDomain(domain)) { status = "skip_suppressed"; reason = "官公庁・学校等のドメインは既定で除外"; summary.excluded++; note(reason); }
       else if (isSuppressed.get(domain)) { status = "skip_suppressed"; reason = "除外リストに登録済み"; summary.suppressed++; note(reason); }
       else if (hasEmail && isOptedOut.get(r.email)) { status = "skip_optout"; reason = "配信停止・除外済みのアドレス"; summary.suppressed++; note(reason); }
       else if (resendDays > 0 && recentlySent.get(`-${resendDays} days`, domain)) { status = "skip_duplicate"; reason = `${resendDays}日以内に送信済み`; summary.duplicated++; note(reason); }
+      // 同じグループの別キャンペーンで待機中・送信中・送信済みなら登録しない（フォーム無し・失敗・CAPTCHAだった会社は、連絡できていないので対象にしてよい）
+      else if (campaign?.group_name && (groupHit = findGroupDuplicate(db, { groupName: campaign.group_name, campaignId, domain, email: hasEmail ? r.email : "", statuses: ["queued", "sending", "sent"] }))) {
+        status = "skip_duplicate"; reason = `同じグループの「${groupHit}」に登録済み`; summary.duplicated++; note(reason);
+      }
       else {
         summary.added++; if (channel === "form") summary.addedForm++; else summary.addedEmail++;
         // 「株式会社」などの法人格が無い社名は警告用に控える（事前チェックでHPから自動補完される）

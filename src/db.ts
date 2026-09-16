@@ -191,6 +191,8 @@ function migrate(db: Database.Database) {
   addCol("form_jobs", "manual_answers", "TEXT NOT NULL DEFAULT ''");
   // 1=フォームで電話番号が必須の欄にだけ入力する（任意の欄には書かない。電話を載せたくない人向け）
   addCol("sender_profiles", "tel_required_only", "INTEGER NOT NULL DEFAULT 0");
+  // キャンペーンのグループ名。同じグループ内では同じ会社に重ねて送らない（フォーム用とメール用で分けた場合など）。空=グループなし
+  addCol("form_campaigns", "group_name", "TEXT NOT NULL DEFAULT ''");
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
@@ -260,7 +262,25 @@ export type Campaign = {
   material_url: string;   // フォーム送信で本文に載せる資料の公開リンク
   attach_path: string;    // メール添付する資料ファイルの保存先（DATA_DIR/materials 配下）
   attach_name: string;    // 添付時に見せるファイル名
+  group_name: string;     // 同じグループ内では同じ会社に重ねて送らない。空=グループなし
 };
+
+// フリーメールはドメインが同じでも別の会社。グループ内の重複判定ではドメインではなくメールアドレスで比べる
+export const FREE_MAIL_DOMAINS = new Set(["gmail.com", "googlemail.com", "yahoo.co.jp", "ymail.ne.jp", "yahoo.com", "outlook.jp", "outlook.com", "hotmail.com", "hotmail.co.jp", "live.jp", "live.com", "icloud.com", "me.com", "mac.com", "aol.com", "docomo.ne.jp", "ezweb.ne.jp", "au.com", "softbank.ne.jp", "i.softbank.jp", "nifty.com", "biglobe.ne.jp", "ocn.ne.jp", "so-net.ne.jp", "excite.co.jp", "goo.jp", "infoseek.jp"]);
+
+/** 同じグループの別キャンペーンで、この会社（ドメイン／フリーメールならアドレス）がすでに対象になっているか。
+ *  statuses に含まれる状態のジョブがあれば、そのキャンペーン名を返す。グループなしなら常に null */
+export function findGroupDuplicate(db: Database.Database, opts: { groupName: string; campaignId: number; domain: string; email: string; statuses: string[]; excludeJobId?: number }): string | null {
+  if (!opts.groupName || !opts.domain) return null;
+  const ph = opts.statuses.map(() => "?").join(",");
+  const byEmail = FREE_MAIL_DOMAINS.has(opts.domain);
+  if (byEmail && !opts.email) return null;
+  const row = db.prepare(`SELECT c.name FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
+    WHERE c.group_name=? AND j.campaign_id<>? AND j.is_test=0 AND j.status IN (${ph}) AND j.id<>?
+      AND ${byEmail ? "lower(j.email)=lower(?)" : "j.domain=?"} LIMIT 1`)
+    .get(opts.groupName, opts.campaignId, ...opts.statuses, opts.excludeJobId ?? -1, byEmail ? opts.email : opts.domain) as { name: string } | undefined;
+  return row?.name ?? null;
+}
 
 export type JobStatus =
   | "queued"

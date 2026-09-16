@@ -77,6 +77,11 @@ function ownedJob(req: express.Request, id: number): Job | undefined {
   return ownedCampaign(req, j.campaign_id) ? j : undefined;
 }
 const DENIED = "この画面を見る権限がありません";
+/** 既存のキャンペーングループ名（入力候補用） */
+function groupNames(req: express.Request): string[] {
+  const sc = scope(req);
+  return (db.prepare(`SELECT DISTINCT group_name FROM form_campaigns WHERE group_name<>'' AND ${sc.sql} ORDER BY group_name`).all(...sc.args) as { group_name: string }[]).map((r) => r.group_name);
+}
 
 /** 「失敗した会社を再送信」の対象＝会社（ドメイン）ごとに最新のジョブが 失敗／フォーム無し のもの。
  *  同じ会社の古い試行（その後に成功・別状態になった行）は含めない。一覧・件数・再送信の3か所で共通に使う。 */
@@ -180,14 +185,14 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='queued') queued,
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.outcome IN ('replied','appointment')) reactions,
       (SELECT MAX(sent_at) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') last_sent
-    FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.id DESC`).all(...scope(req).args) as any[];
+    FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.group_name='' , c.group_name, c.id DESC`).all(...scope(req).args) as any[];
   res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
   const sc = scope(req);
   const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider()), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider(), undefined, groupNames(req)), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns", upload.single("material_file"), (req, res) => {
@@ -195,8 +200,8 @@ app.post("/campaigns", upload.single("material_file"), (req, res) => {
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, "/campaigns/new", "送信者を選び直してください");
   const materialUrl = String(b.material_url ?? "").trim();
-  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl);
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim());
   const cid = Number(r.lastInsertRowid);
   // 資料ファイル（メール添付用）を保存する
   if (req.file) saveMaterial(cid, req.file);
@@ -210,7 +215,7 @@ app.get("/campaigns/:id/edit", (req, res) => {
   if (!c) return res.status(404).send("not found");
   const sc = scope(req);
   const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout(`編集 | ${c.name}`, campaignForm(senders, c, activeProvider(), id), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(`編集 | ${c.name}`, campaignForm(senders, c, activeProvider(), id, groupNames(req)), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   const id = Number(req.params.id);
@@ -218,8 +223,8 @@ app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   const b = req.body;
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, `/campaigns/${id}/edit`, "送信者を選び直してください");
-  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=? WHERE id=?`)
-    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), id);
+  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=? WHERE id=?`)
+    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), id);
   if (req.file) saveMaterial(id, req.file);
   redirectWith(res, `/campaigns/${id}`, "キャンペーンを保存しました");
 });
@@ -531,8 +536,8 @@ app.post("/campaigns/:id/duplicate", (req, res) => {
   const id = Number(req.params.id);
   const c = ownedCampaign(req, id);
   if (!c) return res.status(404).send("not found");
-  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, attach_path, attach_name, status)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')`).run(me(req).id, c.name + " のコピー", c.sender_id, c.mode, c.subject_text, c.template_text, c.ai_instruction, c.daily_limit, c.send_window_start, c.send_window_end, c.weekdays_only, c.channel, c.email_daily_limit, c.resend_days, c.ignore_refusal, c.material_url, c.attach_path, c.attach_name);
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, attach_path, attach_name, status, group_name)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft',?)`).run(me(req).id, c.name + " のコピー", c.sender_id, c.mode, c.subject_text, c.template_text, c.ai_instruction, c.daily_limit, c.send_window_start, c.send_window_end, c.weekdays_only, c.channel, c.email_daily_limit, c.resend_days, c.ignore_refusal, c.material_url, c.attach_path, c.attach_name, c.group_name); // 複製は同じグループのまま
   redirectWith(res, `/campaigns/${Number(r.lastInsertRowid)}`, "キャンペーンを複製しました。会社リストは空なので、CSVを取り込んでください");
 });
 

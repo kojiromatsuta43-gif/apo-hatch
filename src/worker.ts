@@ -2,7 +2,7 @@
 // 本体組み込み時は Railway の別サービス（form-worker）としてこのファイルを動かし、DBだけ共有／APIで取りに行く。
 import fs from "node:fs";
 import type { Browser } from "playwright";
-import { getDb, allowsEmailFallback, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
+import { getDb, allowsEmailFallback, findGroupDuplicate, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { hasEntity, extractLegalName } from "./company.js";
@@ -93,6 +93,11 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 
   // 除外リスト（送信直前にも確認）
   if (!job.is_test && db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?").get(job.domain)) return finish("skip_suppressed", "除外リストに登録済み");
+  // 同じグループの別キャンペーンですでに送信済み／送信中なら送らない（取り込み後にグループを付けた場合などの保険）
+  if (!job.is_test) {
+    const dup = findGroupDuplicate(db, { groupName: campaign.group_name, campaignId: campaign.id, domain: job.domain, email: job.email, statuses: ["sending", "sent"], excludeJobId: job.id });
+    if (dup) return finish("skip_duplicate", `同じグループの「${dup}」で送信済み`);
+  }
 
   // 文面
   let subject = "", message = "";
