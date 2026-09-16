@@ -24,6 +24,8 @@ export const CHALLENGE_RE = /(Checking your browser|Verify you are human|Just a 
 
 export const CAPTCHA_SELECTORS = [
   "iframe[src*='recaptcha/api2/anchor']", // reCAPTCHA v2 checkbox（人が押す必要がある）
+  "iframe[src*='recaptcha/api2/bframe']", // reCAPTCHA の画像認証ポップアップ（送信を押したあとに出る。普段は画面外に隠れている）
+  "iframe[src*='recaptcha/enterprise/bframe']",
   ".g-recaptcha[data-size='normal']",
   ".g-recaptcha:not([data-size='invisible'])",
   "iframe[src*='hcaptcha.com']",
@@ -43,7 +45,8 @@ export const CAPTCHA_CHECK_SCRIPT = `
     for (const el of document.querySelectorAll(s)) {
       const r = el.getBoundingClientRect();
       const style = getComputedStyle(el);
-      if (r.width > 20 && r.height > 20 && style.visibility !== 'hidden' && style.display !== 'none') return s;
+      // 画面外（top:-10000px 等）に隠してある要素は表示されていない扱い
+      if (r.width > 20 && r.height > 20 && r.bottom > 0 && r.right > 0 && style.visibility !== 'hidden' && style.display !== 'none') return s;
     }
   }
   return null;

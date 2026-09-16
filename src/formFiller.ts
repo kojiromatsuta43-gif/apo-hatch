@@ -623,6 +623,12 @@ ${list}
 const SUBMIT_RE = /(送信|送る|申し?込|送付|submit|send|完了する|確定|この内容で)/i;
 const CONFIRM_RE = /(確認|次へ|進む|confirm|next|preview|入力内容)/i;
 const BACK_RE = /(戻る|修正|back|edit|訂正|キャンセル|cancel|リセット|reset|clear|クリア)/i;
+// 「送信内容を確認する」「確認画面へ」のように文末が確認で終わるボタンは、「送信」を含んでも確認ボタン
+// （b-coach.jp の実例: 送信ボタン扱いで押し、確認画面を「フォームが消えた＝送信済み」と誤判定していた）。
+// 「内容を確認して送信」のように文末が送信のものは送信ボタンのまま
+const CONFIRM_END_RE = /(確認(する|します|画面へ|画面に進む|へ進む|へ)?|confirm)[\s>＞»→▶]*$/i;
+// 押したあとに出る確認画面の文言（ボタン名で見分けられなかったときの保険）
+const CONFIRM_PAGE_RE = /(下記の?内容で送信|以下の内容で送信|下記の内容でよろしければ|以下の内容でよろしければ|入力内容(を|の)?(ご)?確認|内容をご確認|[「『]送信(する)?[」』]\s*ボタンを押)/;
 
 const BUTTONS_SCRIPT = `
 (() => {
@@ -667,7 +673,7 @@ export async function allSubmitButtonsDisabled(target: Page | Frame): Promise<bo
 export async function clickNextButton(target: Page | Frame, page: Page, log: string[]): Promise<"confirm" | "submit" | "none"> {
   const btns = (await target.evaluate(BUTTONS_SCRIPT)) as Btn[];
   const usable = btns.filter((b) => !BACK_RE.test(b.text) && !b.disabled);
-  const confirm = usable.find((b) => CONFIRM_RE.test(b.text) && !SUBMIT_RE.test(b.text));
+  const confirm = usable.find((b) => CONFIRM_RE.test(b.text) && (!SUBMIT_RE.test(b.text) || CONFIRM_END_RE.test(b.text.trim())));
   const submit = usable.find((b) => SUBMIT_RE.test(b.text)) ?? usable.find((b) => b.type === "submit" && b.inForm);
   const target_ = confirm ?? submit;
   if (!target_) {
@@ -714,25 +720,34 @@ const ERROR_RE = /(入力してください|必須項目|未入力|正しく入�
 
 export type Outcome = { status: "sent" | "failed" | "unsure"; detail: string };
 
+/** フレームの中でスクリプトを実行する。一定時間で返らなければ undefined。
+ *  about:blank の隠しフレーム等では evaluate が返ってこないことがあり（実測）、送信処理ごと止まっていたため。 */
+export async function evalFrame<T>(fr: Frame, fn: () => T, ms = 3000): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fr.evaluate(fn) as Promise<T>,
+      new Promise<undefined>((res) => { timer = setTimeout(() => res(undefined), ms); }),
+    ]);
+  } catch {
+    return undefined; // cross-origin 等
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function pageText(page: Page): Promise<string> {
   const texts: string[] = [];
   for (const fr of page.frames()) {
-    try { texts.push(await fr.evaluate(() => document.body?.innerText ?? "")); } catch { /* cross-origin */ }
+    const t = await evalFrame(fr, () => document.body?.innerText ?? "");
+    if (t) texts.push(t);
   }
   return texts.join("\n");
 }
 
 export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSubmit = true, beforeText = ""): Promise<Outcome> {
   // 本体＋埋め込みフレームの文章をまとめて見る（完了文言が iframe の中に出ることがある）
-  const texts: string[] = [];
-  for (const fr of page.frames()) {
-    try {
-      texts.push(await fr.evaluate(() => document.body?.innerText ?? ""));
-    } catch {
-      /* cross-origin */
-    }
-  }
-  const text = texts.join("\n");
+  const text = await pageText(page);
   const compact = text.replace(/\s+/g, "");
   const url = page.url();
   // 送信前から同じ完了っぽい文言があるページ（「お問い合わせありがとうございます。下記フォームから…」）は、文言だけでは完了とみなさない
@@ -786,6 +801,10 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
     }
   }
   const fieldsNow = (await collectFields(page)).length;
+  // 入力欄が無くなっても、確認画面（「下記の内容で送信します」等）なら送信済みではない。呼び出し側でもう一度送信ボタンを押す
+  if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0 && CONFIRM_PAGE_RE.test(compact) && !CONFIRM_PAGE_RE.test(beforeCompact)) {
+    return { status: "unsure", detail: "確認画面で止まっている" };
+  }
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
   return { status: "unsure", detail: "完了もエラーも検知できず" };
 }

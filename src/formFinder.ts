@@ -50,10 +50,15 @@ const CLICK_TRIGGER_SCRIPT = `
 async function scanFrames(page: Page): Promise<boolean> {
   // 本体 → 埋め込み iframe（Googleフォーム・フォーム作成サービス等）の順に見る
   for (const fr of page.frames()) {
+    // about:blank の隠しフレーム等で evaluate が返らないことがあるので、3秒で見切る
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      if (await fr.evaluate(HAS_FORM_SCRIPT)) return true;
+      const has = await Promise.race([fr.evaluate(HAS_FORM_SCRIPT), new Promise((res) => { timer = setTimeout(() => res(false), 3000); })]);
+      if (has) return true;
     } catch {
       /* クロスオリジン等 */
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
   return false;

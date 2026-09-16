@@ -4,7 +4,7 @@ import path from "node:path";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, type PendingQuestion } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, type PendingQuestion, type FieldInfo } from "./formFiller.js";
 import { extractLegalName } from "./company.js";
 import { llm } from "./message.js";
 
@@ -83,10 +83,12 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (!fields.some((f) => classify(f) === "message")) {
       for (const fr of page.frames()) {
         if (fr === page.mainFrame()) continue;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
-          const ff = await collectFields(fr);
+          // 返ってこないフレーム（about:blank の隠しフレーム等）で止まらないよう5秒で見切る
+          const ff = await Promise.race([collectFields(fr), new Promise<FieldInfo[]>((res) => { timer = setTimeout(() => res([]), 5000); })]);
           if (ff.some((f) => classify(f) === "message")) { target = fr; fields = ff; log.push(`iframe: ${fr.url()}`); break; }
-        } catch {}
+        } catch {} finally { if (timer) clearTimeout(timer); }
       }
     }
     // 段階式フォーム: 本文欄が2ページ目にある → 1ページ目を埋めて「次へ」を押してから本題へ（最大2段）
@@ -153,10 +155,19 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       if (kind === "none") return done("failed", "送信ボタンが見つからない");
       // 確認画面で CAPTCHA が出る場合
       const cap2 = await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null);
-      if (cap2) return done("skip_captcha", `確認画面にCAPTCHA (${cap2})`);
+      if (cap2) {
+        // 送信ボタンを押したら画像認証（reCAPTCHAのポップアップ）が出て止まったケースは未送信（sugoikaizen.com の実例）
+        if (/bframe/.test(String(cap2))) return done("skip_captcha", `送信時に画像認証（reCAPTCHA）が表示され未送信 (${cap2})`);
+        return done("skip_captcha", `確認画面にCAPTCHA (${cap2})`);
+      }
       const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit", textBefore);
       log.push(`judge[${round}]: ${outcome.status} ${outcome.detail}`);
       if (outcome.status === "sent") return done("sent", outcome.detail);
+      if (outcome.status === "unsure" && outcome.detail.startsWith("確認画面")) {
+        // ボタン名では確認ボタンと分からなかったが確認画面に進んでいた → 次のラウンドで「送信する」を押す
+        log.push("確認画面を検知 → 送信ボタンを押す");
+        continue;
+      }
       if (outcome.status === "failed") {
         // バリデーションエラーなら、カナのスペース除去などの修正ルールを通して集め直し、埋め直して1回だけ再送する
         if (!refilled && round < 2 && /入力エラー/.test(outcome.detail)) {
