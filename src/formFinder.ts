@@ -100,10 +100,39 @@ async function tryClickTrigger(page: Page): Promise<boolean> {
   }
 }
 
+import { CHALLENGE_RE } from "./detect.js";
+
+// 「ブラウザ確認」が自動で解けなかったオリジン。同じサイトの候補URL（よくあるパス十数個）で
+// 毎回10秒待たないための記憶。プロセス内だけで保持する
+const challengeGaveUp = new Set<string>();
+
+/** 4xx/5xx で着地したページが「ブラウザ確認（Checking your browser / Just a moment 等）」なら、
+ *  自動で解けるのを最大10秒待つ。実例: grooves.com は 403 のチャレンジ→約2秒で本来のページへ自動遷移する。
+ *  以前はステータス≥400を見た瞬間に諦めていたため、こうしたサイトが全て「フォーム無し」になっていた。
+ *  解けたら true。本物の 4xx/5xx（チャレンジ文言なし）や、待っても解けない場合は false。 */
+async function waitOutChallenge(page: Page, url: string): Promise<boolean> {
+  let origin = "";
+  try { origin = new URL(url).origin; } catch { /* 相対URL等 */ }
+  if (origin && challengeGaveUp.has(origin)) return false;
+  const onChallenge = async () => {
+    try {
+      const t = String(await page.evaluate(() => document.title + " " + (document.body?.innerText || "").slice(0, 1500)));
+      return CHALLENGE_RE.test(t);
+    } catch { return false; }
+  };
+  if (!(await onChallenge())) return false;
+  for (let i = 0; i < 10; i++) {
+    await page.waitForTimeout(1000);
+    if (!(await onChallenge())) return true; // 本来のページに切り替わった
+  }
+  if (origin) challengeGaveUp.add(origin);
+  return false;
+}
+
 async function safeGoto(page: Page, url: string): Promise<boolean> {
   try {
     const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
-    if (res && res.status() >= 400) return false;
+    if (res && res.status() >= 400 && !(await waitOutChallenge(page, url))) return false;
     // JSで描画されるフォーム（SPA・埋め込み）を待つ
     await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(500);
