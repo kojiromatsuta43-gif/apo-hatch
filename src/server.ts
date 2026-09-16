@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
+import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
@@ -299,16 +299,10 @@ app.get("/campaigns/:id", (req, res) => {
   const id = Number(req.params.id);
   const c = loadCampaignFull(req, id);
   if (!c) return res.status(404).send("not found");
-  const statusFilter = typeof req.query.status === "string" && req.query.status in STATUS_LABEL ? req.query.status : "";
-  const qFilter = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 60) : "";
-  const outcomeFilter = ["replied", "appointment", "declined", "none"].includes(String(req.query.outcome)) ? String(req.query.outcome) : "";
-  const where = ["campaign_id=?"];
-  const args: (string | number)[] = [id];
-  if (statusFilter) { where.push("status=?"); args.push(statusFilter); }
-  if (qFilter) { where.push("(company_name LIKE ? OR domain LIKE ?)"); args.push(`%${qFilter}%`, `%${qFilter}%`); }
-  if (outcomeFilter === "none") where.push("outcome=''");
-  else if (outcomeFilter) { where.push("outcome=?"); args.push(outcomeFilter); }
-  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE ${where.join(" AND ")} ORDER BY updated_at DESC, id DESC LIMIT 200`).all(...args) as Job[];
+  const { statusFilter, qFilter, outcomeFilter, impFilter, sql: fSql, args: fArgs } = jobFilter(req.query as Record<string, unknown>);
+  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND ${fSql} ORDER BY updated_at DESC, id DESC LIMIT 200`).all(id, ...fArgs) as Job[];
+  // 絞り込み条件に一致する件数（一覧は200件までしか出ないので、全件の数と送信済みの数を別に数える）
+  const matched = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(status='sent'),0) sent FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${fSql}`).get(id, ...fArgs) as { n: number; sent: number };
   const counts: Record<string, number> = {};
   // 会社（ドメイン）単位で重複を除いた実数と、試行回数の合計を状態ごとに集計する
   const attempts: Record<string, number> = {};
@@ -325,7 +319,7 @@ app.get("/campaigns/:id", (req, res) => {
   const retryTargets = retryTargetJobs(id);
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -546,7 +540,7 @@ app.get("/campaigns/:id/export.csv", (req, res) => {
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   const jobs = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND is_test=0 ORDER BY id").all(id) as Job[];
   const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const lines = ["企業名,送り方,送信先,業種,状態,結果,反応,メモ,送信日時", ...jobs.map((j) => [j.company_name, j.channel === "email" ? "メール" : "フォーム", j.channel === "email" ? j.email : j.form_url, j.sub_industry || j.industry, STATUS_LABEL[j.status] ?? j.status, (j.result_text || "").split("\n")[0], OUTCOME_LABEL[j.outcome] ?? "", j.outcome_note, j.sent_at ?? ""].map(q).join(","))];
+  const lines = ["企業名,送り方,送信先,業種,状態,結果,反応,メモ,送信日時", ...jobs.map((j) => [j.company_name, j.channel === "email" ? "メール" : "フォーム", j.channel === "email" ? j.email : j.form_url, j.sub_industry || j.industry, STATUS_LABEL[j.status] ?? j.status, (j.result_text || "").split("\n")[0], OUTCOME_LABEL[j.outcome] ?? "", j.outcome_note, jst(j.sent_at)].map(q).join(","))];
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename=campaign-${id}.csv`);
   res.send("﻿" + lines.join("\n"));
@@ -630,6 +624,25 @@ app.post("/campaigns/:id/requeue-failed", (req, res) => {
 
 // 手動で送れた会社を「送信済み（手動）」にする（手動送信リストの消し込み用）
 // 間違って取り込んだ会社などを送信一覧から完全に消す（記録ごと削除。送信済みを消すとその会社への再送防止は効かなくなる）
+/** 送信一覧の絞り込み条件（状態・反応・会社名・取り込み）。一覧の表示と「条件に一致する全件を削除」で同じ条件を使う */
+function jobFilter(q: Record<string, unknown>) {
+  const statusFilter = typeof q.status === "string" && q.status in STATUS_LABEL ? q.status : "";
+  const qFilter = typeof q.q === "string" ? q.q.trim().slice(0, 60) : "";
+  const outcomeFilter = ["replied", "appointment", "declined", "none"].includes(String(q.outcome)) ? String(q.outcome) : "";
+  const impRaw = String(q.imp ?? "");
+  const impFilter = /^(i\d+|r\d+-\d+)$/.test(impRaw) ? impRaw : "";
+  const where: string[] = ["1=1"];
+  const args: (string | number)[] = [];
+  if (statusFilter) { where.push("status=?"); args.push(statusFilter); }
+  if (qFilter) { where.push("(company_name LIKE ? OR domain LIKE ?)"); args.push(`%${qFilter}%`, `%${qFilter}%`); }
+  if (outcomeFilter === "none") where.push("outcome=''");
+  else if (outcomeFilter) { where.push("outcome=?"); args.push(outcomeFilter); }
+  let m: RegExpMatchArray | null;
+  if ((m = impFilter.match(/^i(\d+)$/))) { where.push("import_id=?"); args.push(Number(m[1])); }
+  else if ((m = impFilter.match(/^r(\d+)-(\d+)$/))) { where.push("import_id IS NULL AND id BETWEEN ? AND ?"); args.push(Number(m[1]), Number(m[2])); }
+  return { statusFilter, qFilter, outcomeFilter, impFilter, sql: where.join(" AND "), args };
+}
+
 // ---- 取り込み履歴と、取り込み単位・全件の削除 ----
 // 一覧は200件までしか出ないため、2000件などを間違えて取り込むと「選択して削除」では消しきれなかった。
 export type ImportBatch = { key: string; label: string; at: string; total: number; sent: number; queued: number };
@@ -680,6 +693,19 @@ app.post("/campaigns/:id/imports/delete", (req, res) => {
   } else return redirectWith(res, `/campaigns/${id}`, "削除する取り込みが分かりませんでした");
   lastImports.delete(id);
   redirectWith(res, `/campaigns/${id}`, `取り込んだ会社 ${n} 件を削除しました`);
+});
+
+// 送信一覧の絞り込み条件に一致する会社を全件削除（表示中の200件に限らない）。条件なしなら全件
+app.post("/campaigns/:id/delete-filtered", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中は削除できません。先に止めてから削除してください");
+  const f = jobFilter(req.body as Record<string, unknown>);
+  const n = deleteJobsWhere(id, f.sql, f.args);
+  // 中身が空になった取り込み記録は履歴から消す
+  db.prepare("DELETE FROM form_imports WHERE campaign_id=? AND NOT EXISTS (SELECT 1 FROM form_jobs j WHERE j.import_id=form_imports.id)").run(id);
+  lastImports.delete(id);
+  redirectWith(res, `/campaigns/${id}`, `条件に一致した会社 ${n} 件を削除しました`);
 });
 
 // このキャンペーンの会社を全件削除（キャンペーン自体と設定・文面は残す）
@@ -886,7 +912,7 @@ app.get("/suppressions/export.csv", (req, res) => {
   const sc = scope(req);
   const rows = db.prepare(`SELECT * FROM form_suppressions WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as any[];
   const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const lines = ["会社名,ドメイン,メール,電話,理由,登録日時", ...rows.map((r) => [r.company_name, r.domain, r.email, r.tel, r.reason, r.created_at].map(q).join(","))];
+  const lines = ["会社名,ドメイン,メール,電話,理由,登録日時", ...rows.map((r) => [r.company_name, r.domain, r.email, r.tel, r.reason, jst(r.created_at)].map(q).join(","))];
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", "attachment; filename=suppressions.csv");
   res.send("﻿" + lines.join("\n"));

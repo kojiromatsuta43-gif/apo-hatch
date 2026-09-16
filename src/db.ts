@@ -370,6 +370,16 @@ export const CHANNEL_LABEL: Record<ChannelMode, string> = {
 /** このモードで、フォームが無い会社をメールに切り替えてよいか（事前チェックで使う） */
 export const allowsEmailFallback = (raw: string) => { const m = channelMode(raw); return m === "form_first" || m === "email_first"; };
 
+/** DBの日時（SQLite の datetime('now') ＝ 世界標準時 "YYYY-MM-DD HH:MM:SS"）を東京の時刻 "YYYY-MM-DD HH:MM" にする。
+ *  以前は画面にそのまま出していたため、9時間ずれて見えていた */
+export function jst(ts: string | null | undefined): string {
+  if (!ts) return "";
+  const d = new Date(String(ts).replace(" ", "T") + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(ts)) ? "" : "Z"));
+  if (isNaN(d.getTime())) return String(ts);
+  const t = new Date(d.getTime() + 9 * 3600_000).toISOString();
+  return `${t.slice(0, 10)} ${t.slice(11, 16)}`;
+}
+
 export function domainOf(url: string): string {
   try {
     const u = new URL(url.startsWith("http") ? url : `https://${url}`);

@@ -1,5 +1,5 @@
 // 画面のHTML。BRIDGE HATCH の配色（honey-400 #FFC62E / hive-900 #1C1710）に合わせてある。
-import { STATUS_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, channelMode, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
+import { STATUS_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, channelMode, jst, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { AI_MODELS, type Lint } from "./message.js";
 
 export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -118,7 +118,7 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
   // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
-    const t = Date.parse(String(ts).replace(" ", "T"));
+    const t = Date.parse(String(ts).replace(" ", "T") + "Z"); // DBは世界標準時
     if (Number.isNaN(t)) return "";
     // カレンダー日（時刻を切り捨て）で比べる。夕方に送って翌朝見ても「昨日」と出るように
     const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -149,7 +149,7 @@ ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 
 </ol>
 <p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(String(c.last_sent).slice(0, 16))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form> <form method="post" action="/campaigns/${c.id}/delete" class="inline" data-n="${esc(c.name)}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。\\n取り込んだ会社 ${c.total} 件・送信済み ${c.sent} 件の記録もすべて消え、元に戻せません。${c.sent ? "\\n送信済みの会社への再送防止も効かなくなります。" : ""}\\nよろしいですか？')"><button class="btn sub small" style="color:var(--ng)">削除</button></form></td></tr>`).join("")}
+${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(jst(c.last_sent))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form> <form method="post" action="/campaigns/${c.id}/delete" class="inline" data-n="${esc(c.name)}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。\\n取り込んだ会社 ${c.total} 件・送信済み ${c.sent} 件の記録もすべて消え、元に戻せません。${c.sent ? "\\n送信済みの会社への再送防止も効かなくなります。" : ""}\\nよろしいですか？')"><button class="btn sub small" style="color:var(--ng)">削除</button></form></td></tr>`).join("")}
 </table>`}`;
 }
 
@@ -256,7 +256,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -313,10 +313,11 @@ ${(() => {
     const allSent = list.reduce((a, b) => a + b.sent, 0);
     const warnSent = (n: number) => (n ? `\\n\\n※ うち送信済み ${n}件の記録も消えます。消すとその会社への「${c.resend_days}日以内の再送防止」が効かなくなります。` : "");
     const when = (at: string) => { const d = new Date(String(at).replace(" ", "T") + "Z"); return isNaN(d.getTime()) ? esc(at) : d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); };
-    return `<details style="margin-top:14px" ${list.length ? "open" : ""}><summary style="cursor:pointer;font-weight:700">取り込み履歴（${list.length}回・${allTotal}件）</summary>
+    return `<p style="margin:14px 0 0"><a class="btn sub small" href="/campaigns/${c.id}?imp=${encodeURIComponent(list[0].key)}#list">前回の取り込み（${when(list[0].at)}・${list[0].total}件）を一覧で見る・まとめて削除</a></p>
+<details style="margin-top:10px" ${list.length ? "open" : ""}><summary style="cursor:pointer;font-weight:700">取り込み履歴（${list.length}回・${allTotal}件）</summary>
 <p class="muted small" style="margin:6px 0">間違えて取り込んだ場合は、その回の「全件削除」で、その取り込みで入った会社をまとめて消せます（送信一覧・全件の数からも消えます）。${busy ? "<b>送信中・事前チェック中は削除できません。先に止めてください。</b>" : ""}</p>
 <div style="overflow-x:auto"><table><tr><th>取り込んだ日時</th><th>取り込み元</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
-${list.map((b) => `<tr><td class="small">${when(b.at)}</td><td class="small">${esc(b.label)}</td><td>${b.total}</td><td>${b.sent}</td><td>${b.queued}</td><td><form method="post" action="/campaigns/${c.id}/imports/delete" class="inline" onsubmit="return confirm('${when(b.at)} に取り込んだ ${b.total}件を全件削除します（取り消せません）。${warnSent(b.sent)}\\n\\nよろしいですか？')"><input type="hidden" name="key" value="${esc(b.key)}"><button class="btn danger small" ${busy ? "disabled" : ""}>全件削除</button></form></td></tr>`).join("")}
+${list.map((b) => `<tr><td class="small">${when(b.at)}</td><td class="small">${esc(b.label)}</td><td>${b.total}</td><td>${b.sent}</td><td>${b.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}?imp=${encodeURIComponent(b.key)}#list">一覧を見る</a> <form method="post" action="/campaigns/${c.id}/imports/delete" class="inline" onsubmit="return confirm('${when(b.at)} に取り込んだ ${b.total}件を全件削除します（取り消せません）。${warnSent(b.sent)}\\n\\nよろしいですか？')"><input type="hidden" name="key" value="${esc(b.key)}"><button class="btn danger small" ${busy ? "disabled" : ""}>全件削除</button></form></td></tr>`).join("")}
 </table></div>
 <form method="post" action="/campaigns/${c.id}/jobs/delete-all" style="margin-top:8px" onsubmit="return confirm('このキャンペーンの会社 ${allTotal}件をすべて削除します（キャンペーンの設定・文面は残ります。取り消せません）。${warnSent(allSent)}\\n\\nよろしいですか？')"><button class="btn sub small" ${busy ? "disabled" : ""}>このキャンペーンの会社を全件削除（${allTotal}件）</button></form></details>`;
   })()}</div>
@@ -349,8 +350,8 @@ ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline
 ${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${nRetry}社）</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
 <p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。</p></div>
 
-<h2>送信一覧（最新200件）</h2>
-<form method="get" action="/campaigns/${c.id}" class="inline" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<h2 id="list">送信一覧${extra.matched ? `（${extra.matched.n > 200 ? `${extra.matched.n}件中 最新200件を表示` : `${extra.matched.n}件`}）` : "（最新200件）"}</h2>
+<form method="get" action="/campaigns/${c.id}#list" class="inline" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
 <label class="inline small">状態:
 <select name="status" onchange="this.form.submit()" style="width:auto;padding:4px 8px">
 <option value="">すべて</option>
@@ -364,11 +365,26 @@ ${(Object.entries(STATUS_LABEL) as [string, string][]).map(([k, l]) => `<option 
 <option value="declined" ${extra.outcomeFilter === "declined" ? "selected" : ""}>断り</option>
 <option value="none" ${extra.outcomeFilter === "none" ? "selected" : ""}>反応なし</option>
 </select></label>
+${(extra.imports ?? []).length ? `<label class="inline small">取り込み:
+<select name="imp" onchange="this.form.submit()" style="width:auto;padding:4px 8px">
+<option value="">すべて</option>
+${(extra.imports ?? []).map((b, i) => { const d = new Date(String(b.at).replace(" ", "T") + "Z"); const w = isNaN(d.getTime()) ? b.at : d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); return `<option value="${esc(b.key)}" ${extra.impFilter === b.key ? "selected" : ""}>${i === 0 ? "前回の取り込み：" : ""}${esc(w)} ${esc(b.label)}（${b.total}件）</option>`; }).join("")}
+</select></label>` : ""}
 <label class="inline small">会社名: <input type="text" name="q" value="${esc(extra.qFilter ?? "")}" placeholder="会社名・ドメイン" style="width:180px;padding:4px 8px"></label>
 <button class="btn sub small">絞り込む</button>
-${extra.statusFilter || extra.outcomeFilter || extra.qFilter ? `<a class="btn sub small" href="/campaigns/${c.id}">解除</a>` : ""}
+${extra.statusFilter || extra.outcomeFilter || extra.qFilter || extra.impFilter ? `<a class="btn sub small" href="/campaigns/${c.id}#list">解除</a>` : ""}
 </form>
-<form id="bulkdel" method="post" action="/campaigns/${c.id}/bulk-delete" class="inline" style="margin:10px 0 4px;display:block" onsubmit="return confirm(document.querySelectorAll('input[name=ids][form=bulkdel]:checked').length + ' 社を送信一覧から削除します（取り消せません。送信済みの記録も消え、その会社への再送防止は効かなくなります）。よろしいですか？')"><button class="btn danger small" id="bulkbtn" disabled>選択した会社を削除（0件）</button> <span class="muted small">左端のチェックで選択（見出しのチェックで全選択）。表示は200件までなので、取り込んだ分をまとめて消すときは「1. 取り込み」の<b>取り込み履歴</b>から「全件削除」を使ってください</span></form>
+<form id="bulkdel" method="post" action="/campaigns/${c.id}/bulk-delete" class="inline" style="margin:10px 0 4px;display:block" onsubmit="return confirm(document.querySelectorAll('input[name=ids][form=bulkdel]:checked').length + ' 社を送信一覧から削除します（取り消せません。送信済みの記録も消え、その会社への再送防止は効かなくなります）。よろしいですか？')"><button class="btn danger small" id="bulkbtn" disabled>選択した会社を削除（0件）</button> <span class="muted small">左端のチェックで選択（見出しのチェックで全選択）</span></form>
+${extra.matched && extra.matched.n > 0 ? (() => {
+    // 表示中の200件に限らず、いまの絞り込み条件に一致する全件を消す（条件なしなら全件）
+    const filtered = Boolean(extra.statusFilter || extra.outcomeFilter || extra.qFilter || extra.impFilter);
+    const busy = running || extra.scanning;
+    const label = filtered ? `この絞り込みに一致する全件を削除（${extra.matched.n}件）` : `送信一覧の全件を削除（${extra.matched.n}件）`;
+    const warn = extra.matched.sent ? `\\n\\n※ うち送信済み ${extra.matched.sent}件の記録も消えます。消すとその会社への「${c.resend_days}日以内の再送防止」が効かなくなります。` : "";
+    return `<form method="post" action="/campaigns/${c.id}/delete-filtered" class="inline" style="margin:0 0 8px;display:block" onsubmit="return confirm('${filtered ? "いまの絞り込みに一致する" : "このキャンペーンの"}会社 ${extra.matched.n}件をすべて削除します（表示されていない分も含みます。取り消せません）。${warn}\\n\\nよろしいですか？')">
+<input type="hidden" name="status" value="${esc(extra.statusFilter ?? "")}"><input type="hidden" name="outcome" value="${esc(extra.outcomeFilter ?? "")}"><input type="hidden" name="q" value="${esc(extra.qFilter ?? "")}"><input type="hidden" name="imp" value="${esc(extra.impFilter ?? "")}">
+<button class="btn danger small" ${busy ? "disabled" : ""}>${label}</button>${busy ? ' <span class="muted small">送信中・事前チェック中は削除できません</span>' : ""}</form>`;
+  })() : ""}
 <p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
 <table><tr><th><input type="checkbox" title="全選択" onchange="foSelAll(this)"></th><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
 ${(() => {
@@ -384,8 +400,8 @@ ${(() => {
       if (!g) { const ng = { rep: j, hist: [] as Job[] }; byKey.set(key, ng); groups.push(ng); }
       else g.hist.push(j);
     }
-    const repRow = (j: Job, hist: Job[]) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.is_test ? "" : `<input type="checkbox" name="ids" value="${j.id}" form="bulkdel" onchange="foBulkCount()">`}</td><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}${hist.length ? `<br><button type="button" class="histbtn" data-t="${j.id}" data-n="${hist.length}" onclick="foHist(this)">▽(${hist.length}件)</button>` : ""}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(j.sent_at ?? "")}</td><td>${j.status === "queued" ? `<form method="post" action="/jobs/${j.id}/cancel" class="inline"><button class="btn sub small">キャンセル</button></form>` : j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""} ${j.is_test ? "" : `<form method="post" action="/jobs/${j.id}/delete" class="inline" data-n="${esc(j.company_name)}" onsubmit="return confirm(this.dataset.n + ' の記録${hist.length ? `（履歴${hist.length}件を含む）` : ""}をすべて送信一覧から削除します（取り消せません）${j.status === "sent" || hist.some((h) => h.status === "sent") ? "。送信済みの記録も消え、この会社への再送防止が効かなくなります" : ""}。よろしいですか？')"><button class="btn sub small" title="この会社の記録をすべて削除">削除</button></form>`}</td></tr>`;
-    const histRow = (repId: number, h: Job) => `<tr class="histrow hist-${repId}" hidden><td></td><td></td><td colspan="8" class="small muted">└ ${esc(h.updated_at ?? "")} ${statusTag(h.status)} ${errKindTag(h)}${esc((h.result_text || "").split("\n")[0].slice(0, 60))} <a href="/jobs/${h.id}">詳細</a></td></tr>`;
+    const repRow = (j: Job, hist: Job[]) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.is_test ? "" : `<input type="checkbox" name="ids" value="${j.id}" form="bulkdel" onchange="foBulkCount()">`}</td><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}${hist.length ? `<br><button type="button" class="histbtn" data-t="${j.id}" data-n="${hist.length}" onclick="foHist(this)">▽(${hist.length}件)</button>` : ""}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(jst(j.updated_at))}</td><td>${j.status === "queued" ? `<form method="post" action="/jobs/${j.id}/cancel" class="inline"><button class="btn sub small">キャンセル</button></form>` : j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""} ${j.is_test ? "" : `<form method="post" action="/jobs/${j.id}/delete" class="inline" data-n="${esc(j.company_name)}" onsubmit="return confirm(this.dataset.n + ' の記録${hist.length ? `（履歴${hist.length}件を含む）` : ""}をすべて送信一覧から削除します（取り消せません）${j.status === "sent" || hist.some((h) => h.status === "sent") ? "。送信済みの記録も消え、この会社への再送防止が効かなくなります" : ""}。よろしいですか？')"><button class="btn sub small" title="この会社の記録をすべて削除">削除</button></form>`}</td></tr>`;
+    const histRow = (repId: number, h: Job) => `<tr class="histrow hist-${repId}" hidden><td></td><td></td><td colspan="8" class="small muted">└ ${esc(jst(h.updated_at))} ${statusTag(h.status)} ${errKindTag(h)}${esc((h.result_text || "").split("\n")[0].slice(0, 60))} <a href="/jobs/${h.id}">詳細</a></td></tr>`;
     return groups.map((g) => repRow(g.rep, g.hist) + g.hist.map((h) => histRow(g.rep.id, h)).join("")).join("");
   })()}
 </table>
@@ -472,14 +488,14 @@ export function testView(c: Campaign & { sender: SenderProfile }, tests: Job[]) 
 ${channelMode(c.channel) !== "form_only" ? `<form method="post" action="/campaigns/${c.id}/test"><label>メールのテスト（自分のアドレスに1通送る）</label><div class="row"><input type="email" name="email" placeholder="自分のメールアドレス"><button class="btn">テストメールを送る</button></div></form>` : ""}</div>
 <h2>テスト履歴（最新20件）</h2>
 ${tests.length ? `<table><tr><th>ID</th><th>宛先</th><th>送り方</th><th>状態</th><th>結果</th><th>日時</th></tr>
-${tests.map((j) => `<tr><td><a href="/jobs/${j.id}">${j.id}</a></td><td>${esc(j.company_name)}<br><span class="muted small">${esc(j.form_url || j.email)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${esc(j.updated_at ?? "")}</td></tr>`).join("")}
+${tests.map((j) => `<tr><td><a href="/jobs/${j.id}">${j.id}</a></td><td>${esc(j.company_name)}<br><span class="muted small">${esc(j.form_url || j.email)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td>${statusTag(j.status)}</td><td class="small">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${esc(jst(j.updated_at))}</td></tr>`).join("")}
 </table>` : '<p class="muted">まだテストしていません。</p>'}`;
 }
 
 export function jobView(j: Job, c: Campaign) {
   return `<h1>${esc(j.company_name)} ${statusTag(j.status)}</h1>
 <p><a href="/campaigns/${c.id}">← ${esc(c.name)}</a></p>
-<div class="row"><div class="card"><b>フォームURL:</b> <a href="${esc(j.form_url)}" target="_blank">${esc(j.form_url)}</a><br><b>企業URL:</b> ${esc(j.site_url)}<br><b>業種:</b> ${esc(j.industry)} / ${esc(j.sub_industry)}<br><b>試行:</b> ${j.attempts}回 <b>送信:</b> ${esc(j.sent_at ?? "-")}
+<div class="row"><div class="card"><b>フォームURL:</b> <a href="${esc(j.form_url)}" target="_blank">${esc(j.form_url)}</a><br><b>企業URL:</b> ${esc(j.site_url)}<br><b>業種:</b> ${esc(j.industry)} / ${esc(j.sub_industry)}<br><b>試行:</b> ${j.attempts}回 <b>送信:</b> ${esc(jst(j.sent_at) || "-")}
 <h2>結果・ログ ${errKind(j) ? `<span class="errkind">${esc(errKind(j))}</span>` : ""}</h2><pre>${esc(j.result_text)}</pre>
 <form method="post" action="/jobs/${j.id}/retry" class="inline" data-busy><button class="btn sub" data-busytext="再試行中…">再試行</button></form>
 <form method="post" action="/jobs/${j.id}/assist" class="inline" data-busy><button class="btn sub" data-busytext="ブラウザで入力中…" title="このパソコンにブラウザを開き、フォームを入力した状態で止めます（送信は押しません）">ブラウザで開いて自動入力（送信しない）</button></form>
@@ -538,9 +554,9 @@ ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.
 <p class="muted small">除外リストはPCごとに独立しています。別のメンバーと共有したいときは、下のボタンでCSVに書き出し、相手はこの「CSVでまとめて追加」から取り込めます（列はそのまま合います）。</p>
 ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リストをCSVで書き出す</a>' : ""}</div>
 
-<table><tr><th>会社名</th><th>ドメイン</th><th>メール</th><th>電話</th><th>理由</th><th>登録</th><th></th></tr>${rows.length ? rows.map((r) => `<tr><td>${esc(r.company_name || "―")}</td><td>${esc(r.domain ?? "―")}</td><td class="small">${esc(r.email ?? "―")}</td><td class="small">${esc(r.tel || "―")}</td><td class="small">${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td><td><form method="post" action="/suppressions/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("") : `<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>`}</table>
+<table><tr><th>会社名</th><th>ドメイン</th><th>メール</th><th>電話</th><th>理由</th><th>登録</th><th></th></tr>${rows.length ? rows.map((r) => `<tr><td>${esc(r.company_name || "―")}</td><td>${esc(r.domain ?? "―")}</td><td class="small">${esc(r.email ?? "―")}</td><td class="small">${esc(r.tel || "―")}</td><td class="small">${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td><td><form method="post" action="/suppressions/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("") : `<tr><td colspan="7" class="muted">まだ登録がありません。</td></tr>`}</table>
 <h2>メール配信停止（アドレス単位）</h2><p class="muted">上の欄にメールアドレスを入れて追加すると、そのアドレス宛てのメールを停止します。返信で「配信停止」と言われた相手は必ず入れてください。</p>
-<table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(r.created_at)}</td></tr>`).join("")}</table>`;
+<table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td></tr>`).join("")}</table>`;
 }
 
 export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }) {
@@ -687,7 +703,7 @@ ${users.map((u) => `<tr>
 <td>${u.id}</td><td><code>${esc(u.username)}</code></td><td>${esc(u.display_name)}</td>
 <td>${u.role === "admin" ? "管理者" : "一般"}</td>
 <td>${u.active ? '<span class="tag sent">有効</span>' : '<span class="tag">停止中</span>'}</td>
-<td class="small">${esc(u.last_login_at ?? "―")}</td>
+<td class="small">${esc(jst(u.last_login_at) || "―")}</td>
 <td class="small">
 <form method="post" action="/users/${u.id}/reset" class="inline" onsubmit="return confirm('パスワードを再発行します。よろしいですか？')"><button class="btn sub small">パスワード再発行</button></form>
 <form method="post" action="/users/${u.id}/toggle" class="inline"><button class="btn sub small">${u.active ? "停止する" : "再開する"}</button></form>
