@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
-import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
+import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
@@ -729,12 +729,17 @@ app.get("/suppressions/export.csv", (req, res) => {
 });
 
 /** 除外リストをCSVでまとめて追加 */
-app.post("/suppressions/import", upload.single("csv"), (req, res) => {
-  if (!req.file) return redirectWith(res, "/suppressions", "CSVが選択されていません");
+app.post("/suppressions/import", upload.single("csv"), async (req, res) => {
+  const pasted = String(req.body.pasted ?? "").trim();
+  const sheetUrl = String(req.body.sheet_url ?? "").trim();
   try {
-    const rows = parseSuppressionCsv(req.file.buffer);
-    if (!rows.length) return redirectWith(res, "/suppressions", "会社名の列が見つかりませんでした（列名を「会社名」または「企業名」にしてください）");
-    const r = importSuppressions(rows, me(req).id, String(req.body.reason ?? "").trim() || "CSVで一括登録");
+    let rows, src;
+    if (req.file) { rows = parseSuppressionCsv(req.file.buffer); src = "CSV"; }
+    else if (pasted) { rows = parseSuppressionText(pasted); src = "貼り付け"; }
+    else if (sheetUrl) { rows = parseSuppressionText(await fetchGoogleSheetCsv(sheetUrl)); src = "スプレッドシート"; }
+    else return redirectWith(res, "/suppressions", "貼り付け・スプレッドシートのURL・CSVファイルのいずれかを指定してください");
+    if (!rows.length) return redirectWith(res, "/suppressions", "登録できる行がありませんでした（会社名・URL/ドメイン・メールのいずれかを1行1社で入れてください）");
+    const r = importSuppressions(rows, me(req).id, String(req.body.reason ?? "").trim() || `${src}で一括登録`);
     suppImports.set(me(req).id, r);
     res.redirect("/suppressions");
   } catch (e) {

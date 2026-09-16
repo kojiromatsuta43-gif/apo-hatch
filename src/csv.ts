@@ -179,15 +179,56 @@ export function parseSuppressionCsv(buf: Buffer | string): SuppressionRow[] {
   let text = typeof buf === "string" ? buf : buf.toString("utf8");
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   if (typeof buf !== "string" && /�/.test(text.slice(0, 2000))) text = new TextDecoder("shift_jis").decode(buf);
-  const rows = parse(text, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true }) as Record<string, string>[];
-  return rows
-    .map((r) => ({
+  return parseSuppressionText(text);
+}
+
+const EMAIL_CELL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+// 「example.co.jp」「https://www.example.co.jp/contact」のようなURL・ドメイン（日本語の社名は含まない）
+const DOMAIN_CELL = /^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i;
+const TEL_CELL = /^[0-9０-９\-－ー()（）+\s]{9,}$/;
+
+/** 除外リストの貼り付け・スプレッドシート・CSV を読む。
+ *  1行目に見出し（会社名/ドメイン/メール 等）があればその列で読む。
+ *  見出しが無ければ、各セルを「メール／URL・ドメイン／電話／それ以外＝会社名」と中身で見分ける
+ *  （ドメインだけ・メールだけを縦に貼っただけでも登録できるように）。タブ区切り・カンマ区切りを自動判定。 */
+export function parseSuppressionText(text: string): SuppressionRow[] {
+  const body = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n").trim();
+  if (!body) return [];
+  const firstLine = body.split("\n")[0];
+  // 1行目だけで決めると、1行目がドメインだけ（タブ無し）のとき以降のタブ区切り行が分割されない（実際に起きた）。全体で判定する
+  const delimiter = body.includes("\t") ? "\t" : ",";
+  const headerWords = Object.values(SUPP_ALIASES).flat().map((w) => w.toLowerCase());
+  const firstCells = firstLine.split(delimiter).map((c) => c.trim().replace(/^"|"$/g, "").toLowerCase());
+  const hasHeader = firstCells.some((c) => headerWords.includes(c));
+  let rows: SuppressionRow[];
+  if (hasHeader) {
+    const recs = parse(body, { columns: true, skip_empty_lines: true, relax_column_count: true, trim: true, delimiter }) as Record<string, string>[];
+    rows = recs.map((r) => ({
       company_name: pick(r, SUPP_ALIASES.company_name),
       domain: domainOf(pick(r, SUPP_ALIASES.domain)),
       email: pick(r, SUPP_ALIASES.email).toLowerCase(),
       tel: pick(r, SUPP_ALIASES.tel),
       reason: pick(r, SUPP_ALIASES.reason),
-    }))
+    }));
+  } else {
+    const recs = parse(body, { columns: false, skip_empty_lines: true, relax_column_count: true, trim: true, delimiter }) as string[][];
+    rows = recs.map((cells) => {
+      const r: SuppressionRow = { company_name: "", domain: "", email: "", tel: "", reason: "" };
+      for (const raw of cells) {
+        const c = String(raw ?? "").trim();
+        if (!c) continue;
+        if (!r.email && EMAIL_CELL.test(c)) r.email = c.toLowerCase();
+        else if (!r.domain && DOMAIN_CELL.test(c)) r.domain = domainOf(c);
+        else if (!r.tel && TEL_CELL.test(c)) r.tel = c;
+        else if (!r.company_name) r.company_name = c;
+        else if (!r.reason) r.reason = c;
+      }
+      return r;
+    });
+  }
+  // 会社名が無くても、ドメインかメールがあれば止められるので登録する（表示用の名前はドメイン／メール）
+  return rows
+    .map((r) => ({ ...r, company_name: r.company_name || r.domain || r.email }))
     .filter((r) => r.company_name);
 }
 

@@ -490,10 +490,13 @@ ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.
 <div><label>理由</label><input type="text" name="reason" placeholder="先方より連絡不要のご依頼"></div>
 </div><p><button class="btn">追加</button></p></form></div>
 
-<div class="card"><h2 style="margin-top:0">CSVでまとめて追加</h2>
-<p class="muted">列は <b>会社名</b>（必須）と、<b>メール</b>・<b>ドメイン（企業URL）</b>・<b>電話番号</b>（いずれも任意・あれば拾います）。1行1社。<br>ドメインもメールも無い行は、送信を止める手がかりが無いため登録できません（その場合は会社名を一覧で出します）。</p>
+<div class="card"><h2 style="margin-top:0">まとめて追加（貼り付け・スプレッドシート・CSV）</h2>
+<p class="muted">1行1社。<b>URL・ドメインやメールアドレスだけを縦に貼るだけでOK</b>です（会社名は無くても登録できます）。<br>スプレッドシートからコピーした複数列（会社名・URL・メール・電話）もそのまま貼れます。1行目が見出し（会社名／ドメイン／メール 等）ならその列で読み、見出しが無ければ中身で自動判別します。<br>ドメインもメールも無い行（会社名だけ）は、送信を止める手がかりが無いため登録できません（その場合は会社名を一覧で出します）。</p>
 <form method="post" action="/suppressions/import" enctype="multipart/form-data">
-<div class="row"><div><label>CSVファイル</label><input type="file" name="csv" accept=".csv" required></div><div><label>理由（CSVに理由列が無い行に付けます）</label><input type="text" name="reason" placeholder="取引先のため送信対象外"></div></div>
+<label>① 貼り付け（スプレッドシート・Excel・メモ帳からコピー）</label>
+<textarea name="pasted" style="min-height:120px" placeholder="example.co.jp&#10;https://www.sample.jp/&#10;info@test.co.jp&#10;株式会社○○	https://maru.co.jp"></textarea>
+<div class="row"><div><label>② または Google スプレッドシートのURL</label><input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…"><p class="muted small">共有を「リンクを知っている全員（閲覧可）」にしてください。</p></div><div><label>③ または CSVファイル</label><input type="file" name="csv" accept=".csv,text/csv"></div></div>
+<label>理由（理由の列が無い行に付けます）</label><input type="text" name="reason" placeholder="取引先のため送信対象外">
 <p><button class="btn">取り込む</button></p></form>
 <p class="muted small">除外リストはPCごとに独立しています。別のメンバーと共有したいときは、下のボタンでCSVに書き出し、相手はこの「CSVでまとめて追加」から取り込めます（列はそのまま合います）。</p>
 ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リストをCSVで書き出す</a>' : ""}</div>
