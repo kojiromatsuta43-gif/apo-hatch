@@ -240,3 +240,74 @@ export function replyScanStatus(sender: SenderProfile | undefined): { enabled: b
   const r = getDb().prepare("SELECT checked_at, error FROM reply_scans WHERE mailbox=?").get(sender.smtp_user.trim().toLowerCase()) as { checked_at: string | null; error: string } | undefined;
   return { enabled: true, checkedAt: r?.checked_at ?? null, error: r?.error ?? "" };
 }
+
+// ---- 送信の途中でアプリが止まったメールの確認 ----
+// 以前は「送信済みか不明・要確認」にして、利用者に Gmail の送信済みフォルダを見てもらっていた。
+// 同じ受信箱の読み取り（IMAP）で送信済みフォルダを裏で確認し、送れていれば「送信済み」、
+// 送れていなければ「待機」に戻して続きから自動で送る。
+
+export const INTERRUPTED_PREFIX = "送信中にアプリが止まったため中断";
+
+/** 送信済みフォルダにあった同じ宛先のメールの日時から判断する。
+ *  中断した送信の開始時刻（claimAt）より少し前以降に送ったものがあれば送信済み。
+ *  無い場合、Gmail（送信済みフォルダに必ず控えが残る）なら未送信と判断してよい。それ以外のサービスは控えが残らないことがあるので決めない */
+export function decideInterrupted(sentDates: Date[], claimAt: Date, keepsSentCopy: boolean): { verdict: "sent"; at: Date } | { verdict: "not_sent" } | { verdict: "unknown" } {
+  const hit = sentDates.filter((d) => d.getTime() >= claimAt.getTime() - 2 * 60_000).sort((a, b) => a.getTime() - b.getTime())[0];
+  if (hit) return { verdict: "sent", at: hit };
+  return keepsSentCopy ? { verdict: "not_sent" } : { verdict: "unknown" };
+}
+
+type InterruptedRow = { id: number; email: string; updated_at: string; sender_id: number };
+
+/** 起動時に呼ぶ。送信中に止まったメールを送信済みフォルダで確認して、送信済み／待機に振り分ける。戻り値は振り分けた件数 */
+export async function verifyInterruptedEmails(): Promise<{ sent: number; requeued: number; unknown: number }> {
+  const db = getDb();
+  const rows = db.prepare(`SELECT j.id, j.email, j.updated_at, c.sender_id FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
+    WHERE j.status='failed' AND j.channel='email' AND j.email<>'' AND j.result_text LIKE ?`).all(`${INTERRUPTED_PREFIX}%`) as InterruptedRow[];
+  const out = { sent: 0, requeued: 0, unknown: 0 };
+  const bySender = new Map<number, InterruptedRow[]>();
+  for (const r of rows) bySender.set(r.sender_id, [...(bySender.get(r.sender_id) ?? []), r]);
+  for (const [senderId, jobs] of bySender) {
+    const s = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(senderId) as SenderProfile | undefined;
+    if (!s || !s.smtp_user || !s.smtp_pass) { out.unknown += jobs.length; continue; }
+    const keepsSentCopy = /gmail|google/i.test(s.smtp_host || "smtp.gmail.com");
+    const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000 });
+    client.on("error", () => { /* 下の catch で拾う */ });
+    try {
+      await client.connect();
+      const sentBox = (await client.list()).find((b) => b.specialUse === "\\Sent");
+      if (!sentBox) { out.unknown += jobs.length; await client.logout().catch(() => {}); continue; }
+      const lock = await client.getMailboxLock(sentBox.path);
+      try {
+        for (const j of jobs) {
+          const claimAt = new Date(j.updated_at.replace(" ", "T") + "Z");
+          const uids = (await client.search({ to: j.email, since: new Date(claimAt.getTime() - 86400_000) }, { uid: true })) || [];
+          const dates: Date[] = [];
+          for (const uid of uids) {
+            const m = await client.fetchOne(String(uid), { uid: true, internalDate: true }, { uid: true });
+            if (m && m.internalDate) dates.push(new Date(m.internalDate));
+          }
+          const d = decideInterrupted(dates, claimAt, keepsSentCopy);
+          if (d.verdict === "sent") {
+            db.prepare("UPDATE form_jobs SET status='sent', sent_at=?, result_text=?, updated_at=datetime('now') WHERE id=? AND status='failed'")
+              .run(d.at.toISOString().replace("T", " ").slice(0, 19), `メール送信（${j.email}）※送信中にアプリが止まったが、送信済みフォルダで送信を確認`, j.id);
+            out.sent++;
+          } else if (d.verdict === "not_sent") {
+            // 送れていなかったので待機に戻す（実行中のキャンペーンなら続きで自動送信される）
+            db.prepare("UPDATE form_jobs SET status='queued', result_text=?, updated_at=datetime('now') WHERE id=? AND status='failed'")
+              .run("再送信待ち: 送信中にアプリが止まったが、送信済みフォルダに無く未送信と確認", j.id);
+            out.requeued++;
+          } else out.unknown++;
+        }
+      } finally {
+        lock.release();
+      }
+      await client.logout().catch(() => {});
+    } catch {
+      // つながらなければ「要確認」のまま（次の起動でもう一度確認する）
+      out.unknown += jobs.length;
+      try { client.close(); } catch { /* 既に閉じている */ }
+    }
+  }
+  return out;
+}

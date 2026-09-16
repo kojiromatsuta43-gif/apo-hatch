@@ -82,3 +82,13 @@ assert.equal(imapHostFor({ smtp_host: "smtp.gmail.com" } as never), "imap.gmail.
 assert.equal(imapHostFor({ smtp_host: "smtp.office365.com" } as never), "outlook.office365.com");
 
 console.log("replies: ALL OK");
+
+// 送信中に止まったメール: 送信済みフォルダの控えで判断
+{
+  const { decideInterrupted } = await import("../src/replies.js");
+  const claim = new Date("2026-09-16T16:04:49Z");
+  assert.equal(decideInterrupted([new Date("2026-09-16T16:04:51Z")], claim, true).verdict, "sent", "送信開始の直後に控えがある → 送信済み");
+  assert.equal(decideInterrupted([new Date("2026-08-01T00:00:00Z")], claim, true).verdict, "not_sent", "前に送った別の控えだけ → Gmailなら未送信");
+  assert.equal(decideInterrupted([], claim, false).verdict, "unknown", "控えが残らないサービスでは決めない");
+  console.log("interrupted: ALL OK");
+}

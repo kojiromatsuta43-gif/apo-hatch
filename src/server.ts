@@ -10,7 +10,7 @@ import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiCo
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
 import { drainForShutdown, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
-import { checkReplies, isCheckingReplies, replyScanStatus } from "./replies.js";
+import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
 import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
@@ -946,14 +946,21 @@ app.post("/update", requireAdmin, async (req, res) => {
 
 // ---- 起動時: 前回アプリが止まったときに「送信中」のまま残った会社 ----
 // 送信の途中でアプリが止まると、そのまま「送信中」で永久に残り、再送信の対象にもならなかった。
-// 送ったか送っていないか分からないため、自動で送り直さず「失敗（要確認）」にして人に確認してもらう（二重送信を避ける）
+// 送ったか送っていないか分からないため、いったん「失敗（要確認）」にする（そのまま送り直すと二重送信になり得る）。
+// メールは続けて送信済みフォルダを裏で確認し、送れていれば「送信済み」、送れていなければ「待機」に自動で戻す。
+// updated_at は送信を始めた時刻のまま残す（送信済みフォルダの照合に使う）
 {
-  const stuck = db.prepare(`UPDATE form_jobs SET status='failed', updated_at=datetime('now'),
+  const stuck = db.prepare(`UPDATE form_jobs SET status='failed',
     result_text=CASE WHEN channel='email'
-      THEN '送信中にアプリが止まったため中断（送信済みか不明・要確認）: 送信用メールの「送信済み」フォルダに届いているか確認し、無ければ再送信してください'
+      THEN '送信中にアプリが止まったため中断（送信済みか不明・要確認）: 送信済みフォルダを自動で確認します。確認できない場合は、送信用メールの「送信済み」フォルダに届いているか見て、無ければ再送信してください'
       ELSE '送信中にアプリが止まったため中断（送信済みか不明・要確認）: 相手先から受付メールが届いていないか確認し、無ければ再送信してください' END
     WHERE status='sending'`).run().changes;
   if (stuck) console.log(`[apo-hatch] 送信中のまま止まっていた ${stuck}件を「失敗（要確認）」にしました`);
+  setTimeout(() => {
+    verifyInterruptedEmails()
+      .then((r) => { if (r.sent || r.requeued) console.log(`[apo-hatch] 中断したメールを送信済みフォルダで確認: 送信済み ${r.sent}件 / 未送信→待機に戻した ${r.requeued}件`); })
+      .catch((e) => console.error("[interrupted]", e));
+  }, 5_000);
 }
 
 // ---- 終了時（Ctrl+C・ターミナルを閉じる等）: 送信中の会社が終わるまで待ってから止める ----

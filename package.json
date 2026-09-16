@@ -1,6 +1,6 @@
 {
   "name": "apo-hatch",
-  "version": "0.3.63",
+  "version": "0.3.64",
   "private": true,
   "description": "【フォーム＆メール】アポハッチくん — 問い合わせフォーム／メール営業の自動送信ツール（単体版）",
   "type": "module",

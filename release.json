@@ -1,6 +1,6 @@
 {
-  "version": "0.3.63",
-  "notes": "返信を受信箱から自動で確認し、反応（返信／アポ／断り）をキーワードで自動記録。アプリ終了・更新時に送信の途中で切らないように",
+  "version": "0.3.64",
+  "notes": "送信の途中でアプリが止まったメールは、送信済みフォルダを自動で確認して「送信済み」か「待機（続きから自動送信）」に戻す",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T16:14:01.241Z"
+  "published_at": "2026-09-16T17:00:25.837Z"
 }
