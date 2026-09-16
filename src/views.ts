@@ -88,6 +88,8 @@ export function statusTag(s: JobStatus) {
 /** 失敗理由を「何のエラーか」ひと目で分かる種類に分類する */
 export function errKind(j: Pick<Job, "status" | "result_text">): string {
   if (j.status === "skip_captcha") return "CAPTCHA検出（要手動対応）";
+  // 送信済みでも、完了画面を確認できなかったものは目印を出す（届いたか相手の受付メール等で確認）
+  if (j.status === "sent" && /完了画面を確認できず|完了文言なし・要確認/.test(j.result_text || "")) return "要確認（完了画面を確認できず）";
   if (j.status !== "failed") return "";
   const t = j.result_text || "";
   if (/^要確認/.test(t)) return "要確認（AIが回答を決められない項目）";

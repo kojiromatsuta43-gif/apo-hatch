@@ -189,6 +189,16 @@ function migrate(db: Database.Database) {
   // 要確認: 回答を決められなかった質問（JSON）と、画面で利用者が選んだ回答（JSON）
   addCol("form_jobs", "pending_questions", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "manual_answers", "TEXT NOT NULL DEFAULT ''");
+
+  // 以前は「送信ボタンを押したが完了画面を判定できない」を failed にしていたため、自動再試行と
+  // 「失敗した会社を再送信」で同じ会社に二重送信していた（v0.3.50で判定側は修正）。
+  // 既存の該当ジョブを「送信済み（要確認）」に寄せる。配布先でもアップデート後の起動で自動的に直る。
+  // 条件に一致するのは未修正の行だけなので、毎回起動時に流しても結果は変わらない。
+  db.prepare(`UPDATE form_jobs
+    SET status='sent',
+        sent_at=COALESCE(sent_at, updated_at, datetime('now')),
+        result_text='送信済み（完了画面を確認できず・要確認）: ' || replace(replace(result_text, '再試行待ち: ', ''), '送信後の判定不能: ', '')
+    WHERE is_test=0 AND status IN ('failed','queued') AND result_text LIKE '%送信後の判定不能%'`).run();
 }
 
 export type Channel = "form" | "email" | "both";
