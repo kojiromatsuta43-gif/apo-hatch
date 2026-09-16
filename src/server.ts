@@ -258,7 +258,9 @@ app.get("/campaigns/:id", (req, res) => {
   for (const r of db.prepare("SELECT outcome, COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome != '' GROUP BY outcome").all(id) as { outcome: string; n: number }[]) outcomes[r.outcome] = r.n;
   const unscanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL").get(id) as { n: number }).n;
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport }), takeFlash(req), navUser(req), updateReady));
+  // 「失敗した会社を再送信」の対象を一覧で見せる（どの会社が対象か分かるように）
+  const retryTargets = db.prepare("SELECT id, company_name, status, result_text FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status IN ('failed','skip_no_form') ORDER BY id").all(id) as { id: number; company_name: string; status: string; result_text: string }[];
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -531,6 +533,15 @@ app.post("/campaigns/:id/requeue-failed", (req, res) => {
 });
 
 // 手動で送れた会社を「送信済み（手動）」にする（手動送信リストの消し込み用）
+// 間違って取り込んだ会社などを送信一覧から完全に消す（記録ごと削除。送信済みを消すとその会社への再送防止は効かなくなる）
+app.post("/jobs/:id/delete", (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  db.prepare("DELETE FROM form_jobs WHERE id=?").run(id);
+  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} を送信一覧から削除しました`);
+});
+
 app.post("/jobs/:id/mark-sent", (req, res) => {
   const id = Number(req.params.id);
   const j = ownedJob(req, id);

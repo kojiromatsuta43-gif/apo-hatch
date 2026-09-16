@@ -1,6 +1,6 @@
 {
-  "version": "0.3.44",
-  "notes": "フォーム検出を改善：『ブラウザ確認（Checking your browser）』が自動で解けるサイトで数秒待つように。403の瞬間に諦めて「フォーム無し」になっていた問題（grooves.com 等）を修正",
+  "version": "0.3.45",
+  "notes": "送信一覧に「削除」ボタンを追加（間違って取り込んだ会社を記録ごと消せる）／「失敗した会社を再送信」の対象企業を一覧で確認できるように",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T07:01:04.021Z"
+  "published_at": "2026-09-16T07:09:40.114Z"
 }
