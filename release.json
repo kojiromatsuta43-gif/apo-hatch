@@ -1,6 +1,6 @@
 {
-  "version": "0.3.60",
-  "notes": "メールで送る会社にも、社名に「株式会社」等が無ければホームページの表記から自動で補うように（AI不要・無料）",
+  "version": "0.3.61",
+  "notes": "事前チェック欄に「メールで送る会社は対象外」と件数を表示",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T15:37:53.339Z"
+  "published_at": "2026-09-16T15:49:48.386Z"
 }
