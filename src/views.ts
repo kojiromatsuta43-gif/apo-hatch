@@ -4,7 +4,7 @@ import { AI_MODELS, type Lint } from "./message.js";
 
 export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export type NavUser = { username: string; display_name: string; role: string } | null;
+export type NavUser = { username: string; display_name: string; role: string; gameOn?: boolean } | null;
 
 export function layout(title: string, body: string, flash = "", user: NavUser = null, updateReady = false): string {
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -651,22 +651,27 @@ ${!st.configured
 </div>`;
 }
 
-/** ミニゲーム「アポスロット」。利用者提供の筐体イラスト（BATTA筐体）を土台に、
- *  リール・停止ボタン・レバー・表示・GOGOランプを座標で重ねる。座標は元画像 967×1627 基準（--s で拡縮）。
- *  - 3リール×3行・5ライン。図柄: バッタ(ブドウ相当+8)・蜂(リプレイ)・7・BAR・🔔・🍒
- *  - クレジットはフォーム送信数から（1送信=1枚、BET3）。ブラウザに保存
- *  - 音は Web Audio で先頭無音をカットして即時再生 */
+/** ミニゲーム「アポスロット」＝ ネオアイムジャグラーEX 準拠のリール制御シミュレータ。
+ *  利用者提供の筐体イラストを土台に、リール・停止ボタン・レバー・表示・GOGOランプを座標で重ねる
+ *  （座標は元画像 967×1627 基準、--s で拡縮）。
+ *  - 3リール各21コマ＝実機と同じ配列。最大4コマ引き込み・成立役以外は揃えない「蹴飛ばし」制御。
+ *  - 図柄画像: 7=seven.png / BAR=bar.png / ベル=bell.png / ピエロ=pierrot.png（無い場合は絵文字で代替）。
+ *    ブドウ🍇・チェリー🍒・リプレイ🔄 は絵文字（画像に差し替え可）。
+ *  - GOGO!ランプが光ったら（ぺかったら）7を「目押し」で狙う。押し位置から4コマ以内なら引き込む。
+ *  - BARと7が枠内に並べば「リーチ目」。BIG=7・7・7 / REG=7・7・BAR・BAR・BAR。
+ *  - 内部抽選は設定6の65536分母テーブル。クレジットはフォーム送信数から（1送信=1枚、BET3）。 */
 export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
-<p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。</p>
+<p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。ネオアイムジャグラーEX の配列・制御を再現した非公式ミニゲームです。</p>
 <div id="cab">
   <img class="bg" src="/assets/game/cabinet.jpg" alt="" draggable="false">
   <div class="win">
     <div class="reel" id="r0"><div class="strip"></div></div>
     <div class="reel" id="r1"><div class="strip"></div></div>
     <div class="reel" id="r2"><div class="strip"></div></div>
+    <div class="payline pl0"></div><div class="payline pl1"></div><div class="payline pl2"></div>
   </div>
-  <div class="lamp" id="lamp"><img src="/assets/game/gogo.jpg" alt="GOGO! BATTA" draggable="false"></div>
+  <div class="lamp" id="lamp"><img src="/assets/game/gogo.jpg" alt="GOGO!" draggable="false"></div>
   <div class="seg" id="credit" style="left:calc(322px*var(--s));width:calc(90px*var(--s))">0</div>
   <div class="seg" id="count" style="left:calc(432px*var(--s));width:calc(100px*var(--s))">0</div>
   <div class="seg" id="win" style="left:calc(552px*var(--s));width:calc(90px*var(--s))">0</div>
@@ -681,22 +686,30 @@ export function gameView(sentCount: number): string {
 </div>
 <div class="gmsg" id="msg">…</div>
 <div class="gctl"><button class="btn small" id="sync">送信数を反映</button> <span class="muted small">送信 <b id="sent">${sentCount}</b>件</span></div>
-<div class="rules muted small" style="max-width:600px;margin:8px auto 0">
-・BET 3枚／回（＝フォーム3送信）・5ライン（上・中・下・斜め2本）・レバー＝左の黒いノブ、停止＝緑の3ボタン<br>
-・<img src="/assets/game/batta.png" class="ico">×3 = +8枚　・<img src="/assets/game/hatch.png" class="ico">×3 = リプレイ（次回転BET不要）　・7×3 = +30枚　・BAR×3 = +10枚　・🔔×3 = +5枚　・左リール🍒 = +2枚<br>
-・毎回転 1/30 で GOGO! BATTA が光る → その回転は7が揃って +50枚
+<div class="rules muted small" style="max-width:640px;margin:8px auto 0">
+・BET 3枚／回・5ライン（上・中・下・斜め2本）・レバー＝左の黒いノブ、停止＝緑の3ボタン<br>
+・<b>BIG</b> 7・7・7（純増+252）／<b>REG</b> 7・7・BAR または BAR・BAR・BAR（純増+96）<br>
+・ブドウ×3=+8　・ベル×3=+10（要目押し）　・ピエロ×3=+10（要目押し）　・左リール🍒=角+2/中+1　・リプレイ×3=次回転BET不要<br>
+・図柄は押した位置から<b>最大4コマ</b>まで滑って引き込む。成立していない役は揃わない。<br>
+・<b>GOGO!ランプが光ったら（ぺかったら）7を目押し</b>で狙う。枠内に<b>BARと7が並んだらリーチ目</b>（ボーナス濃厚）。
 </div>
 <style>
 #cab{position:relative;width:min(700px,100%);margin:0 auto;aspect-ratio:967/1627;user-select:none;--s:0.724}
 #cab .bg{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:10px}
 #cab .win{position:absolute;left:calc(183px*var(--s));top:calc(479px*var(--s));width:calc(607px*var(--s));height:calc(212px*var(--s));display:flex;gap:calc(10px*var(--s));background:#111;border-radius:calc(6px*var(--s));overflow:hidden}
-#cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#fffdf6}
+#cab .reel{position:relative;flex:1;height:100%;overflow:hidden;background:#ffffff}
 #cab .reel .strip{will-change:transform}
-#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(58px*var(--s));font-weight:900;line-height:1;color:#222}
-#cab .reel .cell img{width:calc(68px*var(--s));height:calc(68px*var(--s));object-fit:contain}
-#cab .reel .cell img.s7{width:calc(150px*var(--s));height:calc(68px*var(--s));object-fit:contain}
-#cab .reel .cell .sbar{font-size:calc(24px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ffd54a;padding:calc(8px*var(--s)) calc(14px*var(--s));border-radius:5px}
-#cab .reel.spinning .strip{filter:blur(1.1px)}
+#cab .reel .cell{height:calc(70.67px*var(--s));display:flex;align-items:center;justify-content:center;font-size:calc(54px*var(--s));font-weight:900;line-height:1;color:#222}
+#cab .reel .cell img{height:calc(62px*var(--s));width:auto;max-width:calc(180px*var(--s));object-fit:contain}
+#cab .reel .cell img.s7{height:calc(70px*var(--s));width:auto;max-width:calc(140px*var(--s));object-fit:contain}
+#cab .reel .cell img.sq{height:calc(70px*var(--s));width:auto;max-width:calc(74px*var(--s));object-fit:contain}
+#cab .reel .cell img.bar{height:calc(58px*var(--s));width:auto;max-width:calc(165px*var(--s));object-fit:contain}
+#cab .reel .cell img.bell{height:calc(50px*var(--s));width:auto;max-width:calc(96px*var(--s));object-fit:contain}
+#cab .reel .cell .sbar{font-size:calc(22px*var(--s));letter-spacing:1px;background:#1c1c1c;color:#ff4a4a;padding:calc(6px*var(--s)) calc(12px*var(--s));border-radius:5px;font-weight:900}
+#cab .reel.spinning .strip{filter:blur(1px)}
+#cab .win .payline{position:absolute;left:0;right:0;height:calc(2px*var(--s));background:rgba(255,80,80,.0);pointer-events:none}
+#cab .win .payline.pl0{top:calc(35px*var(--s))}#cab .win .payline.pl1{top:calc(106px*var(--s))}#cab .win .payline.pl2{top:calc(177px*var(--s))}
+#cab .win.flash .payline{background:rgba(255,80,80,.85);box-shadow:0 0 calc(8px*var(--s)) #ff5050}
 #cab .lamp{position:absolute;left:calc(84px*var(--s));top:calc(700px*var(--s));width:calc(156px*var(--s));height:calc(102px*var(--s));border-radius:calc(10px*var(--s));overflow:hidden;background:#000;border:calc(2px*var(--s)) solid #2a2a2a;transition:box-shadow .2s}
 #cab .lamp img{width:100%;height:100%;object-fit:contain;filter:brightness(.16) saturate(.5) grayscale(.6);transition:filter .15s}
 #cab .lamp.on{border-color:#ff5ce0;box-shadow:0 0 calc(22px*var(--s)) #ff5ce0,0 0 calc(50px*var(--s)) #6a5cff}
@@ -707,7 +720,7 @@ export function gameView(sentCount: number): string {
 #cab .betlamp.on{box-shadow:0 0 calc(18px*var(--s)) calc(6px*var(--s)) rgba(255,230,80,.85)}
 #cab .replamp{position:absolute;left:calc(818px*var(--s));top:calc(536px*var(--s));width:calc(92px*var(--s));height:calc(36px*var(--s));border-radius:8px;pointer-events:none}
 #cab .replamp.on{box-shadow:0 0 calc(16px*var(--s)) calc(4px*var(--s)) rgba(80,200,255,.9)}
-#cab .lever{position:absolute;left:calc(201px*var(--s));top:calc(870px*var(--s));width:calc(70px*var(--s));height:calc(70px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;box-shadow:0 0 0 calc(3px*var(--s)) rgba(255,255,255,.0);transition:transform .08s,box-shadow .15s}
+#cab .lever{position:absolute;left:calc(201px*var(--s));top:calc(870px*var(--s));width:calc(70px*var(--s));height:calc(70px*var(--s));border-radius:50%;border:0;background:transparent;cursor:pointer;transition:transform .08s,box-shadow .15s}
 #cab .lever:not(:disabled){box-shadow:0 0 calc(14px*var(--s)) calc(4px*var(--s)) rgba(255,255,140,.75);animation:leverpulse 1.2s ease-in-out infinite}
 @keyframes leverpulse{50%{box-shadow:0 0 calc(6px*var(--s)) calc(2px*var(--s)) rgba(255,255,140,.4)}}
 #cab .lever:active{transform:scale(.92)}
@@ -717,6 +730,7 @@ export function gameView(sentCount: number): string {
 #cab .stopbtn:active{transform:scale(.9)}
 #cab .stopbtn:disabled{cursor:default;background:rgba(0,0,0,.45)}
 .gmsg{margin:10px 0 6px;text-align:center;font-weight:800;font-size:16px;min-height:22px;color:#1C1710}
+.gmsg.eye{color:#c81e6e}.gmsg.big{color:#e11d48}
 .gctl{text-align:center}
 .rules .ico{width:18px;height:18px;vertical-align:-3px}
 </style>
@@ -725,153 +739,247 @@ export function gameView(sentCount: number): string {
   const cab = document.getElementById("cab");
   const setScale = () => cab.style.setProperty("--s", (cab.clientWidth / 967).toFixed(4));
   setScale(); addEventListener("resize", setScale);
+  const N = 21, CELL = 70.67;
 
-  // ---- 図柄と配当 ----
-  const IMG = { H: '<img src="/assets/game/hatch.png" alt="蜂" draggable="false">', B: '<img src="/assets/game/batta.png" alt="バッタ" draggable="false">' };
-  const draw = (s) => s === "H" || s === "B" ? IMG[s] : s === "7" ? '<img class="s7" src="/assets/game/seven.png" alt="7" draggable="false">' : s === "R" ? '<span class="sbar">BAR</span>' : s === "L" ? "🔔" : "🍒";
-  const REEL = ["B","H","L","7","B","C","H","B","R","L","B","H","7","C","B","L","H","B","R","B","H"];
-  const LEN = REEL.length, CELL = 70.67;
-  const PAY = { B: 8, "7": 30, R: 10, L: 5 };
-  const FREE_PLAY = true; // テスト中: クレジットを消費せず無限に回せる（本番運用に戻すときは false）
+  // ===== リール配列（各21コマ, index0=コマ1）: 7/A(BAR)/G(ブドウ)/C(チェリー)/L(ベル)/P(ピエロ)/R(リプレイ) =====
+  const REELS = [
+    ["G","R","G","A","C","G","R","G","P","7","G","R","G","C","A","G","R","G","R","7","L"],
+    ["P","C","G","A","R","C","G","L","R","C","G","A","R","C","G","L","R","C","G","7","R"],
+    ["R","L","P","G","R","L","P","G","R","L","P","G","R","L","P","G","R","L","A","7","G"]
+  ];
+  const symAt = (reel, koma) => REELS[reel][((koma - 1) % N + N) % N];
+  const winAt = (reel, pos) => [symAt(reel, pos), symAt(reel, pos - 1), symAt(reel, pos - 2)]; // [上,中,下]
 
-  // ---- クレジット（フォーム送信数から。ブラウザに保存）----
-  const KEY = "aposlot-v3";
+  // ===== 役・ライン・配当 =====
+  const LINES = { "上段":[0,0,0], "中段":[1,1,1], "下段":[2,2,2], "右下がり":[0,1,2], "右上がり":[2,1,0] };
+  const PAY = { GR:8, BE:10, PI:10, CH:1, MC:1, RE:0, BIG:0, REG:0 };
+  const PRIORITY = ["RE","GR","MC","BIG","REG","CH","BE","PI"];
+  function evalWindow(a, b, c) {
+    const wa = winAt(0,a), wb = winAt(1,b), wc = winAt(2,c), out = [];
+    for (const name in LINES) {
+      const ln = LINES[name], L = wa[ln[0]], M = wb[ln[1]], R = wc[ln[2]];
+      if (L === "C") out.push([name === "中段" ? "MC" : "CH", name]);
+      else if (L === "7" && M === "7" && R === "7") out.push(["BIG", name]);
+      else if (L === "7" && M === "7" && R === "A") out.push(["REG", name]); // REGは7・7・BARのみ（BAR3つはボーナスにしない）
+      else if (L === M && M === R && L === "G") out.push(["GR", name]);
+      else if (L === M && M === R && L === "L") out.push(["BE", name]);
+      else if (L === M && M === R && L === "P") out.push(["PI", name]);
+      else if (L === M && M === R && L === "R") out.push(["RE", name]);
+    }
+    return out;
+  }
+
+  // ===== 逐次リール制御（最大4コマ・蹴飛ばし・先読み） =====
+  const MAX_SLIP = 4;
+  function makeSpin(allowed) {
+    const set = {}; allowed.forEach((r) => set[r] = true);
+    const goals = PRIORITY.filter((r) => set[r]);
+    const stopped = [null, null, null], slip = [null, null, null];
+    const legalFull = (a, b, c) => evalWindow(a, b, c).every((e) => set[e[0]]);
+    function exists(fixed, pred) {
+      const rem = [0,1,2].filter((i) => fixed[i] == null), pos = fixed.slice();
+      const rec = (k) => {
+        if (k === rem.length) return legalFull(pos[0], pos[1], pos[2]) && pred(pos);
+        for (let q = 1; q <= N; q++) { pos[rem[k]] = q; if (rec(k + 1)) return true; }
+        pos[rem[k]] = null; return false;
+      };
+      return rec(0);
+    }
+    function stop(reel, press) {
+      let best = null;
+      for (let s = 0; s <= MAX_SLIP; s++) {
+        const q = ((press - 1 + s) % N) + 1, fixed = stopped.slice(); fixed[reel] = q;
+        const feas = exists(fixed, () => true) ? 1 : 0;
+        const rc = goals.map((g) => exists(fixed, (f) => evalWindow(f[0], f[1], f[2]).some((e) => e[0] === g)) ? 1 : 0);
+        const score = [feas].concat(rc).concat([-s]);
+        if (best === null || cmpArr(score, best.score) > 0) best = { score: score, q: q, s: s };
+      }
+      stopped[reel] = best.q; slip[reel] = best.s; return best.q;
+    }
+    return { stop: stop, stopped: stopped, slip: slip, result: () => ({ final: stopped.slice(), formed: evalWindow(stopped[0], stopped[1], stopped[2]) }) };
+  }
+  function cmpArr(x, y) { for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1; return 0; }
+
+  // ===== 設定6 内部抽選（65536分母） =====
+  const LOT = [["BIG",171],["CH_BIG",84],["MID_BIG",2],["REG",180],["CH_REG",77],["GRAPE",11338],["CHERRY",1840],["PIERROT",60],["BELL",60],["REPLAY",8980]];
+  const FLAG = { BIG:["BIG"], CH_BIG:["CH","BIG"], MID_BIG:["MC","BIG"], REG:["REG"], CH_REG:["CH","REG"], GRAPE:["GR"], CHERRY:["CH"], PIERROT:["PI"], BELL:["BE"], REPLAY:["RE"], HAZURE:[] };
+  function drawFlag() {
+    let r = Math.floor(Math.random() * 65536), acc = 0;
+    for (const [k, n] of LOT) { acc += n; if (r < acc) return k; }
+    return "HAZURE";
+  }
+
+  // ===== 図柄描画（画像・無ければ絵文字） =====
+  function draw(code) {
+    if (code === "7") return '<img class="s7" src="/assets/game/seven.png" alt="7" data-fb="7" onerror="sfb(this)" draggable="false">';
+    if (code === "A") return '<img class="bar" src="/assets/game/bar.png" alt="BAR" data-fb="BAR" onerror="sfb(this)" draggable="false">';
+    if (code === "L") return '<img class="bell" src="/assets/game/bell.png" alt="ベル" data-fb="🔔" onerror="sfb(this)" draggable="false">';
+    if (code === "P") return '<img src="/assets/game/pierrot.png" alt="ピエロ" data-fb="🤡" onerror="sfb(this)" draggable="false">';
+    if (code === "G") return '<img class="sq" src="/assets/game/batta.png" alt="ブドウ" draggable="false">'; // ブドウ図柄は従来どおり batta.png（四角図柄は大きめ表示）
+    if (code === "C") return "🍒"; return '<img class="sq" src="/assets/game/hatch.png" alt="リプレイ" draggable="false">'; // R=リプレイ（従来の蜂図柄）
+  }
+  window.sfb = function (img) { const fb = img.getAttribute("data-fb"); const sp = document.createElement("span"); sp.className = fb === "BAR" ? "sbar" : "fb"; sp.textContent = fb; img.replaceWith(sp); };
+
+  // ===== クレジット =====
+  const KEY = "aposlot-nij1";
   const sent = ${Number(sentCount) || 0};
   let st = {}; try { st = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch {}
   let credit = Number(st.credit) || 0, synced = Number(st.synced) || 0, games = Number(st.games) || 0, freeSpin = false;
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit, synced, games })); } catch {} };
+  const FREE_PLAY = true; // テスト中: クレジット無限（本番に戻すときは false）
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ credit: credit, synced: synced, games: games })); } catch {} };
   const syncSends = () => { if (sent > synced) { const d = sent - synced; credit += d; synced = sent; save(); return d; } return 0; };
 
   const $ = (id) => document.getElementById(id);
   const reels = [0,1,2].map((i) => $("r" + i));
   const strips = reels.map((r) => r.querySelector(".strip"));
-  const stopBtns = [...document.querySelectorAll(".stopbtn")];
+  const stopBtns = [].slice.call(document.querySelectorAll(".stopbtn"));
 
-  // ---- 音（Web Audio・先頭無音カット）----
+  // ===== 音（Web Audio・先頭無音カット） =====
   const AC = window.AudioContext || window.webkitAudioContext;
-  const actx = AC ? new AC() : null;
-  const bufs = {};
+  const actx = AC ? new AC() : null, bufs = {};
   async function loadSnd(name, url) {
     if (!actx) return;
-    try {
-      const buf = await actx.decodeAudioData(await (await fetch(url)).arrayBuffer());
-      const ch = buf.getChannelData(0); let i = 0;
-      while (i < ch.length && Math.abs(ch[i]) < 0.02) i++;
-      bufs[name] = { buf, off: Math.max(0, i / buf.sampleRate - 0.005) };
-    } catch {}
+    try { const buf = await actx.decodeAudioData(await (await fetch(url)).arrayBuffer());
+      const ch = buf.getChannelData(0); let i = 0; while (i < ch.length && Math.abs(ch[i]) < 0.02) i++;
+      bufs[name] = { buf: buf, off: Math.max(0, i / buf.sampleRate - 0.005) };
+    } catch (e) {}
   }
-  function play(name) {
-    const b = bufs[name]; if (!actx || !b) return;
-    if (actx.state === "suspended") actx.resume();
-    const src = actx.createBufferSource(); src.buffer = b.buf; src.connect(actx.destination); src.start(0, b.off);
-  }
-  loadSnd("spin", "/assets/game/spin.mp3"); loadSnd("stop", "/assets/game/stop.mp3"); loadSnd("bonus", "/assets/game/bonus.mp3");
-  loadSnd("bgm", "/assets/game/bgm.mp3"); loadSnd("grape", "/assets/game/grape.mp3"); loadSnd("replay", "/assets/game/replay.mp3"); loadSnd("tenpai", "/assets/game/tenpai.mp3"); loadSnd("cherry", "/assets/game/cherry.mp3");
-  // 7揃い後の音楽: 次にレバーを叩くまでループで流す
+  function play(name) { const b = bufs[name]; if (!actx || !b) return; if (actx.state === "suspended") actx.resume();
+    const src = actx.createBufferSource(); src.buffer = b.buf; src.connect(actx.destination); src.start(0, b.off); }
+  ["spin","stop","bonus","bgm","grape","replay","tenpai","cherry"].forEach((n) => loadSnd(n, "/assets/game/" + n + ".mp3"));
   let loopSrc = null;
-  function stopLoop() { if (loopSrc) { try { loopSrc.stop(); } catch {} loopSrc = null; } }
-  function playLoop(name) {
-    stopLoop(); const b = bufs[name]; if (!actx || !b) return;
-    if (actx.state === "suspended") actx.resume();
-    const src = actx.createBufferSource(); src.buffer = b.buf; src.loop = true; src.loopStart = b.off; src.loopEnd = b.buf.duration; src.connect(actx.destination); src.start(0, b.off); loopSrc = src;
-  }
+  function stopLoop() { if (loopSrc) { try { loopSrc.stop(); } catch (e) {} loopSrc = null; } }
   document.addEventListener("pointerdown", () => { if (actx && actx.state === "suspended") actx.resume(); }, { once: true });
 
-  // ---- リール（3行表示・rAF）----
-  const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.58;
-  const pos = [0,0,0], vel = [0,0,0], target = [null,null,null], spinning = [false,false,false];
-  function buildStrip(i) { let h = ""; for (let k = 0; k < LEN * 2; k++) h += '<div class="cell">' + draw(REEL[k % LEN]) + "</div>"; strips[i].innerHTML = h; }
-  [0,1,2].forEach((i) => { buildStrip(i); pos[i] = [3, 8, 13][i] - 1; render(i); });
-  function render(i) { const p = ((pos[i] % LEN) + LEN) % LEN; strips[i].style.transform = "translateY(" + (-p * CELL * s()) + "px)"; }
+  // ===== リール描画（下ほどコマ番号が小さい＝上→下に流れる） =====
+  const s = () => parseFloat(getComputedStyle(cab).getPropertyValue("--s")) || 0.724;
+  const topK = [21, 14, 7];        // 各リールの現在の上段コマ番号（float）
+  const spinning = [false,false,false], targetK = [null,null,null];
+  function buildStrip(i) { let h = ""; for (let j = 0; j < N * 2; j++) { const koma = N - (j % N); h += '<div class="cell">' + draw(symAt(i, koma)) + "</div>"; } strips[i].innerHTML = h; }
+  function render(i) { const f = ((topK[i] % N) + N) % N; const off = ((N - f) % N) * CELL * s(); strips[i].style.transform = "translateY(" + (-off) + "px)"; }
+  [0,1,2].forEach((i) => { buildStrip(i); render(i); });
   let last = 0;
   function loop(t) {
     const dt = Math.min(40, t - last) / 1000; last = t;
     for (let i = 0; i < 3; i++) {
       if (!spinning[i]) continue;
-      // 実機と同じく図柄は常に上から下へ流れる（pos を減らす方向にだけ動かす）
-      if (target[i] === null) pos[i] -= vel[i] * dt;
+      if (targetK[i] === null) { topK[i] += (24 + i * 2) * dt; }         // 自由回転（上→下, 目押しと滑りの見え方のバランス）
       else {
-        const goal = target[i] - 1;
-        const dist = ((pos[i] - goal) % LEN + LEN) % LEN; // 下方向に進んで目標へ届くまでの距離
-        const step = Math.max(6, dist * 9) * dt + (dist > 0.5 ? vel[i] * dt * 0.15 : 0);
-        if (dist <= step) { pos[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
-        pos[i] -= step;
+        const goal = targetK[i]; let cur = topK[i];
+        const dist = ((goal - cur) % N + N) % N;                        // 下方向に進んで目標へ
+        const step = Math.max(16, dist * 24) * dt;                      // キビキビ止める（引き込みを素早く）
+        if (dist <= step || dist < 0.02) { topK[i] = goal; spinning[i] = false; reels[i].classList.remove("spinning"); render(i); onStopped(); continue; }
+        topK[i] = cur + step;
       }
-      pos[i] = ((pos[i] % LEN) + LEN) % LEN;
+      topK[i] = ((topK[i] % N) + N) % N; if (topK[i] === 0) topK[i] = N;
       render(i);
     }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
-  // ---- 進行 ----
-  let bonus = false, lastWin = 0;
-  const rnd = (n) => Math.floor(Math.random() * n);
+  // ===== 進行 =====
+  let spin = null, pending = null, lampOn = false, lastWin = 0;
+  const say = (m, cls) => { const el = $("msg"); el.textContent = m; el.className = "gmsg" + (cls ? " " + cls : ""); };
+  const betLamps = (on) => ["bl1","bl2","bl3"].forEach((id) => $(id).classList.toggle("on", on));
   function paint() {
     $("credit").textContent = FREE_PLAY ? "∞" : credit; $("count").textContent = games; $("win").textContent = lastWin; $("sent").textContent = sent;
     $("lever").disabled = spinning.some(Boolean) || (!FREE_PLAY && !freeSpin && credit < 3);
     $("replamp").classList.toggle("on", freeSpin);
+    $("lamp").classList.toggle("on", lampOn);
   }
-  const say = (m) => { $("msg").textContent = m; };
-  const betLamps = (on) => ["bl1","bl2","bl3"].forEach((id) => $(id).classList.toggle("on", on));
-
   $("sync").onclick = () => { const d = syncSends(); paint(); say(d > 0 ? "送信 " + d + " 件ぶんのクレジットを追加しました" : "新しい送信はありません（送信すると1件=1枚貯まります）"); };
   const first = syncSends(); paint();
-  say(FREE_PLAY ? "テストモード: 無限に回せます。レバー（左の黒いノブ）で回そう！" : credit >= 3 ? (first ? "送信 " + first + " 件ぶん追加。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！") : "フォーム送信が3件たまると1回転できます（送信数を反映で補充）");
+  say(FREE_PLAY ? "テストモード: 無限に回せます。レバー（左の黒いノブ）で回そう！" : "レバー（左の黒いノブ）で回そう！");
 
   $("lever").onclick = () => {
     if (spinning.some(Boolean)) return;
     if (!FREE_PLAY && !freeSpin) { if (credit < 3) { say("クレジット不足。フォーム送信3件で1回転です"); return; } credit -= 3; }
-    stopLoop();
-    freeSpin = false; lastWin = 0; games++; save(); paint(); betLamps(true);
-    bonus = rnd(30) === 0;
-    $("lamp").classList.remove("on");
-    if (bonus) { $("lamp").classList.add("on"); play("bonus"); say("✨ GOGO! BATTA が光った！ 止めて7を揃えよう"); }
+    stopLoop(); freeSpin = false; lastWin = 0; games++; save(); betLamps(true);
+    $("cab").querySelector(".win").classList.remove("flash");
+
+    // 内部抽選（持ち越し中はボーナス抽選しない）
+    let flag = drawFlag(); let roles = FLAG[flag].slice();
+    let cherryPeka = false;
+    if (pending) { roles = roles.filter((r) => r !== "BIG" && r !== "REG"); if (roles.length === 1 && roles[0] === "MC") roles = ["CH"]; }
+    // チェリー重複・中段チェリーはボーナス確定＝ペカリ確定（先ペカ）。単独ボーナスは25%で先告知
+    else if (flag === "BIG" || flag === "CH_BIG" || flag === "MID_BIG") { pending = "BIG"; cherryPeka = (flag === "CH_BIG" || flag === "MID_BIG"); lampOn = cherryPeka || Math.random() < 0.25; }
+    else if (flag === "REG" || flag === "CH_REG") { pending = "REG"; cherryPeka = (flag === "CH_REG"); lampOn = cherryPeka || Math.random() < 0.25; }
+    const allowed = roles.concat(pending ? [pending] : []);
+    spin = makeSpin(allowed);
+
+    paint();
+    if (lampOn && cherryPeka) say("🍒✨ チェリー重複！ ペカリ確定！ 7を目押しで狙え", "big");
+    else if (lampOn) say("✨ GOGO!ランプ点灯！ 7を目押しで狙え（左は7を上段、中・右は7を中段あたり）", "big");
+    else if (pending) say("… なにか引いたかも？ 緑ボタンで止めよう");
     else say("緑のボタンで止めよう");
     play("spin");
-    for (let i = 0; i < 3; i++) { target[i] = null; vel[i] = 26 + i * 2; spinning[i] = true; reels[i].classList.add("spinning"); }
+    for (let i = 0; i < 3; i++) { targetK[i] = null; spinning[i] = true; reels[i].classList.add("spinning"); }
     stopBtns.forEach((b) => (b.disabled = false));
     $("lever").disabled = true;
   };
 
   stopBtns.forEach((btn) => btn.onclick = () => {
     const i = Number(btn.dataset.i);
-    if (!spinning[i] || target[i] !== null) return;
+    if (!spinning[i] || targetK[i] !== null) return;
     btn.disabled = true; play("stop");
-    if (bonus) { const sevens = REEL.map((v, k) => v === "7" ? k : -1).filter((k) => k >= 0); target[i] = sevens[rnd(sevens.length)]; }
-    else target[i] = rnd(LEN);
+    const press = ((Math.round(topK[i]) - 1) % N + N) % N + 1; // 押した瞬間の上段コマ
+    targetK[i] = spin.stop(i, press);
   });
 
   function onStopped() {
-    const stopped = [0,1,2].filter((i) => !spinning[i] && target[i] !== null);
-    if (stopped.length === 2 && stopped.every((i) => at(i, 0) === "7")) play("tenpai"); // 7のテンパイ
-    if (!spinning.some(Boolean) && target.every((t) => t !== null)) judge();
-  }
-  const at = (i, row) => REEL[((target[i] + row) % LEN + LEN) % LEN];
-  function judge() {
-    const lines = [[-1,-1,-1],[0,0,0],[1,1,1],[-1,0,1],[1,0,-1]];
-    let payout = 0, rep = false, notes = [];
-    for (const ln of lines) {
-      const a = at(0, ln[0]), b = at(1, ln[1]), c = at(2, ln[2]);
-      if (a === b && b === c) {
-        if (a === "H") { rep = true; notes.push("蜂×3 リプレイ"); }
-        else if (PAY[a]) { payout += PAY[a]; notes.push((a === "B" ? "バッタ" : a === "R" ? "BAR" : a === "L" ? "🔔" : "7") + "×3 +" + PAY[a]); }
-      }
-      if (a === "C") { payout += 2; notes.push("🍒 +2"); }
+    const done = [0,1,2].every((i) => !spinning[i] && targetK[i] !== null);
+    // 7テンパイ音: 止まった2リールが「同じ有効ライン上で」ともに7のときだけ（残り1リールで777が狙える形）
+    const stoppedIdx = [0,1,2].filter((i) => !spinning[i] && targetK[i] !== null);
+    if (!done && stoppedIdx.length === 2) {
+      const i = stoppedIdx[0], j = stoppedIdx[1]; let sevenTenpai = false;
+      for (const name in LINES) { const ln = LINES[name];
+        if (winAt(i, targetK[i])[ln[i]] === "7" && winAt(j, targetK[j])[ln[j]] === "7") { sevenTenpai = true; break; } }
+      if (sevenTenpai) play("tenpai");
     }
-    if (bonus) { payout += 50; notes.push("GOGO! BATTA +50"); }
-    const sevens = at(0, 0) === "7" && at(1, 0) === "7" && at(2, 0) === "7";
-    const batta = notes.some((n) => n.startsWith("バッタ"));
-    const cherry = notes.some((n) => n.startsWith("🍒"));
-    lastWin = payout; credit += payout; if (rep) freeSpin = true;
-    save(); paint(); betLamps(false); target.fill(null);
-    say(notes.length ? "🎉 " + notes.join(" / ") : "ハズレ… 次いこう");
-    // 効果音: 7揃い(ボーナス)はBGMを1回再生（ループしない）、それ以外は1つだけ鳴らす
-    if (sevens || bonus) play("bgm");
-    else if (batta) play("grape");
+    if (done) judge();
+  }
+
+  function judge() {
+    const res = spin.result(), formed = res.formed;
+    let payout = 0, rep = false, notes = [];
+    const label = { GR:"ブドウ", BE:"ベル", PI:"ピエロ", CH:"🍒チェリー", MC:"🍒中段チェリー" };
+    for (const [role, line] of formed) {
+      if (role === "RE") { rep = true; }
+      else if (role === "BIG" || role === "REG") { /* ボーナス揃いは下で処理 */ }
+      else { payout += PAY[role]; if (label[role] && notes.indexOf(label[role]) < 0) notes.push(label[role]); }
+    }
+    // リーチ目: 同じ有効ライン上に7とBARが「並んだ」とき（枠内にバラバラにあるだけでは出さない）
+    let hasEye = false;
+    for (const name in LINES) { const ln = LINES[name];
+      const line = [winAt(0, targetK[0])[ln[0]], winAt(1, targetK[1])[ln[1]], winAt(2, targetK[2])[ln[2]]];
+      if (line.indexOf("7") >= 0 && line.indexOf("A") >= 0) { hasEye = true; break; } }
+
+    const bonusHit = pending && formed.some((e) => e[0] === pending);
+    if (bonusHit) {
+      const net = pending === "BIG" ? 252 : 96;
+      payout += net; lastWin = payout; credit += payout;
+      $("cab").querySelector(".win").classList.add("flash"); play("bonus");
+      say((pending === "BIG" ? "🎉 BIG BONUS！ 純増+252" : "🎉 REG BONUS！ 純増+96") + (notes.length ? "（" + notes.join("・") + "）" : ""), "big");
+      pending = null; lampOn = false;
+    } else {
+      lastWin = payout; credit += payout; if (rep) freeSpin = true;
+      if (pending) {
+        // 内部中でボーナスは未揃い
+        if (!lampOn) lampOn = true; // 後告知: 全停止後に点灯
+        if (hasEye) { say("👀 リーチ目！ BARと7が並んだ…ボーナス濃厚！ 次回転から7を目押し", "eye"); }
+        else if (notes.length) say(notes.join("・") + " ＋" + payout + "　（GOGO!点灯中：7を狙え）", "big");
+        else say("リーチ目っぽい…（GOGO!点灯中：7を目押しで狙え）", "eye");
+      } else {
+        say(notes.length ? "🎉 " + notes.join(" / ") + "　＋" + payout + (rep ? "" : "枚") : "ハズレ… 次いこう");
+      }
+    }
+    save(); paint(); betLamps(false);
+    // 効果音
+    if (bonusHit) play("bgm");
+    else if (notes.some((n) => n.indexOf("ブドウ") >= 0)) play("grape");
     else if (rep) play("replay");
-    else if (cherry) play("cherry");
-    bonus = false;
+    else if (notes.some((n) => n.indexOf("チェリー") >= 0)) play("cherry");
   }
 })();
 </script>`;

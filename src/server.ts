@@ -45,9 +45,17 @@ function refreshUpdateFlag() {
   checkUpdate().then((st) => { updateReady = st.available; }).catch(() => {});
 }
 
+// おまけゲームは「メインのポート」でだけ表示する。別ポート(=CLEAN_PORT)で開くとゲームが一切出ない
+// ＝人に画面を見せるときはそちらのURLを使う（同じデータ・同じログイン）。
+const GAME_PORT = Number(process.env.PORT ?? 3210);
+const CLEAN_PORT = Number(process.env.CLEAN_PORT ?? GAME_PORT + 1);
+function gameOnFor(req: express.Request): boolean {
+  if (process.env.GAME === "0" || process.env.GAME === "off") return false; // 完全に無効化したいとき
+  return req.socket.localPort !== CLEAN_PORT; // CLEAN_PORT 以外（＝メイン）ではON
+}
 function navUser(req: express.Request): NavUser {
   const u = (req as AuthedRequest).user;
-  return u ? { username: u.username, display_name: u.display_name, role: u.role } : null;
+  return u ? { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req) } : null;
 }
 /** 管理者は全部、一般ユーザーは自分のものだけ */
 function scope(req: express.Request): { sql: string; args: number[] } {
@@ -705,6 +713,7 @@ app.get("/backup.json", (req, res) => {
 
 // ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
 app.get("/game", (req, res) => {
+  if (!gameOnFor(req)) return res.redirect("/"); // 非表示ポートでは遊べない（人に見せる用のURL）
   const sc = scope(req);
   const sent = (db.prepare(`SELECT COUNT(*) n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.status='sent' AND j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`).get(...sc.args) as { n: number }).n;
   res.send(layout("アポスロット", gameView(sent), takeFlash(req), navUser(req), updateReady));
@@ -716,8 +725,9 @@ app.get("/settings", requireAdmin, (req, res) => {
   const stats = {
     senders: one("SELECT COUNT(*) n FROM sender_profiles"),
     campaigns: one("SELECT COUNT(*) n FROM form_campaigns"),
-    companies: one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0"),
-    sent: one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND status='sent'"),
+    // 会社（ドメイン）単位の重複を除いた実数＝「社」。ドメインが無い行はidで個別に数える
+    companies: one("SELECT COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n FROM form_jobs WHERE is_test=0"),
+    sent: one("SELECT COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n FROM form_jobs WHERE is_test=0 AND status='sent'"),
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
@@ -802,3 +812,14 @@ app.listen(PORT, () => {
   }
   console.log(`【フォーム＆メール】アポハッチくん v${currentVersion()}: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`);
 });
+
+// 共有用（おまけゲームを表示しない）URL。同じアプリ・同じデータ・同じログインで、別ポートから配信する。
+// 人に画面を見せるときはこちらのURLを開けば、ゲームのリンクも /game も出ない。
+if (process.env.GAME !== "0" && process.env.GAME !== "off" && CLEAN_PORT !== PORT) {
+  const clean = app.listen(CLEAN_PORT, () => {
+    console.log(`  ├ 共有用（ゲーム非表示）URL: http://localhost:${CLEAN_PORT}`);
+  });
+  clean.on("error", (e: NodeJS.ErrnoException) => {
+    console.log(`  ※ 共有用URL(${CLEAN_PORT})は開けませんでした（${e.code}）。メインURLはそのまま使えます。`);
+  });
+}

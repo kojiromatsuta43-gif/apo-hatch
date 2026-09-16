@@ -1,6 +1,6 @@
 {
-  "version": "0.3.36",
-  "notes": "文面チェックに「件名が長すぎ（30字超）」「長文なのに改行が無い」の注意を追加（どちらも警告のみで送信は止めません）",
+  "version": "0.3.37",
+  "notes": "設定「データの概要」の登録企業・送信済を重複除外の実数（社）に修正／人に見せる用の『ゲーム非表示URL（メイン+1のポート）』を追加／おまけスロットを刷新",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-15T00:20:10.375Z"
+  "published_at": "2026-09-16T05:39:48.565Z"
 }
