@@ -189,6 +189,8 @@ function migrate(db: Database.Database) {
   // 要確認: 回答を決められなかった質問（JSON）と、画面で利用者が選んだ回答（JSON）
   addCol("form_jobs", "pending_questions", "TEXT NOT NULL DEFAULT ''");
   addCol("form_jobs", "manual_answers", "TEXT NOT NULL DEFAULT ''");
+  // 1=フォームで電話番号が必須の欄にだけ入力する（任意の欄には書かない。電話を載せたくない人向け）
+  addCol("sender_profiles", "tel_required_only", "INTEGER NOT NULL DEFAULT 0");
 
   // 以前は「送信ボタンを押したが完了画面を判定できない」を failed にしていたため、自動再試行と
   // 「失敗した会社を再送信」で同じ会社に二重送信していた（v0.3.50で判定側は修正）。
@@ -222,6 +224,7 @@ export type SenderProfile = {
   smtp_port: number;
   smtp_user: string;
   smtp_pass: string;
+  tel_required_only: number;
 };
 
 export type User = {

@@ -401,6 +401,9 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
         case "kana_first": ok = await setText(f, nz(cat, firstKana || firstName)); break;
         case "email": case "email_confirm": ok = await setText(f, nz(cat, email)); break;
         case "tel": {
+          // 「電話番号が必須の欄にだけ入力する」設定なら任意の欄は空のまま。
+          // 必須表示を読み取れずサイトに弾かれた場合に備え、埋め直し（normalize）のときは入力する
+          if (s.tel_required_only && !f.required && !opts.normalize) { report.log.push(`電話は任意の欄なので未入力 idx=${f.idx}`); continue; }
           const split = tels.length > 1 && countOf(scoped, "tel") >= 3;
           const val = split ? tels[nth - 1] ?? "" : wantsDigitsOnly(f, s.tel.length) ? s.tel.replace(/[^\d]/g, "") : s.tel;
           ok = await setText(f, val); break;

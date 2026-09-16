@@ -689,7 +689,9 @@ app.post("/senders", (req, res) => {
   const err = validateSender(req.body);
   if (err) return redirectWith(res, "/senders", err);
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
-  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim());
+  // チェックボックスは未チェックだと送られてこないので、値の有無で 0/1 にする
+  const telReqOnly = req.body.tel_required_only ? 1 : 0;
+  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly);
   redirectWith(res, "/senders", "送信者を追加しました");
 });
 app.post("/senders/:id", (req, res) => {
@@ -698,7 +700,8 @@ app.post("/senders/:id", (req, res) => {
   if (verr) return redirectWith(res, `/senders/${Number(req.params.id)}`, verr);
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
   const pass = String(req.body.smtp_pass ?? "").trim();
-  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, ...(pass ? [pass] : []), Number(req.params.id));
+  const telReqOnly = req.body.tel_required_only ? 1 : 0;
+  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, ...(pass ? [pass] : []), Number(req.params.id));
   redirectWith(res, "/senders", "保存しました");
 });
 
