@@ -194,12 +194,14 @@ ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a
 </select>
 <label>文面モード</label>
 <select name="mode">
-<option value="ai" ${provider === "none" && defaults.mode !== "ai" ? "disabled" : ""} ${defaults.mode === "ai" || (provider !== "none" && !defaults.mode) ? "selected" : ""}>全文AI生成 — おすすめ。想定外の質問欄にもAIが回答${provider === "none" ? "（AI設定が必要）" : ""}</option>
+<option value="ai" ${provider === "none" && defaults.mode !== "ai" ? "disabled" : ""} ${defaults.mode === "ai" || (provider !== "none" && !defaults.mode) ? "selected" : ""}>全文AI生成 — 成功率は最高。想定外の質問欄にもAIが回答${provider === "none" ? "（AI設定が必要）" : ""}</option>
+<option value="tpl_ai" ${provider === "none" && defaults.mode !== "tpl_ai" ? "disabled" : ""} ${defaults.mode === "tpl_ai" ? "selected" : ""}>テンプレ＋質問だけAI — おすすめ。文面はテンプレ(0円)、想定外の質問欄だけAIが回答。安くて成功率が高い${provider === "none" ? "（AI設定が必要）" : ""}</option>
 <option value="hybrid" ${provider === "none" && defaults.mode !== "hybrid" ? "disabled" : ""} ${defaults.mode === "hybrid" ? "selected" : ""}>ハイブリッド — 冒頭だけAI生成で安いが、想定外の質問欄には対応できない${provider === "none" ? "（AI設定が必要）" : ""}</option>
 <option value="template" ${defaults.mode === "template" || (provider === "none" && defaults.mode !== "ai" && defaults.mode !== "hybrid") ? "selected" : ""}>テンプレートのみ（差し込みだけ・AI不使用・0円）</option>
 </select>
 <p class="muted small">
-<b>全文AI生成:</b> 企業ごとに全文を書き、「ご予算」「何で知りましたか」など想定外の質問欄にもAIが回答するため、送信が成功しやすくなります。料金は1件あたり約0.5〜0.8円（Haiku）。月1,000件送ってもハイブリッドとの差は数百円です。<br>
+<b>全文AI生成:</b> 企業ごとに全文を書き、「ご予算」「何で知りましたか」など想定外の質問欄にもAIが回答するため、送信が成功しやすくなります。料金は1件あたり約0.5〜0.8円（Haiku）。月1,000件で約400〜800円。<br>
+<b>テンプレ＋質問だけAI（おすすめ）:</b> 文面はテンプレ（0円）のまま、想定外の質問欄が出たときだけAIが回答します。全文生成をしないぶん<b>全文AIの1/5〜1/10の費用</b>で、成功率はテンプレのみより大きく上がります（AIを呼ぶのは想定外の質問が出た一部の会社だけ）。<br>
 <b>ハイブリッド:</b> 冒頭1〜2文だけAIが書くので安い（約0.2円/件）ぶん、想定外の質問欄には対応できず、そのフォームは失敗になりやすくなります。<br>
 ※ チェック欄・選択肢はどのモードでも自動対応します。CAPTCHAはどのモードでも突破しません。</p>
 ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a href="/settings"><b>設定画面でAPIキーの登録</b></a>が必要です（管理者のみ）。料金の目安や取得手順も設定画面に書いてあります。未設定のままではテンプレートのみで送られます。</p>' : ""}
@@ -249,7 +251,7 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   const processed = total - cnt("queued");
   const sendPct = total ? Math.round((processed / total) * 100) : 0;
   return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""} <a class="btn sub small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">✏️ 編集</a></h1>
-<p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
+<p class="muted">送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${({ template: "テンプレのみ", ai: "全文AI", hybrid: "ハイブリッド", tpl_ai: "テンプレ＋質問AI" } as Record<string, string>)[c.mode] ?? c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 ${(() => {
     const att = extra.attempts ?? {};
     // 「確定件数（会社の重複を除いた実数）」を大きく、試行回数が上回るときだけ「試行 N回」を併記する
@@ -286,7 +288,7 @@ ${scanTotal > 0 ? `<div class="bar"><i id="scanfill" style="width:${scanPct}%"><
 ${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" class="inline"><button class="btn danger">チェックを止める</button></form>` : `<form method="post" action="/campaigns/${c.id}/scan" class="inline"><button class="btn sub" ${extra.unscanned === 0 || running ? "disabled" : ""}>事前チェックを実行（未チェック ${extra.unscanned}社）</button></form>`}</div>
 
 <div class="card"><h2 style="margin-top:0">2. 文面を確認する</h2>
-<form method="post" action="/campaigns/${c.id}/preview" class="inline" data-busy onsubmit="foPreviewProgress(${c.mode !== "template" && provider !== "none"})"><button class="btn sub" data-busytext="文面を作成中…">先頭の1社で文面をプレビュー</button></form>
+<form method="post" action="/campaigns/${c.id}/preview" class="inline" data-busy onsubmit="foPreviewProgress(${(c.mode === "ai" || c.mode === "hybrid") && provider !== "none"})"><button class="btn sub" data-busytext="文面を作成中…">先頭の1社で文面をプレビュー</button></form>
 <div id="prevprog" hidden style="margin-top:10px"><div class="bar"><i id="prevfill" style="width:0%"></i></div><div class="small muted" id="prevpct">文面を作成しています… 0%</div></div>
 <script>
 function foPreviewProgress(useAi){

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.39",
-  "notes": "ユーザー管理に権限（一般／管理者）の違いの説明を追加",
+  "version": "0.3.40",
+  "notes": "文面モードに『テンプレ＋質問だけAI』を追加。文面はテンプレ(0円)のまま、想定外の質問欄が出た時だけAIが回答。全文AIの1/5〜1/10の費用で成功率アップ",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T06:14:26.505Z"
+  "published_at": "2026-09-16T06:33:32.900Z"
 }

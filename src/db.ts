@@ -231,7 +231,7 @@ export type Campaign = {
   owner_user_id: number | null;
   name: string;
   sender_id: number;
-  mode: "template" | "ai" | "hybrid";
+  mode: "template" | "ai" | "hybrid" | "tpl_ai";
   subject_text: string;
   template_text: string;
   ai_instruction: string;

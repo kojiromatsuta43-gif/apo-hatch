@@ -350,7 +350,7 @@ app.post("/campaigns/:id/preview", async (req, res) => {
   if (!job) return redirectWith(res, `/campaigns/${id}`, "待機中の会社がありません。先にCSVを取り込んでください");
   try {
     let site = { title: "", text: "" };
-    if (c.mode !== "template" && activeProvider() !== "none") {
+    if ((c.mode === "ai" || c.mode === "hybrid") && activeProvider() !== "none") {
       const cached = db.prepare("SELECT title,text FROM site_cache WHERE domain=?").get(job.domain) as any;
       if (cached) site = cached;
       else {

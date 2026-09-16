@@ -90,7 +90,8 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
   // 文面
   let subject = "", message = "";
   try {
-    const needSite = campaign.mode !== "template" && activeProvider() !== "none";
+    // 企業HP本文が要るのは文面をAI生成するモードだけ。tpl_ai は文面テンプレなので取得不要（速く・安く）
+    const needSite = (campaign.mode === "ai" || campaign.mode === "hybrid") && activeProvider() !== "none";
     const site = await getSiteInfo(browser, job, needSite);
     const composed = await composeMessage(job, sender, campaign, site);
     subject = composed.subject;
@@ -122,7 +123,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     }
   }
 
-  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: campaign.mode === "ai" && activeProvider() !== "none", company: job.company_name, manualAnswers: parseManualAnswers(job.manual_answers) });
+  const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: (campaign.mode === "ai" || campaign.mode === "tpl_ai") && activeProvider() !== "none", company: job.company_name, manualAnswers: parseManualAnswers(job.manual_answers) });
   const detail = [r.detail, ...r.log].join("\n");
   if (r.status === "skip_refused" && job.domain && !campaign.ignore_refusal) {
     db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（自動）");
