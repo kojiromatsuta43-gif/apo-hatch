@@ -77,6 +77,30 @@ function ownedJob(req: express.Request, id: number): Job | undefined {
   return ownedCampaign(req, j.campaign_id) ? j : undefined;
 }
 const DENIED = "この画面を見る権限がありません";
+/** グループの選択肢に出すキャンペーン（昔のキャンペーンも含む全件） */
+function groupCandidates(req: express.Request): { id: number; name: string; group_name: string }[] {
+  const sc = scope(req);
+  return db.prepare(`SELECT id, name, group_name FROM form_campaigns WHERE ${sc.sql} ORDER BY id DESC`).all(...sc.args) as { id: number; name: string; group_name: string }[];
+}
+/** グループのメンバーを保存する。チェックしたキャンペーンを同じグループにし、
+ *  以前このグループにいてチェックを外したキャンペーンはグループから外す。
+ *  グループ名が空でチェックがあれば、チェックした中の既存グループ名 → このキャンペーン名 の順で決める */
+function applyGroupMembers(req: express.Request, selfId: number, prevGroup: string, body: Record<string, unknown>) {
+  const raw = body.group_members;
+  const own = new Map(groupCandidates(req).map((c) => [c.id, c]));
+  const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map((v) => Number(v)).filter((n) => n !== selfId && own.has(n));
+  const self = own.get(selfId);
+  let g = String(body.group_name ?? "").trim();
+  if (!g && ids.length) g = ids.map((i) => own.get(i)!.group_name).find((x) => x) || self?.name || "";
+  db.prepare("UPDATE form_campaigns SET group_name=? WHERE id=?").run(g, selfId);
+  for (const i of ids) db.prepare("UPDATE form_campaigns SET group_name=? WHERE id=?").run(g, i);
+  if (prevGroup) {
+    for (const c of own.values()) {
+      if (c.id !== selfId && !ids.includes(c.id) && c.group_name === prevGroup) db.prepare("UPDATE form_campaigns SET group_name='' WHERE id=?").run(c.id);
+    }
+  }
+}
+
 /** 既存のキャンペーングループ名（入力候補用） */
 function groupNames(req: express.Request): string[] {
   const sc = scope(req);
@@ -192,7 +216,7 @@ app.get("/", (req, res) => {
 app.get("/campaigns/new", (req, res) => {
   const sc = scope(req);
   const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider(), undefined, groupNames(req)), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("新規キャンペーン", campaignForm(senders, { template_text: DEFAULT_TEMPLATE }, activeProvider(), undefined, groupNames(req), groupCandidates(req)), takeFlash(req), navUser(req), updateReady));
 });
 
 app.post("/campaigns", upload.single("material_file"), (req, res) => {
@@ -205,6 +229,7 @@ app.post("/campaigns", upload.single("material_file"), (req, res) => {
   const cid = Number(r.lastInsertRowid);
   // 資料ファイル（メール添付用）を保存する
   if (req.file) saveMaterial(cid, req.file);
+  applyGroupMembers(req, cid, "", b);
   redirectWith(res, `/campaigns/${cid}`, "キャンペーンを作成しました。CSVを取り込んでください。");
 });
 
@@ -215,17 +240,20 @@ app.get("/campaigns/:id/edit", (req, res) => {
   if (!c) return res.status(404).send("not found");
   const sc = scope(req);
   const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
-  res.send(layout(`編集 | ${c.name}`, campaignForm(senders, c, activeProvider(), id, groupNames(req)), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(`編集 | ${c.name}`, campaignForm(senders, c, activeProvider(), id, groupNames(req), groupCandidates(req)), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   const id = Number(req.params.id);
-  if (!ownedCampaign(req, id)) return res.status(404).send("not found");
+  const before = ownedCampaign(req, id);
+  if (!before) return res.status(404).send("not found");
+  const prevGroupName = before.group_name || "";
   const b = req.body;
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, `/campaigns/${id}/edit`, "送信者を選び直してください");
   db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=? WHERE id=?`)
     .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), id);
   if (req.file) saveMaterial(id, req.file);
+  applyGroupMembers(req, id, prevGroupName, b);
   redirectWith(res, `/campaigns/${id}`, "キャンペーンを保存しました");
 });
 

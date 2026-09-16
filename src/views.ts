@@ -179,13 +179,21 @@ ${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.compa
 </table><h2>新規追加</h2><div class="card">${senderForm()}</div>`;
 }
 
-export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number, groups: string[] = []) {
+export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number, groups: string[] = [], others: { id: number; name: string; group_name: string }[] = []) {
   const d = (k: keyof Campaign, fb: unknown = "") => esc(defaults[k] ?? fb);
   return `<h1>${editId ? `キャンペーンを編集: ${d("name")}` : "新しいキャンペーン"}</h1>
 ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a></p><p class="muted">配信チャネルの変更は、<b>これから取り込む会社</b>に適用されます（取り込み済みの会社の振り分けは変わりません）。</p>` : ""}
 <form method="post" action="${editId ? `/campaigns/${editId}/edit` : "/campaigns"}" class="card" enctype="multipart/form-data">
-<label>グループ（任意）</label><input type="text" name="group_name" value="${d("group_name")}" list="fo-groups" placeholder="例：福岡 飲食 9月" style="max-width:420px"><datalist id="fo-groups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
-<p class="muted small" style="margin:4px 0 12px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・CAPTCHA</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
+<label>グループ（任意）</label><input type="text" name="group_name" value="${d("group_name")}" list="fo-groups" placeholder="例：福岡 飲食 9月（空欄なら自動で決めます）" style="max-width:420px"><datalist id="fo-groups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
+<p class="muted small" style="margin:4px 0 6px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・CAPTCHA</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
+${(() => {
+    const list = others.filter((o) => o.id !== editId);
+    if (!list.length) return "";
+    const mine = String(defaults.group_name ?? "");
+    return `<details ${mine ? "open" : ""} style="margin:0 0 12px"><summary style="cursor:pointer;font-weight:700">同じグループに入れるキャンペーンを選ぶ（昔のキャンペーンも選べます）</summary>
+<div style="max-height:220px;overflow:auto;border:1px solid var(--line,#e5e0d5);border-radius:8px;padding:8px 10px;margin-top:6px">${list.map((o) => `<label class="inline small" style="display:flex;gap:6px;align-items:center;font-weight:400;margin:3px 0"><input type="checkbox" name="group_members" value="${o.id}" ${mine && o.group_name === mine ? "checked" : ""} style="width:auto"> ${esc(o.name)}${o.group_name ? ` <span class="tag">グループ: ${esc(o.group_name)}</span>` : ` <span class="muted">（グループなし）</span>`}</label>`).join("")}</div>
+<p class="muted small" style="margin:4px 0 0">チェックしたキャンペーンをこのキャンペーンと同じグループにします。チェックを外したキャンペーンはこのグループから外れます。グループ名が空欄なら、チェックした中のグループ名、無ければこのキャンペーンの名前をグループ名にします。</p></details>`;
+  })()}
 <div class="row"><div><label>キャンペーン名</label><input type="text" name="name" value="${d("name")}" required placeholder="福岡 飲食 9月"></div>
 <div><label>送信者</label><select name="sender_id" required>${senders.map((s) => `<option value="${s.id}" ${defaults.sender_id === s.id ? "selected" : ""}>${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select>${senders.length ? "" : '<p class="muted">先に<a href="/senders">送信者</a>を登録してください</p>'}</div></div>
 <label>配信チャネル</label>
