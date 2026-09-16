@@ -114,7 +114,7 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, shareUrls: string[] = []) {
+export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string) {
   // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
@@ -131,10 +131,6 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
-${shareUrls.length ? `<details class="card" style="padding:10px 14px;margin:10px 0"><summary style="cursor:pointer"><b>他の人のPCから開くには</b> <span class="muted small">（アドレス欄の localhost のリンクは、相手のPCでは「サーバーに接続できません」になります）</span></summary>
-<p class="small" style="margin:8px 0 4px">同じWi-Fi・社内ネットワークにいる人は、次のURLで開けます（おまけゲームは出ない版）。ログインは「ユーザー管理」で作ったアカウントで。</p>
-${shareUrls.map((u) => `<p style="margin:4px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="user-select:all">${esc(u)}</code><button type="button" class="btn sub small" onclick="(navigator.clipboard?navigator.clipboard.writeText('${esc(u)}'):Promise.reject()).then(()=>{this.textContent='コピーしました'}).catch(()=>{prompt('このURLをコピーしてください','${esc(u)}')})">コピー</button></p>`).join("")}
-<p class="muted small" style="margin:6px 0 0">※ このPCの電源が入っていて、アポハッチくんが起動している間だけ開けます。1つ目（PC名）のURLで開けない場合は、数字のURLを使ってください（数字はWi-Fiにつなぎ直すと変わることがあります）。社外の人や、別のネットワーク（ゲストWi-Fi・テザリング等）からは開けません。</p></details>` : ""}
 ${(() => {
     // 全キャンペーン横断のサマリー。rows から集計するだけなので、この即時関数を消せば丸ごと外せる
     if (rows.length === 0) return "";
@@ -636,13 +632,23 @@ ${mustChange ? "" : `<label>いまのパスワード</label><input type="passwor
 }
 
 /** ユーザー管理（管理者のみ） */
-export function usersView(users: { id: number; username: string; display_name: string; role: string; active: number; last_login_at: string | null; created_at: string }[], issued?: { username: string; password: string }): string {
+/** 他の人のPCから開くURL（ユーザー管理に表示）。アドレス欄の localhost のリンクは相手のPCでは開けないため */
+function shareUrlsCard(urls: string[]): string {
+  if (!urls.length) return "";
+  return `<div class="card"><h2 style="margin-top:0">他の人のPCから開くには</h2>
+<p class="small" style="margin:0 0 4px">アドレス欄の <code>localhost</code> のリンクを送ると、相手のPCでは「サーバーに接続できません」になります。同じWi-Fi・社内ネットワークにいる人には、次のURLを伝えてください（おまけゲームは出ない版）。発行したログインIDと一緒に送ると便利です。</p>
+${urls.map((u) => `<p style="margin:4px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><code style="user-select:all">${esc(u)}</code><button type="button" class="btn sub small" onclick="(navigator.clipboard?navigator.clipboard.writeText('${esc(u)}'):Promise.reject()).then(()=>{this.textContent='コピーしました'}).catch(()=>{prompt('このURLをコピーしてください','${esc(u)}')})">コピー</button></p>`).join("")}
+<p class="muted small" style="margin:6px 0 0">※ このPCの電源が入っていて、アポハッチくんが起動している間だけ開けます。1つ目（PC名）のURLで開けない場合は、数字のURLを使ってください（数字はWi-Fiにつなぎ直すと変わることがあります）。社外の人や、別のネットワーク（ゲストWi-Fi・テザリング等）からは開けません。</p></div>`;
+}
+
+export function usersView(users: { id: number; username: string; display_name: string; role: string; active: number; last_login_at: string | null; created_at: string }[], issued?: { username: string; password: string }, shareUrls: string[] = []): string {
   return `<h1>ユーザー管理</h1>
 ${issued ? `<div class="card" style="border-color:var(--honey);background:var(--honey-50)">
 <b>アカウントを発行しました。この内容をご本人に伝えてください（パスワードは今だけ表示されます）</b>
 <table style="margin-top:8px"><tr><th>ログインID</th><td><code style="font-size:15px">${esc(issued.username)}</code></td></tr>
 <tr><th>初期パスワード</th><td><code style="font-size:15px">${esc(issued.password)}</code></td></tr></table>
 <p class="muted">初回ログイン時に本人がパスワードを変更する画面になります。</p></div>` : ""}
+${shareUrlsCard(shareUrls)}
 <div class="card"><h2 style="margin-top:0">＋ アカウントを発行する</h2>
 <div class="muted small" style="background:var(--honey-50);border:1px solid var(--honey);border-radius:8px;padding:10px 12px;margin-bottom:12px">
 <b>権限の違い</b><br>

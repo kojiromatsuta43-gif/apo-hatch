@@ -1,6 +1,6 @@
 {
-  "version": "0.3.65",
-  "notes": "キャンペーン一覧に「他の人のPCから開くURL」を表示（localhostのリンクは他のPCでは開けないため）",
+  "version": "0.3.66",
+  "notes": "「他の人のPCから開くURL」をユーザー管理の画面に移動",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T17:10:39.881Z"
+  "published_at": "2026-09-16T17:14:41.696Z"
 }

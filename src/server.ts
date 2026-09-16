@@ -169,7 +169,7 @@ const issuedOnce = new Map<number, { username: string; password: string }>();
 app.get("/users", requireAdmin, (req, res) => {
   const issued = issuedOnce.get(me(req).id);
   issuedOnce.delete(me(req).id);
-  res.send(layout("ユーザー管理", usersView(listUsers(), issued), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("ユーザー管理", usersView(listUsers(), issued, shareUrls()), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/users", requireAdmin, (req, res) => {
   const password = String(req.body.password ?? "").trim() || randomPassword();
@@ -228,7 +228,7 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.outcome IN ('replied','appointment')) reactions,
       (SELECT MAX(sent_at) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') last_sent
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.group_name='' , c.group_name, c.id DESC`).all(...scope(req).args) as any[];
-  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel(), shareUrls()), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel()), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
