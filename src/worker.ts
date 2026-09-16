@@ -5,6 +5,7 @@ import type { Browser } from "playwright";
 import { getDb, allowsEmailFallback, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
+import { hasEntity, extractLegalName } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
 
 const running = new Map<number, { stop: boolean }>();
@@ -67,6 +68,12 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
   const db = getDb();
   const job = db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
   const { campaign, sender } = loadCampaign(job.campaign_id);
+  // 事前チェックを通っていない場合の保険: 社名に法人格が無ければ、キャッシュ済みのHP本文から正式名称を補う（通信もAIも不要）
+  if (!job.is_test && !hasEntity(job.company_name)) {
+    const cached = db.prepare("SELECT title, text FROM site_cache WHERE domain=?").get(job.domain) as { title: string; text: string } | undefined;
+    const legal = cached ? extractLegalName(job.company_name, `${cached.title}\n${cached.text}`) : null;
+    if (legal) { db.prepare("UPDATE form_jobs SET company_name=? WHERE id=?").run(legal, jobId); job.company_name = legal; }
+  }
   // 今回が再試行で、前回が失敗系だったら「直前の失敗」を覚えておく（送信済みになったとき履歴として見せる）
   const failLike = ["failed", "skip_no_form", "skip_captcha"];
   if (!job.is_test && failLike.includes(job.status)) {
@@ -199,7 +206,13 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
       const job = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL ORDER BY id LIMIT 1").get(campaignId) as Job | undefined;
       if (!job) break;
       db.prepare("UPDATE form_jobs SET scanned_at=datetime('now') WHERE id=?").run(job.id);
-      const r = await scanCompany(browser, { formUrl: job.form_url, siteUrl: job.site_url });
+      const r = await scanCompany(browser, { formUrl: job.form_url, siteUrl: job.site_url, companyName: job.company_name });
+      // HPの表記から正式名称（法人格つき）が取れたら社名を補完する（「div」→「株式会社div」等。失礼を防ぐ）
+      let nameNote = "";
+      if (r.legalName && r.legalName !== job.company_name) {
+        db.prepare("UPDATE form_jobs SET company_name=? WHERE id=?").run(r.legalName, job.id);
+        nameNote = `／社名を補完: ${job.company_name} → ${r.legalName}`;
+      }
       scanned++;
       const email = job.email || r.emails[0] || "";
       let status: JobStatus = "queued";
@@ -212,6 +225,7 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
       else if (r.formUrl) note = `フォームあり${r.emails.length ? `・メール発見 ${r.emails[0]}` : ""}`;
       else if (allowsEmailFallback(campaign.channel) && email && !isOptedOut(email)) { channel = "email"; note = `フォーム無し → メールに切替（${email}）`; }
       else { status = "skip_no_form"; note = r.note || "フォームが見つからない"; }
+      if (nameNote) note += nameNote;
       db.prepare("UPDATE form_jobs SET status=?, channel=?, email=?, form_url=?, scan_note=?, result_text=?, updated_at=datetime('now') WHERE id=?")
         .run(status, channel, email, r.formUrl ?? job.form_url, note, status === "queued" ? `事前チェック: ${note}` : note, job.id);
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));

@@ -5,6 +5,7 @@ import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
 import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, type PendingQuestion } from "./formFiller.js";
+import { extractLegalName } from "./company.js";
 import { llm } from "./message.js";
 
 export type SubmitInput = {
@@ -225,6 +226,7 @@ export type ScanResult = {
   captcha: string | null;
   emails: string[];
   note: string;
+  legalName: string | null; // HPの表記から読み取った正式名称（法人格つき）。無ければ null
 };
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -248,11 +250,11 @@ async function collectEmails(page: Page): Promise<string[]> {
 }
 
 /** 送信せずに、フォームの有無・お断り・CAPTCHA・メールアドレスを調べる（事前チェック） */
-export async function scanCompany(browser: Browser, input: { formUrl: string; siteUrl: string }): Promise<ScanResult> {
+export async function scanCompany(browser: Browser, input: { formUrl: string; siteUrl: string; companyName?: string }): Promise<ScanResult> {
   const ctx = await newContext(browser);
   const page = await ctx.newPage();
   page.on("dialog", (d) => d.dismiss().catch(() => {}));
-  const r: ScanResult = { formUrl: null, refused: null, captcha: null, emails: [], note: "" };
+  const r: ScanResult = { formUrl: null, refused: null, captcha: null, emails: [], note: "", legalName: null };
   try {
     // トップページからメールを拾う
     const site = input.siteUrl || input.formUrl;
@@ -261,6 +263,11 @@ export async function scanCompany(browser: Browser, input: { formUrl: string; si
         await page.goto(site.startsWith("http") ? site : `https://${site}`, { waitUntil: "domcontentloaded", timeout: 20000 });
         await page.waitForTimeout(400);
         r.emails = await collectEmails(page);
+        // 社名に法人格（株式会社など）が無ければ、トップページの表記から正式名称を拾う（AI不要）
+        if (input.companyName) {
+          const top: string = await page.evaluate(() => document.title + "\n" + (document.body?.innerText ?? "").slice(0, 8000)).catch(() => "");
+          r.legalName = extractLegalName(input.companyName, top);
+        }
       } catch {
         r.note = "サイトにアクセスできない";
       }
@@ -270,6 +277,7 @@ export async function scanCompany(browser: Browser, input: { formUrl: string; si
       r.formUrl = formPage;
       const text: string = await page.evaluate(() => document.body?.innerText ?? "").catch(() => "");
       r.refused = detectRefusal(text);
+      if (input.companyName && !r.legalName) r.legalName = extractLegalName(input.companyName, text); // フォームページのフッター等からも
       r.captcha = (await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null)) as string | null;
       for (const e of await collectEmails(page)) if (!r.emails.includes(e)) r.emails.push(e);
     } else if (!r.note) r.note = "フォームが見つからない";

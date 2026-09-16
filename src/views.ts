@@ -235,7 +235,7 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 /** CSV取込の結果。何件入ったかだけでなく、除外された会社名まで出す */
 function importReport(r: import("./csv.js").ImportSummary): string {
   const skipped = r.excludedRows;
-  return `<div class="flash" style="margin-top:12px">登録 <b>${r.added}</b>件（フォーム${r.addedForm}・メール${r.addedEmail}） / 送らない <b>${r.excluded + r.suppressed + r.duplicated + r.noUrl}</b>件</div>
+  return `<div class="flash" style="margin-top:12px">登録 <b>${r.added}</b>件（フォーム${r.addedForm}・メール${r.addedEmail}） / 送らない <b>${r.excluded + r.suppressed + r.duplicated + r.noUrl}</b>件${r.noEntity && r.noEntity.length ? `<br><span style="color:var(--warn)">⚠ 法人格（株式会社など）が無い社名 ${r.noEntity.length}社。事前チェックでHPから自動補完します。</span>` : ""}</div>
 ${skipped.length ? `<details open style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">送らない会社 ${skipped.length}件の内訳</summary>
 <table style="margin-top:6px"><tr><th>会社名</th><th>理由</th><th>送信先</th></tr>
 ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.reason)}</td><td class="small">${esc((x.where || "").slice(0, 60))}</td></tr>`).join("")}
@@ -408,6 +408,7 @@ export function importPreviewView(c: Campaign & { sender: SenderProfile }, rows:
 <div class="card"><h2 style="margin-top:0">この内容で取り込みますか？</h2>
 <p>読み込んだ行数: <b>${rows.length}</b>件　→　登録予定: <b style="color:var(--ok)">${willSend}</b>件（フォーム${summary.addedForm}・メール${summary.addedEmail}）／ 送らない: <b>${willSkip}</b>件</p>
 <p class="muted small">送らない内訳: 除外/官公庁 ${summary.excluded} ・ 除外リスト ${summary.suppressed} ・ 重複/再送禁止 ${summary.duplicated} ・ 送信先なし ${summary.noUrl}</p>
+${summary.noEntity && summary.noEntity.length ? `<p class="small" style="color:var(--warn)">⚠ 「株式会社」などの法人格が無い社名 <b>${summary.noEntity.length}</b>社：${esc(summary.noEntity.slice(0, 12).join("、"))}${summary.noEntity.length > 12 ? " ほか" : ""}<br><span class="muted">事前チェックのときに各社のHPの表記（フッター・会社概要）から正式名称を自動で補います（AI不要・無料）。HPで確認できなかった社は、取り込み後に社名をご確認ください。</span></p>` : ""}
 <form method="post" action="/campaigns/${c.id}/import-confirm" class="inline" data-busy><button class="btn" data-busytext="取り込み中…">この内容で取り込む（${rows.length}行）</button></form>
 <form method="post" action="/campaigns/${c.id}/import-cancel" class="inline"><button class="btn sub">やめる</button></form>
 </div>
