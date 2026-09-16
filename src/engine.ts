@@ -31,9 +31,6 @@ export type SubmitResult = {
   pendingQuestions?: PendingQuestion[]; // 要確認: 利用者に画面で選んでもらう質問
 };
 
-/** 送信ボタンは押したが完了画面を判定できなかったときの結果文言（一覧の「要確認」表示とDB移行でも使う） */
-export const SENT_UNSURE = "送信済み（完了画面を確認できず・要確認）";
-
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
 export async function launchBrowser(): Promise<Browser> {
@@ -193,9 +190,9 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       await page.waitForTimeout(3000);
       const again = await judgeOutcome(page, fieldCountBefore, true, textBefore);
       if (again.status === "sent") return done("sent", again.detail);
-      // 送信ボタンは押し済み。完了画面を判定できないだけで、実際には届いていることが多い（例: 知らない御礼文言）。
-      // 失敗にすると「失敗した会社を再送信」で同じ会社に二重送信してしまうため、送信済み（要確認）として扱う
-      return done("sent", `${SENT_UNSURE}: ${again.detail}`);
+      // 届いたかどうかは会社によって違う（完了画面が出ている／確認画面で止まっている／画像認証で止まっている 等）ので、
+      // 一律に送信済みにはしない（v0.3.51で一律送信済みにしたが取り消し）。自動再試行はしない（worker 側で除外）
+      return done("failed", `送信後の判定不能: ${again.detail}`);
     }
     return done("failed", "確認画面を抜けられない");
   } catch (e) {

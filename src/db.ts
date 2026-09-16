@@ -192,15 +192,15 @@ function migrate(db: Database.Database) {
   // 1=フォームで電話番号が必須の欄にだけ入力する（任意の欄には書かない。電話を載せたくない人向け）
   addCol("sender_profiles", "tel_required_only", "INTEGER NOT NULL DEFAULT 0");
 
-  // 以前は「送信ボタンを押したが完了画面を判定できない」を failed にしていたため、自動再試行と
-  // 「失敗した会社を再送信」で同じ会社に二重送信していた（v0.3.50で判定側は修正）。
-  // 既存の該当ジョブを「送信済み（要確認）」に寄せる。配布先でもアップデート後の起動で自動的に直る。
-  // 条件に一致するのは未修正の行だけなので、毎回起動時に流しても結果は変わらない。
+  // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
+  // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
+  // v0.3.51〜0.3.53 の送信で付いた同じ文言も対象（当時の判定ロジックでは失敗だったもの）。
+  // 一致するのは書き換え済みの行だけなので、毎回起動時に流しても結果は変わらない。配布先もアップデート後の起動で戻る。
   db.prepare(`UPDATE form_jobs
-    SET status='sent',
-        sent_at=COALESCE(sent_at, updated_at, datetime('now')),
-        result_text='送信済み（完了画面を確認できず・要確認）: ' || replace(replace(result_text, '再試行待ち: ', ''), '送信後の判定不能: ', '')
-    WHERE is_test=0 AND status IN ('failed','queued') AND result_text LIKE '%送信後の判定不能%'`).run();
+    SET status='failed',
+        sent_at=NULL,
+        result_text='送信後の判定不能: ' || substr(result_text, length('送信済み（完了画面を確認できず・要確認）: ') + 1)
+    WHERE is_test=0 AND status='sent' AND result_text LIKE '送信済み（完了画面を確認できず・要確認）: %'`).run();
 }
 
 export type Channel = "form" | "email" | "both";
