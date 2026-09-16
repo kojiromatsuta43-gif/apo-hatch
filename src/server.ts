@@ -8,8 +8,9 @@ import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, STATUS_LABEL, OUTCOME_LA
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
-import { runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
+import { drainForShutdown, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
+import { checkReplies, isCheckingReplies, replyScanStatus } from "./replies.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
 import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
@@ -307,7 +308,7 @@ app.get("/campaigns/:id", (req, res) => {
   const retryTargets = retryTargetJobs(id);
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -478,6 +479,13 @@ app.post("/campaigns/:id/stop-scan", (req, res) => {
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   requestStop(-id);
   redirectWith(res, `/campaigns/${id}`, "事前チェックを止めます");
+});
+
+// 返信の自動確認を今すぐ実行（ふだんは15分ごとに裏で動く）
+app.post("/replies/check", async (req, res) => {
+  const back = /^\/campaigns\/\d+$/.test(String(req.body.back ?? "")) ? String(req.body.back) : "/";
+  const r = await checkReplies().catch((e) => ({ recorded: 0, errors: [String((e as Error)?.message ?? e)] }));
+  redirectWith(res, back, r.errors.length ? `返信の確認でエラー: ${r.errors.join(" / ")}` : `返信を確認しました（新しく記録した反応 ${r.recorded}件）`);
 });
 
 app.post("/jobs/:id/outcome", (req, res) => {
@@ -930,10 +938,39 @@ app.post("/update", requireAdmin, async (req, res) => {
   updateResults.set(me(req).id, r);
   if (r.ok) {
     updateReady = false;
+    await drainForShutdown(); // 送信中の会社を途中で切らない
     requestRestart();   // npm start で起動していれば自動で立ち上がり直す
   }
   res.redirect("/update");
 });
+
+// ---- 起動時: 前回アプリが止まったときに「送信中」のまま残った会社 ----
+// 送信の途中でアプリが止まると、そのまま「送信中」で永久に残り、再送信の対象にもならなかった。
+// 送ったか送っていないか分からないため、自動で送り直さず「失敗（要確認）」にして人に確認してもらう（二重送信を避ける）
+{
+  const stuck = db.prepare(`UPDATE form_jobs SET status='failed', updated_at=datetime('now'),
+    result_text=CASE WHEN channel='email'
+      THEN '送信中にアプリが止まったため中断（送信済みか不明・要確認）: 送信用メールの「送信済み」フォルダに届いているか確認し、無ければ再送信してください'
+      ELSE '送信中にアプリが止まったため中断（送信済みか不明・要確認）: 相手先から受付メールが届いていないか確認し、無ければ再送信してください' END
+    WHERE status='sending'`).run().changes;
+  if (stuck) console.log(`[apo-hatch] 送信中のまま止まっていた ${stuck}件を「失敗（要確認）」にしました`);
+}
+
+// ---- 終了時（Ctrl+C・ターミナルを閉じる等）: 送信中の会社が終わるまで待ってから止める ----
+// 2回目の Ctrl+C ならすぐ止める（待ちきれない場合用）
+let stopping = false;
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(sig, () => {
+    if (stopping) process.exit(130);
+    stopping = true;
+    console.log("\n[apo-hatch] 送信中の会社があれば終わるまで待ってから終了します（すぐ止めるにはもう一度 Ctrl+C）");
+    drainForShutdown().finally(() => process.exit(0));
+  });
+}
+
+// ---- 返信の自動確認: 送信用メールの受信箱を15分ごとに見て、反応（返信／アポ／断り）を記録 ----
+setTimeout(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 60_000);
+setInterval(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 15 * 60_000);
 
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
 setInterval(() => {

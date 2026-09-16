@@ -1,6 +1,6 @@
 {
-  "version": "0.3.62",
-  "notes": "送信後に入力が消えて「ご回答ありがとうございました」だけ出るフォームを送信済みと判定（二重送信防止）",
+  "version": "0.3.63",
+  "notes": "返信を受信箱から自動で確認し、反応（返信／アポ／断り）をキーワードで自動記録。アプリ終了・更新時に送信の途中で切らないように",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T16:05:24.000Z"
+  "published_at": "2026-09-16T16:14:01.241Z"
 }

@@ -256,7 +256,15 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+  // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
+  const replyScanLine = () => {
+    const r = extra.replyScan;
+    if (!r) return "";
+    if (!r.enabled) return `<p class="muted small" style="margin:4px 0 0">反応（返信／アポ／断り）は、送信者プロフィールに送信用メールアカウント（アプリパスワード）を設定すると、受信箱から自動で記録されます。今は会社の詳細画面のボタンで手動記録です。</p>`;
+    const when = r.checkedAt ? new Date(r.checkedAt.replace(" ", "T") + "Z").toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "まだ";
+    return `<form method="post" action="/replies/check" style="margin:4px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input type="hidden" name="back" value="/campaigns/${c.id}"><span class="muted small">✉ 反応は受信箱の返信から自動で記録（15分ごと・キーワードで振り分け。最終確認: ${esc(when)}）。違っていたら会社の詳細画面で直せます</span><button class="btn sub small" ${r.checking ? "disabled" : ""}>${r.checking ? "確認中…" : "今すぐ返信を確認"}</button></form>${r.error ? `<p class="small" style="margin:4px 0 0;color:var(--ng)">${esc(r.error)}</p>` : ""}`;
+  };
   const cnt = (s: string) => counts[s] ?? 0;
   const nRetry = extra.retryTargets?.length ?? 0; // 「失敗した会社を再送信」の対象数（会社単位・最新の結果が失敗のものだけ）
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -277,7 +285,7 @@ ${(() => {
       const sub = a > n ? `<span class="muted small">試行 ${a}回</span>` : "";
       return `<div class="stat">${label}<b${color ? ` style="color:${color}"` : ""}>${n}<span style="font-size:12px;font-weight:400">社</span></b>${sub}</div>`;
     };
-    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>`;
+    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>${replyScanLine()}`;
   })()}
 
 <div class="card testcard"><h2 style="margin-top:0">🧪 テスト送信（本送信とは別）</h2>

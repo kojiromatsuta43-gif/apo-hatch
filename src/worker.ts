@@ -21,6 +21,21 @@ const MAX_WAIT = Number(process.env.FO_MAX_WAIT_MS ?? 15000);
 export function isRunning(campaignId: number) {
   return running.has(campaignId);
 }
+// 送信処理（1社分）の実行中の数。アプリを止めるときに、送信の途中で切らないよう待つために使う
+let inFlight = 0;
+let shuttingDown = false;
+
+/** アプリ終了前に呼ぶ。新しい会社には手を付けず、いま送っている会社が終わるまで待つ（最大 timeoutMs）。
+ *  以前は終了・再起動で送信の途中に切れて「送信中」のまま残り、送ったかどうか分からなくなっていた。
+ *  キャンペーンの状態（実行中）は変えないので、次の起動で続きから再開する */
+export async function drainForShutdown(timeoutMs = 120_000): Promise<boolean> {
+  shuttingDown = true;
+  for (const r of running.values()) r.stop = true;
+  const until = Date.now() + timeoutMs;
+  while (inFlight > 0 && Date.now() < until) await new Promise((r) => setTimeout(r, 300));
+  return inFlight === 0;
+}
+
 export function requestStop(campaignId: number) {
   const r = running.get(campaignId);
   if (r) r.stop = true;
@@ -158,6 +173,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 /** キャンペーンのキューを回す。停止要求・送信時間帯・日次上限を守る */
 export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boolean; onProgress?: (j: Job) => void } = {}): Promise<{ processed: number; reason: string }> {
   if (running.has(campaignId)) return { processed: 0, reason: "already running" };
+  if (shuttingDown) return { processed: 0, reason: "アプリ終了中" };
   const state = { stop: false };
   running.set(campaignId, state);
   const db = getDb();
@@ -176,9 +192,11 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         const channels = [formOk && "form", emailOk && "email"].filter(Boolean) as string[];
         const next = db.prepare(`SELECT id, channel FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel IN (${channels.map(() => "?").join(",")}) ORDER BY id LIMIT 1`).get(campaignId, ...channels) as { id: number; channel: string } | undefined;
         if (!next) { reason = "queue empty or 本日の上限"; return; }
+        if (shuttingDown || state.stop) break;
         // 取り合い防止（同一プロセス内の並列用）
         const claimed = db.prepare("UPDATE form_jobs SET status='sending' WHERE id=? AND status='queued'").run(next.id).changes;
         if (!claimed) continue;
+        inFlight++;
         try {
           const j = await processJob(browser, next.id);
           processed++;
@@ -190,7 +208,10 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
           }
         } catch (e) {
           db.prepare("UPDATE form_jobs SET status='failed', result_text=? WHERE id=?").run(`例外: ${String(e).slice(0, 150)}`, next.id);
+        } finally {
+          inFlight--;
         }
+        if (shuttingDown || state.stop) break;
         const wait = next.channel === "email" ? 2000 + Math.random() * 3000 : MIN_WAIT + Math.random() * (MAX_WAIT - MIN_WAIT);
         await new Promise((r) => setTimeout(r, wait));
       }
@@ -202,7 +223,7 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
     running.delete(campaignId);
     const left = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0").get(campaignId) as { n: number }).n;
     // 時間帯外・上限で止まった場合は running のまま残し、スケジューラが再開する
-    db.prepare("UPDATE form_campaigns SET status=? WHERE id=?").run(left === 0 ? "done" : state.stop ? "paused" : "running", campaignId);
+    db.prepare("UPDATE form_campaigns SET status=? WHERE id=?").run(left === 0 ? "done" : state.stop && !shuttingDown ? "paused" : "running", campaignId); // アプリ終了で止めた場合は実行中のまま（次の起動で再開）
   }
   return { processed, reason };
 }
