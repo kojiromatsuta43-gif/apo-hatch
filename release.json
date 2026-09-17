@@ -1,6 +1,6 @@
 {
-  "version": "0.3.73",
-  "notes": "メールの署名に「メール配信停止」リンクを追加。押して送られた配信停止メールを自動で断り・除外リストに登録",
+  "version": "0.3.74",
+  "notes": "キャンペーン設定で資料の添付ファイルを削除できるように／資料の公開リンクをメール本文にも載せるか選べるように",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:30:30.425Z"
+  "published_at": "2026-09-17T05:34:24.539Z"
 }

@@ -208,7 +208,9 @@ export async function composeMessage(job: Job, sender: SenderProfile, campaign: 
   message = message.trim();
   // フォーム送信では資料を添付できないので、公開リンクを本文末尾に載せる（メールは添付ファイルで送るため載せない）。
   // テンプレに {{資料リンク}} を自分で置いている場合は二重にしない。
-  if (job.channel === "form" && campaign.material_url && !message.includes(campaign.material_url)) {
+  // キャンペーンで「メールの本文にもこのリンクを載せる」にした場合はメールにも載せる
+  const linkInBody = job.channel === "form" || (job.channel === "email" && Number((campaign as { material_url_in_email?: number }).material_url_in_email ?? 0) === 1);
+  if (linkInBody && campaign.material_url && !message.includes(campaign.material_url)) {
     message += `\n\n▼サービス資料はこちらからご覧いただけます\n${campaign.material_url}`;
   }
   return { subject, message, aiUsed };

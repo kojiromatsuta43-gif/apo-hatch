@@ -203,6 +203,8 @@ function migrate(db: Database.Database) {
   )`);
   // どの取り込みで入った会社か（form_imports.id）。この列ができる前に取り込んだ会社は NULL（取り込み時刻の近さで1回ぶんとみなす）
   addCol("form_jobs", "import_id", "INTEGER");
+  // 1=資料の公開リンクをメール本文にも載せる（重い添付をやめてリンクで送る場合）。0=フォーム本文だけ（従来）
+  addCol("form_campaigns", "material_url_in_email", "INTEGER NOT NULL DEFAULT 0");
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
@@ -273,6 +275,7 @@ export type Campaign = {
   attach_path: string;    // メール添付する資料ファイルの保存先（DATA_DIR/materials 配下）
   attach_name: string;    // 添付時に見せるファイル名
   group_name: string;     // 同じグループ内では同じ会社に重ねて送らない。空=グループなし
+  material_url_in_email: number;
 };
 
 // フリーメールはドメインが同じでも別の会社。グループ内の重複判定ではドメインではなくメールアドレスで比べる
