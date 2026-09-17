@@ -81,6 +81,24 @@ assert.equal(stripQuoted("了解です\n-----Original Message-----\n不要です
 assert.equal(imapHostFor({ smtp_host: "smtp.gmail.com" } as never), "imap.gmail.com");
 assert.equal(imapHostFor({ smtp_host: "smtp.office365.com" } as never), "outlook.office365.com");
 
+// フォーム送信後の受付確認メール（こちらの文面を見出し付きで転記）は数えない
+const jConf = job(camp, "受付確認株式会社", "", "uketsuke.co.jp", "form");
+const LONG_MSG = "貴社にご貢献できるかと存じますので、詳細についてオンラインにてお話しさせていただけませんでしょうか。\n以下リンクからご予約お願いいたします。";
+db.prepare("UPDATE form_jobs SET message_used=? WHERE id=?").run(LONG_MSG, jConf);
+assert.equal(applyIncomingMail(MAILBOX, mail("info@uketsuke.co.jp", "送信ありがとうございました", `お名前：田中 太郎\nお問い合わせ内容：${LONG_MSG.split("\n")[0]}\n送信日時：2026/09/12 12:00`)), null, "件名「送信ありがとうございました」");
+assert.equal(applyIncomingMail(MAILBOX, mail("info@uketsuke.co.jp", "株式会社受付 お問い合わせ", `担当より確認します。\nお問い合わせ内容：${LONG_MSG.split("\n")[0]}`)), jConf);
+assert.equal(get(jConf).outcome, "replied", "転記されたこちらの文面（お話しさせて…）ではアポにしない");
+assert.ok(get(jConf).outcome_note.includes("本文「"), "判定に使った本文の抜粋を残す");
+
+// 引用記号なしで署名・配信停止の案内が引用されても、断りにしない。件名の「商談」でもアポにしない
+const jFoot = job(camp, "署名引用株式会社", "info@foot.co.jp", "foot.co.jp");
+assert.equal(applyIncomingMail(MAILBOX, mail("info@foot.co.jp", "Re: 【ご提案】人事担当者との商談機会について", "資料拝見しました。社内で検討します。\n\n今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください（sales@biz-labo.com）。以後お送りしません。")), jFoot);
+assert.equal(get(jFoot).outcome, "replied");
+// 本当の配信停止の返信
+const jStop = job(camp, "配信停止株式会社", "info@stop.co.jp", "stop.co.jp");
+applyIncomingMail(MAILBOX, mail("info@stop.co.jp", "配信停止", ""));
+assert.equal(get(jStop).outcome, "declined");
+
 console.log("replies: ALL OK");
 
 // 送信中に止まったメール: 送信済みフォルダの控えで判断

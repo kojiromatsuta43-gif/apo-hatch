@@ -319,7 +319,7 @@ app.get("/campaigns/:id", (req, res) => {
   const retryTargets = retryTargetJobs(id);
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -498,6 +498,30 @@ app.post("/replies/check", async (req, res) => {
   const back = /^\/campaigns\/\d+$/.test(String(req.body.back ?? "")) ? String(req.body.back) : "/";
   const r = await checkReplies().catch((e) => ({ recorded: 0, errors: [String((e as Error)?.message ?? e)] }));
   redirectWith(res, back, r.errors.length ? `返信の確認でエラー: ${r.errors.join(" / ")}` : `返信を確認しました（新しく記録した反応 ${r.recorded}件）`);
+});
+
+export type ReactionRow = { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string };
+
+// 反応の一覧から、判定（返信あり・アポ・断り）を取り消す。会社そのもの・送信記録は消さない。
+// 自動判定の「断り」で自動登録した除外リスト・配信停止も一緒に外す（手で登録した分は残す）
+app.post("/campaigns/:id/outcomes/clear", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const raw = req.body.ids;
+  const ids = (Array.isArray(raw) ? raw : raw != null ? [raw] : []).map((v: unknown) => Number(v)).filter((n: number) => Number.isInteger(n) && n > 0);
+  if (!ids.length) return redirectWith(res, `/campaigns/${id}#reactions`, "取り消す会社が選択されていません");
+  const rows = db.prepare(`SELECT id, company_name, domain, email, outcome, outcome_note FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' AND id IN (${ids.map(() => "?").join(",")})`).all(id, ...ids) as ReactionRow[];
+  db.transaction(() => {
+    for (const r of rows) {
+      db.prepare("UPDATE form_jobs SET outcome='', outcome_note='', updated_at=datetime('now') WHERE id=?").run(r.id);
+      if (r.outcome === "declined" && r.outcome_note.startsWith("自動判定")) {
+        const reason = `断り・返信から自動判定（${r.company_name}）`;
+        if (r.domain) db.prepare("DELETE FROM form_suppressions WHERE domain=? AND reason=?").run(r.domain, reason);
+        if (r.email) db.prepare("DELETE FROM email_optouts WHERE email=? AND reason=?").run(r.email.trim().toLowerCase(), reason);
+      }
+    }
+  })();
+  redirectWith(res, `/campaigns/${id}#reactions`, `${rows.length}社の反応の判定を取り消しました`);
 });
 
 app.post("/jobs/:id/outcome", (req, res) => {

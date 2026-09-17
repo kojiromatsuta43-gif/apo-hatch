@@ -1,6 +1,6 @@
 {
-  "version": "0.3.69",
-  "notes": "アプリの終了・再起動・アップデートで、送信中の会社を途中で切らずに送り終えてから止まるように修正",
+  "version": "0.3.70",
+  "notes": "反応の一覧（判定の根拠つき）を追加し、間違った判定を選んで取り消せるように／受付確認メールやこちらの文面の引用で誤判定しないよう改善",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-16T17:44:28.154Z"
+  "published_at": "2026-09-17T01:50:57.092Z"
 }

@@ -4,7 +4,7 @@
 // 人が手で記録した反応は上書きしない。
 import { ImapFlow } from "imapflow";
 import type { Readable } from "node:stream";
-import { getDb, FREE_MAIL_DOMAINS, type SenderProfile } from "./db.js";
+import { getDb, FREE_MAIL_DOMAINS, jst, type SenderProfile } from "./db.js";
 import { optOut } from "./email.js";
 
 export type IncomingMail = {
@@ -18,7 +18,7 @@ export type IncomingMail = {
 export type ReplyVerdict = { outcome: "replied" | "appointment" | "declined"; reason: string };
 
 // 自動返信・受付確認・エラーメール。フォーム送信後に届く「お問い合わせを受け付けました」は会社のドメインから来るが、人の返信ではない
-const AUTO_SUBJECT_RE = /(自動返信|自動応答|自動送信|自動配信|auto[- ]?reply|automatic reply|out of office|不在|受付完了|受け付けました|受付のお知らせ|受付確認|送信完了|お問い?合わ?せ(を)?(受け付け|受付|承り|ありがとう)|お問い?合わ?せ内容の確認|Undeliver|Delivery Status|Mail Delivery|配信(に)?失敗|配信不能|returned mail|failure notice)/i;
+const AUTO_SUBJECT_RE = /(自動返信|自動応答|自動送信|自動配信|auto[- ]?reply|automatic reply|out of office|不在|受付完了|受け付けました|受付のお知らせ|受付確認|送信完了|お問い?合わ?せ(を)?(受け付け|受付|承り|ありがとう)|お問い?合わ?せ内容の確認|(お問い?合わ?せ|ご連絡|ご送信|送信|ご依頼|ご相談)(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|フォーム(より|から)|受付番号|Undeliver|Delivery Status|Mail Delivery|配信(に)?失敗|配信不能|returned mail|failure notice)/i;
 const AUTO_BODY_RE = /(このメールは(自動|送信専用)|本メールは(自動|送信専用|システム)|(自動|システム)(で|により)?(送信|配信|返信)(され|して|いた|しており|しています)|送信専用(アドレス|メール)|(返信|ご返信)(いただいても|されても|頂いても)[^。\n]{0,20}(お答え|回答|対応|返答)(でき|いたしかね|致しかね)|以下の内容で(受け付け|受付|承り|送信)|下記の内容で(受け付け|受付|承り|送信))/;
 const AUTO_FROM_RE = /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|noreply|bounce)/i;
 
@@ -28,8 +28,19 @@ const DECLINE_RE = /(不要です|不要でございます|必要(は|も)?(ご�
 const APPO_RE = /(日程|日時|候補日|ご都合|打ち?合わ?せ|面談|ミーティング|商談|お時間(を)?(いただ|頂|取|作|頂戴)|お話(を)?(伺|お聞き|聞かせ|聞き)|詳しく(伺|お聞き|聞きた|教えて|知りた)|zoom|teams|google\s*meet|オンライン(で|会議|面談|ミーティング)|ご来社|ご訪問|(資料|詳細|見積|お見積)(を|も)?(送|お送り|いただ|頂|ご送付|ください|下さい)|ご説明(を)?(いただ|頂|お願い))/i;
 
 /** 返信本文から、こちらが送った文面の引用・署名より下の部分を取り除く（引用内の「不要な場合は」等で誤判定しないため） */
+const norm = (s: string) => s.replace(/[\s　▪️・■□●○◆◇▼▶︎*＊\-ー―─_=＝:：|｜>＞「」【】()（）]/g, "");
+
 export function stripQuoted(text: string, sentMessage = ""): string {
   const sentLines = new Set(sentMessage.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length >= 8));
+  // フォーム送信後の受付確認メール等は「お問い合わせ内容：（こちらの文面）」のように見出し付きで転記するため、
+  // 行がこちらの文面に含まれる／行がこちらの文面の1行を含む場合も、こちらの文章とみなして除く
+  const sentNorm = norm(sentMessage);
+  const sentNormLines = sentMessage.split(/\r?\n/).map(norm).filter((l) => l.length >= 12);
+  const isEcho = (line: string) => {
+    const n = norm(line);
+    if (n.length >= 10 && sentNorm.includes(n)) return true;
+    return sentNormLines.some((l) => n.includes(l));
+  };
   const out: string[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
@@ -39,7 +50,7 @@ export function stripQuoted(text: string, sentMessage = ""): string {
     if (/^\d{4}(年|\/|-)\d{1,2}(月|\/|-)\d{1,2}日?.{0,80}(<|＜|&lt;)[^>＞]+@[^>＞]+(>|＞|&gt;).{0,10}[:：]?$/.test(line)) break;
     if (/^(差出人|From)\s*[:：]/i.test(line) && out.length > 0) break;
     if (/^(>|＞)/.test(line)) continue;
-    if (sentLines.has(line)) continue;
+    if (sentLines.has(line) || (sentMessage && isEcho(line))) continue;
     out.push(raw);
   }
   return out.join("\n").trim();
@@ -54,18 +65,24 @@ export function isAutoMail(m: IncomingMail): boolean {
 }
 
 /** 返信をキーワードで振り分ける。断りとアポの両方の言葉がある場合は決めつけず「返信あり」にして人に任せる */
-export function classifyReply(subject: string, body: string): ReplyVerdict {
-  const s = (subject + "\n" + body).replace(/[ \t　]+/g, "");
+export function classifyReply(subject: string, body: string): ReplyVerdict & { excerpt: string } {
+  // 件名は「Re: こちらの件名（商談機会について 等）」なので、キーワード判定には本文だけを使う（件名の「商談」でアポにしないため）
+  const s = body.replace(/[ \t　]+/g, "");
+  const around = (idx: number, len: number) => s.slice(Math.max(0, idx - 30), idx + len + 30).replace(/\s+/g, " ").trim();
   const dec = DECLINE_RE.exec(s);
   const app = APPO_RE.exec(s);
-  if (/配信停止/.test(subject)) return { outcome: "declined", reason: "件名「配信停止」" };
-  if (dec && !app) return { outcome: "declined", reason: `「${dec[0]}」` };
-  if (app && !dec) return { outcome: "appointment", reason: `「${app[0]}」` };
-  if (app && dec) return { outcome: "replied", reason: `「${dec[0]}」「${app[0]}」の両方があり判断できず` };
-  return { outcome: "replied", reason: "振り分けの言葉なし" };
+  // 配信停止の返信（本メールの案内どおり件名や本文の先頭に「配信停止」とだけ書いたもの）
+  if (/^\s*(re:|RE:|Re:|fw:|Fwd:)?\s*配信停止/.test(subject) || /^配信停止/.test(s)) return { outcome: "declined", reason: "「配信停止」の返信", excerpt: around(0, 20) || subject.slice(0, 60) };
+  if (dec && !app) return { outcome: "declined", reason: `「${dec[0]}」`, excerpt: around(dec.index, dec[0].length) };
+  if (app && !dec) return { outcome: "appointment", reason: `「${app[0]}」`, excerpt: around(app.index, app[0].length) };
+  if (app && dec) return { outcome: "replied", reason: `「${dec[0]}」「${app[0]}」の両方があり判断できず`, excerpt: around(dec.index, dec[0].length) };
+  return { outcome: "replied", reason: "振り分けの言葉なし", excerpt: s.slice(0, 60).replace(/\s+/g, " ") };
 }
 
 type SentJob = { id: number; company_name: string; email: string; domain: string; sent_at: string; outcome: string; outcome_note: string; message_used: string; owner_user_id: number | null };
+
+// こちらのメールの署名・配信停止の案内（email.ts の buildEmailBody）。返信に引用されて「配信停止」で断りにならないよう除く
+const FOOTER_ECHO = "今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください\n以後お送りしません。";
 
 const RANK: Record<string, number> = { "": 0, replied: 1, appointment: 2, declined: 2 };
 
@@ -90,14 +107,15 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
     if (cands.length) job = db.prepare(`${base} AND lower(j.domain) IN (${cands.map(() => "?").join(",")}) ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), ...cands) as SentJob | undefined;
   }
   if (!job) return null;
-  const body = stripQuoted(m.text, job.message_used);
+  const body = stripQuoted(m.text, `${job.message_used}\n${FOOTER_ECHO}`);
   // 自動返信の判定は引用を除いた本文で行う（引用されたこちらの文面の言葉で誤判定しないため）
   if (isAutoMail({ ...m, text: body })) return null;
   const v = classifyReply(m.subject, body);
   // 人が手で付けた反応は触らない。自動で付けたものは、より強い判定（アポ・断り）が来たときだけ上げる
   const auto = job.outcome === "" || job.outcome_note.startsWith("自動判定");
   if (!auto || RANK[v.outcome] <= (RANK[job.outcome] ?? 0)) return null;
-  const note = `自動判定（キーワード: ${v.reason}）${at.slice(0, 16)} 件名「${m.subject.slice(0, 60)}」 違っていたら下のボタンで直してください`.slice(0, 300);
+  // 一覧で「どこを見て判定したか」が分かるよう、判定に使った言葉の前後の本文を残す（時刻は東京時間）
+  const note = `自動判定（キーワード: ${v.reason}）${jst(at)} 件名「${m.subject.slice(0, 50)}」 本文「…${v.excerpt.slice(0, 90)}…」`.slice(0, 300);
   db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, updated_at=datetime('now') WHERE id=?").run(v.outcome, note, job.id);
   if (v.outcome === "declined") {
     // 手で「断り」を押したときと同じく、今後この会社には送らない（誤判定でも送らない側に倒す）

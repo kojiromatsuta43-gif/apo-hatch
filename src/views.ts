@@ -256,7 +256,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -285,7 +285,27 @@ ${(() => {
       const sub = a > n ? `<span class="muted small">試行 ${a}回</span>` : "";
       return `<div class="stat">${label}<b${color ? ` style="color:${color}"` : ""}>${n}<span style="font-size:12px;font-weight:400">社</span></b>${sub}</div>`;
     };
-    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat">反応<b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>${replyScanLine()}`;
+    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat"><a href="#reactions" style="color:inherit">反応</a><b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>${replyScanLine()}`;
+  })()}
+
+${(() => {
+    // 反応（返信あり・アポ・断り）の一覧。自動判定は「どの言葉・本文のどこで判定したか」をメモから見せ、間違いはここから取り消せる
+    const list = extra.reactions ?? [];
+    if (!list.length) return "";
+    const color: Record<string, string> = { appointment: "var(--ok)", declined: "var(--ng)", replied: "" };
+    return `<div class="card" id="reactions"><details ${list.length <= 30 ? "open" : ""}><summary style="cursor:pointer"><h2 style="display:inline;margin:0">反応の一覧（${list.length}社）</h2></summary>
+<p class="muted small" style="margin:8px 0">「自動」は受信箱の返信からキーワードで判定したものです。判定の根拠（キーワードと本文の該当部分）を確認し、間違っていたら選んで「判定を取り消す」を押してください（会社や送信記録は消えません。自動の「断り」で入った除外リストも外れます）。</p>
+<form method="post" action="/campaigns/${c.id}/outcomes/clear" onsubmit="return confirm(this.querySelectorAll('input[name=ids]:checked').length + '社の反応の判定を取り消します。よろしいですか？')">
+<p style="margin:0 0 6px"><button class="btn danger small">選択した判定を取り消す</button></p>
+<div style="overflow-x:auto"><table><tr><th><input type="checkbox" title="全選択" onchange="this.closest('table').querySelectorAll('input[name=ids]').forEach(function(x){x.checked=event.target.checked})"></th><th>会社</th><th>反応</th><th>判定</th><th>根拠・メモ</th><th>更新</th></tr>
+${list.map((r) => {
+      const auto = r.outcome_note.startsWith("自動判定");
+      // v0.3.63〜0.3.69 の自動判定メモは受信時刻が世界標準時（末尾に「違っていたら…」が付く）なので東京時刻に直して見せる
+      const oldFmt = / 違っていたら下のボタンで直してください$/.test(r.outcome_note);
+      const note = auto ? r.outcome_note.replace(/^自動判定（キーワード: /, "キーワード: ").replace(/）(\d{4}-\d\d-\d\d \d\d:\d\d)/, (_m: string, t: string) => ` ／ 受信 ${oldFmt ? jst(t + ":00") : t}`).replace(/ 違っていたら下のボタンで直してください$/, "") : r.outcome_note;
+      return `<tr><td><input type="checkbox" name="ids" value="${r.id}"></td><td><a href="/jobs/${r.id}">${esc(r.company_name)}</a><br><span class="muted small">${esc(r.email || r.domain)}</span></td><td><b style="${color[r.outcome] ? `color:${color[r.outcome]}` : ""}">${esc(OUTCOME_LABEL[r.outcome] ?? r.outcome)}</b></td><td class="small">${auto ? '<span class="tag">自動</span>' : '<span class="tag">手動</span>'}</td><td class="small" style="min-width:260px">${esc(note) || '<span class="muted">―</span>'}</td><td class="small">${esc(jst(r.updated_at))}</td></tr>`;
+    }).join("")}
+</table></div></form></details></div>`;
   })()}
 
 <div class="card testcard"><h2 style="margin-top:0">🧪 テスト送信（本送信とは別）</h2>
