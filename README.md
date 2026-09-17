@@ -18,6 +18,8 @@ npx playwright install chromium     # 初回のみ（フォーム操作用のブ
 npm start                            # → http://localhost:3210
 ```
 
+※ `npx playwright install chromium` が「Playwright does not support chromium on mac13」などで失敗する古いOS（macOS 13 以前など）でも、**Google Chrome（または Microsoft Edge）が入っていれば自動でそちらを使う**ので、そのまま `npm start` で使えます。
+
 4. ブラウザで http://localhost:3210 を開き、ターミナルに表示された管理者アカウントでログイン
 5. 画面上部の「ご利用ガイド」に沿って、送信者の登録 → キャンペーン作成 → リスト取り込み → 開始
 

@@ -1,6 +1,8 @@
 // 1社分の送信を実行する（ブラウザ起動〜結果判定〜スクショ）。
 import { chromium, type Browser, type BrowserContext, type Page, type Frame } from "playwright";
 import path from "node:path";
+import fs from "node:fs";
+import os from "node:os";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm } from "./formFinder.js";
@@ -33,10 +35,32 @@ export type SubmitResult = {
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
+/** フォーム操作に使うブラウザの実体。
+ *  通常は Playwright が入れる Chromium（npx playwright install chromium）を使う。
+ *  ただし Playwright は古いOS（例: macOS 13 以前）向けの Chromium を配布しておらず
+ *  「Playwright does not support chromium on mac13」で入れられないため、
+ *  その場合はPCに入っている Google Chrome / Microsoft Edge を自動で使う。環境変数 CHROMIUM_PATH があれば最優先 */
+export function browserExecutablePath(): string | undefined {
+  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
+  if (process.env.FO_FORCE_SYSTEM_CHROME !== "1") {
+    try { if (fs.existsSync(chromium.executablePath())) return undefined; } catch { /* 未インストール */ }
+  }
+  const home = os.homedir();
+  const local = process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local");
+  const candidates = process.platform === "darwin"
+    ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", path.join(home, "Applications/Google Chrome.app/Contents/MacOS/Google Chrome"), "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"]
+    : process.platform === "win32"
+      ? ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe", path.join(local, "Google\\Chrome\\Application\\chrome.exe"), "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe"]
+      : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+  const found = candidates.find((c) => { try { return fs.existsSync(c); } catch { return false; } });
+  if (found) return found;
+  throw new Error("フォーム送信用のブラウザが見つかりません。ターミナルで「npx playwright install chromium」を実行するか、Google Chrome をインストールしてください（macOS 13 以前のMacは Google Chrome が必要です）");
+}
+
 export async function launchBrowser(): Promise<Browser> {
   return chromium.launch({
     headless: process.env.HEADLESS !== "0",
-    executablePath: process.env.CHROMIUM_PATH || undefined,
+    executablePath: browserExecutablePath(),
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"],
     // 終了の合図（Ctrl+C 等）でブラウザを勝手に閉じない。閉じると送信の途中で失敗・誤判定になるため、
     // アプリ側（server.ts の終了処理）で送信中の会社が終わるのを待ってから閉じる
@@ -59,7 +83,7 @@ export async function openAndFill(
   input: { formUrl: string; siteUrl: string; sender: SenderProfile; subject: string; message: string },
   opts: { headless?: boolean; keepOpen?: boolean } = {},
 ): Promise<{ ok: boolean; detail: string; page?: Page; close: () => Promise<void> }> {
-  const browser = await chromium.launch({ headless: opts.headless ?? false, executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] });
+  const browser = await chromium.launch({ headless: opts.headless ?? false, executablePath: browserExecutablePath(), args: ["--disable-blink-features=AutomationControlled", "--no-sandbox"] });
   const close = async () => { await browser.close().catch(() => {}); };
   const ctx = await browser.newContext({ userAgent: UA, locale: "ja-JP", viewport: null, ignoreHTTPSErrors: true });
   ctx.setDefaultTimeout(15000);
