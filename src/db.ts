@@ -205,6 +205,14 @@ function migrate(db: Database.Database) {
   addCol("form_jobs", "import_id", "INTEGER");
   // 1=資料の公開リンクをメール本文にも載せる（重い添付をやめてリンクで送る場合）。0=フォーム本文だけ（従来）
   addCol("form_campaigns", "material_url_in_email", "INTEGER NOT NULL DEFAULT 0");
+  // 1=送信用メールの受信箱を読んで、返信（反応）と戻りメールを自動で記録する。0=読まない
+  addCol("sender_profiles", "reply_check", "INTEGER NOT NULL DEFAULT 1");
+  // おまけのゲームの表示。新しく入れたPCでは最初は出さない（他社に配ったときに「ふざけている」と見られないように）。
+  // この設定ができる前から使っていたPC（キャンペーンがある）は、これまで通り表示にしておく
+  if (!db.prepare("SELECT 1 FROM settings WHERE key='game_enabled'").get()) {
+    const used = (db.prepare("SELECT COUNT(*) n FROM form_campaigns").get() as { n: number }).n > 0;
+    db.prepare("INSERT INTO settings(key,value) VALUES('game_enabled',?)").run(used ? "1" : "0");
+  }
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
@@ -239,6 +247,7 @@ export type SenderProfile = {
   smtp_user: string;
   smtp_pass: string;
   tel_required_only: number;
+  reply_check: number;
 };
 
 export type User = {

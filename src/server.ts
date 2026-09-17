@@ -5,10 +5,10 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
-import { getDb, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
+import { getDb, getSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
-import { optOut, testSmtp, explainSmtpError, checkSmtpPassword } from "./email.js";
+import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause } from "./email.js";
 import { drainForShutdown, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
@@ -53,6 +53,7 @@ const GAME_PORT = Number(process.env.PORT ?? 3210);
 const CLEAN_PORT = Number(process.env.CLEAN_PORT ?? GAME_PORT + 1);
 function gameOnFor(req: express.Request): boolean {
   if (process.env.GAME === "0" || process.env.GAME === "off") return false; // 完全に無効化したいとき
+  if (getSetting("game_enabled", "0") !== "1") return false; // 設定画面でオンにしたときだけ（新しく入れたPCは最初オフ）
   return req.socket.localPort !== CLEAN_PORT; // CLEAN_PORT 以外（＝メイン）ではON
 }
 function navUser(req: express.Request): NavUser {
@@ -134,12 +135,35 @@ app.get("/login", (req, res) => {
   if ((req as AuthedRequest).user) return res.redirect("/");
   res.send(loginPage({ next: String(req.query.next ?? "/") }));
 });
+// ログインの失敗回数制限。同じWi-Fi等にいる人が、他のPCから開けるURLでパスワードを何度も試せないようにする。
+// 同じ接続元から15分に5回（どのIDでも合計10回）間違えたら、15分ログインを受け付けない。PCの中だけで数える（再起動でリセット）
+const loginFails = new Map<string, number[]>();
+const LOGIN_WINDOW = 15 * 60_000;
+function recentFails(key: string): number[] {
+  const now = Date.now();
+  const list = (loginFails.get(key) ?? []).filter((t) => now - t < LOGIN_WINDOW);
+  if (list.length) loginFails.set(key, list); else loginFails.delete(key);
+  return list;
+}
 app.post("/login", (req, res) => {
   const next = String(req.body.next || "/");
+  const ip = String(req.socket.remoteAddress ?? "");
+  const name = String(req.body.username ?? "").trim().toLowerCase();
+  const keyUser = `${ip}|${name}`, keyIp = `${ip}|*`;
+  const userFails = recentFails(keyUser), ipFails = recentFails(keyIp);
+  if (userFails.length >= 5 || ipFails.length >= 10) {
+    const oldest = (userFails.length >= 5 ? userFails : ipFails)[0];
+    const mins = Math.max(1, Math.ceil((oldest + LOGIN_WINDOW - Date.now()) / 60_000));
+    return res.status(429).send(loginPage({ error: `ログインに続けて失敗したため、しばらくログインできません（約${mins}分後にもう一度お試しください）。パスワードが分からない場合は管理者に再発行を依頼してください`, next }));
+  }
   const u = findUser(String(req.body.username ?? ""));
   if (!u || !u.active || !verifyPassword(String(req.body.password ?? ""), u.password_hash)) {
+    const now = Date.now();
+    loginFails.set(keyUser, [...userFails, now]);
+    loginFails.set(keyIp, [...ipFails, now]);
     return res.status(401).send(loginPage({ error: "ログインIDかパスワードが違います", next }));
   }
+  loginFails.delete(keyUser);
   startSession(res, u.id);
   res.redirect(next.startsWith("/") ? next : "/");
 });
@@ -333,7 +357,7 @@ app.get("/campaigns/:id", (req, res) => {
   const retryTargets = retryTargetJobs(id);
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -733,6 +757,14 @@ app.post("/campaigns/:id/imports/delete", (req, res) => {
   redirectWith(res, `/campaigns/${id}`, `取り込んだ会社 ${n} 件を削除しました`);
 });
 
+// メール送信の一時停止を手動で解除する（Gmail の停止が解けた・パスワードを直した後など）
+app.post("/campaigns/:id/email-resume", (req, res) => {
+  const c = loadCampaignFull(req, Number(req.params.id));
+  if (!c) return res.status(404).send("not found");
+  clearEmailPause(c.sender);
+  redirectWith(res, `/campaigns/${c.id}`, "メール送信の一時停止を解除しました。実行中なら次の会社から送信を再開します");
+});
+
 // 送信一覧の絞り込み条件に一致する会社を全件削除（表示中の200件に限らない）。条件なしなら全件
 app.post("/campaigns/:id/delete-filtered", (req, res) => {
   const id = Number(req.params.id);
@@ -919,7 +951,8 @@ app.post("/senders", (req, res) => {
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
   // チェックボックスは未チェックだと送られてこないので、値の有無で 0/1 にする
   const telReqOnly = req.body.tel_required_only ? 1 : 0;
-  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly);
+  const replyCheck = req.body.reply_check ? 1 : 0;
+  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only, reply_check) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly, replyCheck);
   redirectWith(res, "/senders", "送信者を追加しました");
 });
 app.post("/senders/:id", (req, res) => {
@@ -929,7 +962,9 @@ app.post("/senders/:id", (req, res) => {
   const vals = SENDER_COLS.map((k) => String(req.body[k] ?? "").trim());
   const pass = String(req.body.smtp_pass ?? "").trim();
   const telReqOnly = req.body.tel_required_only ? 1 : 0;
-  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, ...(pass ? [pass] : []), Number(req.params.id));
+  // 設定を直したら、メール送信の一時停止は解除する（直したのに止まったままにならないように）
+  { const old = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(Number(req.params.id)) as SenderProfile | undefined; if (old) clearEmailPause(old); }
+  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?, reply_check=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, req.body.reply_check ? 1 : 0, ...(pass ? [pass] : []), Number(req.params.id));
   redirectWith(res, "/senders", "保存しました");
 });
 
@@ -1011,6 +1046,13 @@ app.get("/backup.json", (req, res) => {
 });
 
 // ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
+// おまけのゲームの表示オン／オフ（管理者のみ）
+app.post("/settings/game", requireAdmin, (req, res) => {
+  const on = req.body.game_enabled === "1";
+  db.prepare("INSERT INTO settings(key,value) VALUES('game_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(on ? "1" : "0");
+  redirectWith(res, "/settings", on ? "おまけのゲームを表示します（共有用URLでは表示されません）" : "おまけのゲームを非表示にしました");
+});
+
 app.get("/guide", (req, res) => {
   res.send(layout("ご利用ガイド", guideView(me(req).role === "admin"), takeFlash(req), navUser(req), updateReady));
 });
@@ -1034,7 +1076,7 @@ app.get("/settings", requireAdmin, (req, res) => {
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
-  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1"), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);

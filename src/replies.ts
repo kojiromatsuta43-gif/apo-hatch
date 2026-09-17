@@ -5,7 +5,7 @@
 import { ImapFlow } from "imapflow";
 import type { Readable } from "node:stream";
 import { getDb, FREE_MAIL_DOMAINS, jst, type SenderProfile } from "./db.js";
-import { optOut } from "./email.js";
+import { optOut, emailPause } from "./email.js";
 
 export type IncomingMail = {
   from: string; // 差出人アドレス
@@ -135,6 +135,46 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
   return job.id;
 }
 
+// ---- 届かなかったメール（エラーで戻ってきたメール）の検知 ----
+// 以前は「アドレス不明」などで戻ってきても「送信済み」のままで、同じアドレスに送り続けて Gmail の評価を下げていた
+// （実例: 1000通中 約200通が戻ってきていた）。戻りメールから宛先を読み取り、その会社を「失敗」にする。
+const BOUNCE_SUBJECT_RE = /(Undeliver|Delivery Status Notification \(Failure\)|Delivery Status Notification$|Mail Delivery (Subsystem|Failed|failure)|Returned mail|Mail System Error|failure notice|Delivery has failed|Undelivered Mail|配信(に)?失敗|配信不能|送信できませんでした|届きませんでした)/i;
+const BOUNCE_FROM_RE = /^(mailer-daemon|postmaster|mail-daemon|mailerdaemon)$/i;
+
+export type BounceKind = "hard" | "full" | "size" | "other";
+export function bounceKind(text: string): BounceKind {
+  if (/mailbox (is )?full|over ?quota|quota exceeded|mailbox size limit|容量(が|を)?(超|いっぱい)|5\.2\.2/i.test(text)) return "full";
+  if (/5\.3\.4|size exceeds|message (is )?too large|too big|サイズ(の制限|が制限)/i.test(text)) return "size";
+  if (/5\.1\.\d|user unknown|unknown user|does not exist|no (such )?(mailbox|user)|mailbox unavailable|recipient address rejected|invalid recipient|address not found|アドレス不明|見つからなかった|DNS Error|domain name not found|host or domain name not found|Unknown recipient|5\.4\.1|5\.2\.1/i.test(text)) return "hard";
+  return "other";
+}
+const BOUNCE_LABEL: Record<BounceKind, string> = { hard: "宛先不明（アドレスやドメインが存在しない）", full: "相手の受信箱がいっぱい", size: "メールが大きすぎて受け取れない（添付を外すかリンクにしてください）", other: "相手のサーバーに拒否された" };
+
+/** 戻りメールなら、送った会社を「失敗」にして job id を返す。戻りメールでなければ null */
+export function applyBounce(mailbox: string, m: IncomingMail): number | null {
+  const local = (m.from.split("@")[0] ?? "").toLowerCase();
+  if (!BOUNCE_FROM_RE.test(local) && !BOUNCE_SUBJECT_RE.test(m.subject)) return null;
+  if (/delay|遅延|will retry|まだ配信を試みて/i.test(m.subject)) return null; // 配信遅延の通知は失敗ではない
+  const db = getDb();
+  const at = m.date.toISOString().replace("T", " ").slice(0, 19);
+  const addrs = Array.from(new Set((m.text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []).map((a) => a.toLowerCase())))
+    .filter((a) => a !== mailbox.toLowerCase() && !BOUNCE_FROM_RE.test(a.split("@")[0]) && !/googlemail\.com$|google\.com$/.test(a));
+  for (const addr of addrs) {
+    const job = db.prepare(`SELECT j.id, j.company_name, j.result_text FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id
+      WHERE j.is_test=0 AND j.channel='email' AND j.status='sent' AND lower(j.email)=? AND lower(s.smtp_user)=? AND j.sent_at <= datetime(?, '+10 minutes') AND j.sent_at >= datetime(?, '-30 days')
+      ORDER BY j.sent_at DESC LIMIT 1`).get(addr, mailbox.toLowerCase(), at, at) as { id: number; company_name: string; result_text: string } | undefined;
+    if (!job) continue;
+    const kind = bounceKind(m.text + " " + m.subject);
+    const reasonLine = (m.text.match(/(\b[45]\d\d[ -][245]\.\d{1,3}\.\d{1,3}[^\n]{0,120}|アドレス不明[^\n]{0,80}|メールサイズ[^\n]{0,80}|DNS Error[^\n]{0,80})/i)?.[0] ?? "").trim();
+    db.prepare("UPDATE form_jobs SET status='failed', prev_status='sent', prev_result=?, result_text=?, updated_at=datetime('now') WHERE id=? AND status='sent'")
+      .run(job.result_text, `送信後に戻ってきた（届かなかった）: ${BOUNCE_LABEL[kind]}（${addr}）${reasonLine ? `\n${reasonLine}` : ""}`, job.id);
+    // 存在しないアドレスには今後も送らない（送り続けると迷惑メール送信者とみなされやすくなる）
+    if (kind === "hard") optOut(addr, `宛先不明で届かなかった（${job.company_name}）`);
+    return job.id;
+  }
+  return null;
+}
+
 /** SMTPホストから受信用（IMAP）ホストを推定する */
 export function imapHostFor(sender: SenderProfile): string {
   const h = (sender.smtp_host || "smtp.gmail.com").trim().toLowerCase();
@@ -182,7 +222,7 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
   const errors: string[] = [];
   try {
     // 直近90日に送信済みがある送信用アカウントだけ見る（受信箱ごとに1回）
-    const senders = db.prepare(`SELECT s.* FROM sender_profiles s WHERE s.smtp_user<>'' AND s.smtp_pass<>''
+    const senders = db.prepare(`SELECT s.* FROM sender_profiles s WHERE s.smtp_user<>'' AND s.smtp_pass<>'' AND s.reply_check=1
       AND EXISTS (SELECT 1 FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE c.sender_id=s.id AND j.status='sent' AND j.is_test=0 AND j.sent_at >= datetime('now','-90 days'))
       ORDER BY s.id`).all() as SenderProfile[];
     const seen = new Set<string>();
@@ -190,6 +230,13 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
       const mailbox = s.smtp_user.trim().toLowerCase();
       if (seen.has(mailbox)) continue;
       seen.add(mailbox);
+      // Gmail にログインを拒否された・一時停止されている間は、受信箱にもログインしない（何度も試すと解除が遅れるため）
+      const paused = emailPause(s);
+      if (paused) {
+        db.prepare(`INSERT INTO reply_scans(mailbox, checked_at, error) VALUES(?,datetime('now'),?) ON CONFLICT(mailbox) DO UPDATE SET checked_at=excluded.checked_at, error=excluded.error`)
+          .run(mailbox, `メール送信の一時停止中のため、受信箱の確認も休止しています（${paused.reason}）`);
+        continue;
+      }
       const state = (db.prepare("SELECT * FROM reply_scans WHERE mailbox=?").get(mailbox) as ScanState | undefined) ?? { mailbox, uidvalidity: "", last_uid: 0, checked_at: null, error: "", found: 0 };
       const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000 });
       client.on("error", () => { /* 切断等。下の catch で拾う */ });
@@ -229,7 +276,9 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
               } catch { /* 本文が読めなくても件名だけで判定する */ }
             }
             const date = msg.internalDate ? new Date(msg.internalDate) : (msg.envelope?.date ? new Date(msg.envelope.date) : new Date());
-            if (applyIncomingMail(mailbox, { from: addr, subject: msg.envelope?.subject ?? "", text, date, autoHeader }) != null) found++;
+            const incoming = { from: addr, subject: msg.envelope?.subject ?? "", text, date, autoHeader };
+            if (applyBounce(mailbox, incoming) != null) continue; // 戻りメールは送信結果に反映（反応ではない）
+            if (applyIncomingMail(mailbox, incoming) != null) found++;
           }
           db.prepare(`INSERT INTO reply_scans(mailbox, uidvalidity, last_uid, checked_at, error, found) VALUES(?,?,?,datetime('now'),'',?)
             ON CONFLICT(mailbox) DO UPDATE SET uidvalidity=excluded.uidvalidity, last_uid=excluded.last_uid, checked_at=excluded.checked_at, error='', found=reply_scans.found+excluded.found`)
@@ -263,7 +312,7 @@ export function isCheckingReplies(): boolean {
 
 /** キャンペーン画面に出す「返信の自動確認」の状態（このキャンペーンの送信用アカウント分） */
 export function replyScanStatus(sender: SenderProfile | undefined): { enabled: boolean; checkedAt: string | null; error: string } {
-  if (!sender || !sender.smtp_user || !sender.smtp_pass) return { enabled: false, checkedAt: null, error: "" };
+  if (!sender || !sender.smtp_user || !sender.smtp_pass || sender.reply_check === 0) return { enabled: false, checkedAt: null, error: "" };
   ensureTable();
   const r = getDb().prepare("SELECT checked_at, error FROM reply_scans WHERE mailbox=?").get(sender.smtp_user.trim().toLowerCase()) as { checked_at: string | null; error: string } | undefined;
   return { enabled: true, checkedAt: r?.checked_at ?? null, error: r?.error ?? "" };

@@ -10,11 +10,11 @@ const { getDb } = await import("../src/db.js");
 const { applyIncomingMail, classifyReply, stripQuoted, imapHostFor } = await import("../src/replies.js");
 
 const db = getDb();
-const MAILBOX = "sales@biz-labo.com";
+const MAILBOX = "sales@sender.example";
 const senderId = db.prepare(`INSERT INTO sender_profiles(label,company,person,email,smtp_user,smtp_pass) VALUES(?,?,?,?,?,?)`)
-  .run("営業", "株式会社BizLabo", "田中 太郎", MAILBOX, MAILBOX, "abcdefghijklmnop").lastInsertRowid as number;
+  .run("営業", "株式会社サンプル商事", "田中 太郎", MAILBOX, MAILBOX, "abcdefghijklmnop").lastInsertRowid as number;
 const otherSender = db.prepare(`INSERT INTO sender_profiles(label,company,person,email,smtp_user,smtp_pass) VALUES(?,?,?,?,?,?)`)
-  .run("別アカウント", "株式会社BizLabo", "佐藤", "other@biz-labo.com", "other@biz-labo.com", "abcdefghijklmnop").lastInsertRowid as number;
+  .run("別アカウント", "株式会社サンプル商事", "佐藤", "other@sender.example", "other@sender.example", "abcdefghijklmnop").lastInsertRowid as number;
 const camp = db.prepare(`INSERT INTO form_campaigns(name,sender_id,mode,subject_text,template_text) VALUES(?,?,?,?,?)`).run("返信テスト", senderId, "template", "件名", "本文").lastInsertRowid as number;
 const camp2 = db.prepare(`INSERT INTO form_campaigns(name,sender_id,mode,subject_text,template_text) VALUES(?,?,?,?,?)`).run("別アカウント", otherSender, "template", "件名", "本文").lastInsertRowid as number;
 
@@ -92,7 +92,7 @@ assert.ok(get(jConf).outcome_note.includes("本文「"), "判定に使った本�
 
 // 引用記号なしで署名・配信停止の案内が引用されても、断りにしない。件名の「商談」でもアポにしない
 const jFoot = job(camp, "署名引用株式会社", "info@foot.co.jp", "foot.co.jp");
-assert.equal(applyIncomingMail(MAILBOX, mail("info@foot.co.jp", "Re: 【ご提案】人事担当者との商談機会について", "資料拝見しました。社内で検討します。\n\n今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください（sales@biz-labo.com）。以後お送りしません。")), jFoot);
+assert.equal(applyIncomingMail(MAILBOX, mail("info@foot.co.jp", "Re: 【ご提案】人事担当者との商談機会について", "資料拝見しました。社内で検討します。\n\n今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください（sales@sender.example）。以後お送りしません。")), jFoot);
 assert.equal(get(jFoot).outcome, "replied");
 // 本当の配信停止の返信
 const jStop = job(camp, "配信停止株式会社", "info@stop.co.jp", "stop.co.jp");
@@ -120,7 +120,7 @@ assert.equal(get(jCtrl).outcome, "");
 // 「メール配信停止」リンク（mailto）: 件名「配信停止」・本文に対象アドレス。個人アドレスから送られても、対象アドレスで会社を特定して断りにする
 {
   const { buildEmailBody, unsubscribeMailto } = await import("../src/email.js");
-  const html = buildEmailBody("本文", { company: "株式会社BizLabo", person: "田中", email: MAILBOX, reply_email: "" } as never, "info@link-stop.jp").html;
+  const html = buildEmailBody("本文", { company: "株式会社サンプル商事", person: "田中", email: MAILBOX, reply_email: "" } as never, "info@link-stop.jp").html;
   assert.ok(html.includes(">メール配信停止</a>") && html.includes(`mailto:${MAILBOX}?subject=${encodeURIComponent("配信停止")}`), "HTMLメールに配信停止リンク");
   assert.ok(decodeURIComponent(unsubscribeMailto(MAILBOX, "info@link-stop.jp")).includes("対象アドレス: info@link-stop.jp"));
   const jLink = job(camp, "リンク停止株式会社", "info@link-stop.jp", "link-stop.jp");
@@ -131,6 +131,27 @@ assert.equal(get(jCtrl).outcome, "");
   const jQuote = job(camp, "リンク引用株式会社", "info@link-quote.jp", "link-quote.jp");
   applyIncomingMail(MAILBOX, mail("info@link-quote.jp", "Re: ご提案", "ご連絡ありがとうございます。社内で確認します。\n\n今後このご案内が不要な場合は、以下のリンクからお手続きください。以後お送りしません。\nメール配信停止"));
   assert.equal(get(jQuote).outcome, "replied");
+}
+
+// 戻りメール（届かなかったメール）: 送った会社を「失敗」にする。宛先不明は配信停止にも入れる
+{
+  const { applyBounce } = await import("../src/replies.js");
+  const st = (id: number) => (db.prepare("SELECT status, result_text FROM form_jobs WHERE id=?").get(id) as { status: string; result_text: string });
+  const jHard = job(camp, "宛先不明株式会社", "info@nouser.example", "nouser.example");
+  assert.equal(applyBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Failure)", "アドレス不明 アドレスが見つからなかったか、メールを受信できないアドレスであるため、メールは info@nouser.example に配信されませんでした。 リモート サーバーからの応答: 550 5.1.1 User unknown")), jHard);
+  assert.equal(st(jHard).status, "failed");
+  assert.ok(st(jHard).result_text.includes("宛先不明"));
+  assert.ok(db.prepare("SELECT 1 FROM email_optouts WHERE email='info@nouser.example'").get(), "宛先不明は配信停止に入る");
+  const jSize = job(camp, "サイズ超過株式会社", "info@big.example", "big.example");
+  assert.equal(applyBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Failure)", "メールサイズの制限超過 メールのサイズが制限を超えているため、info@big.example に配信できませんでした。 552 5.3.4 Message size exceeds fixed limit")), jSize);
+  assert.ok(st(jSize).result_text.includes("大きすぎ"));
+  assert.ok(!db.prepare("SELECT 1 FROM email_optouts WHERE email='info@big.example'").get(), "サイズ超過は配信停止にしない（リンクにすれば届く）");
+  const jOl = job(camp, "Outlook株式会社", "marai@outlook-co.example", "outlook-co.example");
+  assert.equal(applyBounce(MAILBOX, mail("postmaster@outlookco.onmicrosoft.com", "Undeliverable: 【ご提案】人事担当者との商談機会について", "Delivery has failed to these recipients or groups: marai@outlook-co.example Your message is too large to send.")), jOl);
+  const jDelay = job(camp, "遅延株式会社", "info@delay.example", "delay.example");
+  assert.equal(applyBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Delay)", "info@delay.example への配信が遅れています")), null, "遅延通知は失敗にしない");
+  assert.equal(st(jDelay).status, "sent");
+  assert.equal(applyBounce(MAILBOX, mail("info@normal.example", "Re: ご提案", "ありがとうございます")), null, "普通の返信は戻りメールではない");
 }
 
 console.log("replies: ALL OK");

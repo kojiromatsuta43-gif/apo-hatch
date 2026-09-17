@@ -229,6 +229,8 @@ export function findNgWords(text: string, words = loadNgWords()): string[] {
   return words.filter((w) => w && text.includes(w));
 }
 
+// 新規キャンペーンの初期文面。どの会社でも使えるひな形にし、【ここに…】を書き換えないと送信できないようにする
+// （以前は開発元のサービス紹介文が入っており、他社が気づかずに送ると別会社の宣伝になってしまうため）
 export const DEFAULT_TEMPLATE = `{{会社名}}
 {{代表者}}
 
@@ -236,8 +238,8 @@ export const DEFAULT_TEMPLATE = `{{会社名}}
 
 {{AI冒頭}}
 
-弊社は、TikTok・Instagram向けのショート動画を「平日は毎日1本」制作するサービス「BRIDGE HATCH」を運営しております。
-台本作成から編集まで一括でお任せいただけ、採用・集客どちらの用途にも対応しております。IT導入補助金の対象ツールのため、実質1/3のご負担で導入いただけます。
+弊社は【ここにサービス名と、何を提供しているかを1〜2行で】を提供しております。
+【ここに、相手の会社にとってのメリットを1〜2行で】
 
 もしご興味がございましたら、本メールへのご返信、または下記までご連絡いただけますと幸いです。
 サービス資料をお送りいたします。
@@ -248,13 +250,15 @@ export const DEFAULT_TEMPLATE = `{{会社名}}
 {{自社URL}}
 
 ※本メッセージが不要な場合は、お手数ですが上記メールまでその旨ご連絡ください。以後のご連絡は控えさせていただきます。`;
+export const DEFAULT_SUBJECT = "【ここに件名】のご案内";
 
 export type Lint = { level: "error" | "warn"; text: string };
 
 /** 送る前の文面チェック。error は送信を止める、warn は注意表示 */
 export function lintMessage(message: string, subject: string, channel: "form" | "email" | "both" = "both"): Lint[] {
   const out: Lint[] = [];
-  if (/【ここに/.test(message)) out.push({ level: "error", text: "【ここに…】の部分が未記入です" });
+  if (/【ここに/.test(message)) out.push({ level: "error", text: "本文の【ここに…】の部分が未記入です" });
+  if (/【ここに/.test(subject)) out.push({ level: "error", text: "件名の【ここに…】の部分が未記入です" });
   const leftover = message.match(/\{\{[^}]+\}\}/g);
   if (leftover) out.push({ level: "error", text: `差し込みが置き換わっていません: ${Array.from(new Set(leftover)).join(" ")}` });
   const len = message.replace(/\s/g, "").length;

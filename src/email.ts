@@ -1,9 +1,12 @@
 // メール送信（自分のGmail / Google Workspace 等のSMTP）。差出人はクライアント自身のアカウント。
 import nodemailer from "nodemailer";
-import { getDb, type SenderProfile } from "./db.js";
+import { getDb, getSetting, setSetting, type SenderProfile } from "./db.js";
 
 export function senderEmailOk(sender: SenderProfile): { ok: boolean; reason?: string; from: string } {
   if (!sender.smtp_user || !sender.smtp_pass) return { ok: false, reason: "送信用メールアカウント（ユーザー名・アプリパスワード）が未設定です", from: "" };
+  // 特定電子メール法で、営業メールには送信者の名称・住所・配信停止の連絡先の表示が必要。欠けていれば送らない
+  if (!sender.company?.trim()) return { ok: false, reason: "送信者の会社名が未登録です（営業メールには送信者の名称の表示が必要です）", from: "" };
+  if (!sender.address?.trim()) return { ok: false, reason: "送信者の住所が未登録です。営業メールには住所の表示が法律で必要なため、送信者プロフィールに住所を登録してください", from: "" };
   return { ok: true, from: (sender.from_email || sender.smtp_user).trim().toLowerCase() };
 }
 
@@ -39,6 +42,35 @@ export function explainSmtpError(e: unknown, sender: SenderProfile): string {
   if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(raw)) return `メールサーバー（${sender.smtp_host || "smtp.gmail.com"}:${sender.smtp_port || 465}）に接続できませんでした。ネットワークかSMTPホスト名・ポートを確認してください`;
   if (/Daily user sending (limit|quota) exceeded|550-5\.4\.5/i.test(raw)) return "Gmailの1日の送信上限に達しました。翌日まで待つか、1日の上限を下げてください";
   return raw.slice(0, 200);
+}
+
+// ---- メール送信の一時停止 ----
+// Gmail にログインを拒否された・一時停止された・1日の上限に達した・つながらない、のときに、
+// 残りの会社を次々と「失敗」にしていた（実例: アカウント停止中に180件が数分で失敗）。
+// 送信用アカウント単位で一定時間メール送信を止め、その会社は待機に戻す。停止中に何度もログインを試すと解除が遅れるため。
+export type EmailPause = { until: number; reason: string };
+const pauseKey = (sender: SenderProfile) => `email_pause:${(sender.smtp_user || `sender-${sender.id}`).trim().toLowerCase()}`;
+
+/** エラーが「一時停止すべき種類」なら停止時間（分）、そうでなければ null */
+export function smtpPauseMinutes(e: unknown): number | null {
+  const raw = `${String((e as Error)?.message ?? e)} ${String((e as { response?: string })?.response ?? "")} ${String((e as { code?: string })?.code ?? "")}`;
+  if (/Daily user sending|5\.4\.5|sending limit|quota exceeded/i.test(raw)) return 24 * 60;
+  // 送信用アカウント側の問題（ログイン拒否・一時停止）。宛先1件の拒否（550 5.2.1 宛先アカウントが無効 等）では止めない
+  if (/\b53[45]\b|BadCredentials|Username and Password not accepted|Application-specific password|5\.7\.(8|9|14)|log in via your web browser|EAUTH|\b421[- ]4\.7\.0|\b454[- ]4\.7\.0/i.test(raw)) return 60;
+  if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|ECONNRESET|EPIPE|ESOCKET|EDNS|getaddrinfo|Greeting never received|Connection closed/i.test(raw)) return 10;
+  return null;
+}
+export function emailPause(sender: SenderProfile): EmailPause | null {
+  try {
+    const p = JSON.parse(getSetting(pauseKey(sender), "null")) as EmailPause | null;
+    return p && p.until > Date.now() ? p : null;
+  } catch { return null; }
+}
+export function setEmailPause(sender: SenderProfile, minutes: number, reason: string) {
+  setSetting(pauseKey(sender), JSON.stringify({ until: Date.now() + minutes * 60_000, reason }));
+}
+export function clearEmailPause(sender: SenderProfile) {
+  getDb().prepare("DELETE FROM settings WHERE key=?").run(pauseKey(sender));
 }
 
 export async function testSmtp(sender: SenderProfile): Promise<void> {

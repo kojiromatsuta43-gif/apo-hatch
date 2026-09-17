@@ -6,7 +6,7 @@ import { getDb, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
-import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError } from "./email.js";
+import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
 
 const running = new Map<number, { stop: boolean }>();
 
@@ -145,8 +145,14 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
   if (job.channel === "email") {
     if (!job.email) return finish("failed", "メールアドレスが無い", { message_used: message });
     if (isOptedOut(job.email)) return finish("skip_optout", "配信停止済みのアドレス", { message_used: message });
+    const paused = emailPause(sender);
+    if (paused) return finish("queued", `メール送信を一時停止中のため待機に戻しました: ${paused.reason}`, { message_used: message });
     const chk = senderEmailOk(sender);
-    if (!chk.ok) return finish("failed", chk.reason ?? "差出人メールが使えません", { message_used: message });
+    if (!chk.ok) {
+      // 設定が足りないのは全社共通なので、1社ずつ失敗にせず送信を止めて待機に戻す（送信者を保存すると解除）
+      setEmailPause(sender, 24 * 60, chk.reason ?? "差出人メールが使えません");
+      return finish("queued", `メール送信を一時停止しました: ${chk.reason ?? "差出人メールが使えません"}`, { message_used: message });
+    }
     if (opts.dryRun) return finish("queued", "テスト（メールは送っていない）", { message_used: message });
     try {
       const body = buildEmailBody(message, sender, job.email);
@@ -157,7 +163,13 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
       await sendEmail(sender, { from: chk.from, to: job.email, subject, ...body, attachments });
       return finish("sent", `メール送信（${job.email}）`, { message_used: message });
     } catch (e) {
-      return finish("failed", `メール送信エラー: ${explainSmtpError(e, sender)}`, { message_used: message });
+      const why = explainSmtpError(e, sender);
+      const minutes = smtpPauseMinutes(e);
+      if (minutes) {
+        setEmailPause(sender, minutes, why);
+        return finish("queued", `メール送信を一時停止しました（${minutes >= 60 ? `${Math.round(minutes / 60)}時間` : `${minutes}分`}後に自動で再開）: ${why}`, { message_used: message });
+      }
+      return finish("failed", `メール送信エラー: ${why}`, { message_used: message });
     }
   }
 
@@ -184,10 +196,11 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
   try {
     const worker = async () => {
       while (!state.stop) {
-        const { campaign } = loadCampaign(campaignId);
+        const { campaign, sender } = loadCampaign(campaignId);
         if (!opts.ignoreWindow && !inSendWindow(campaign)) { reason = "送信時間帯外"; return; }
         const formOk = sentToday(campaignId, "form") < campaign.daily_limit;
-        const emailOk = sentToday(campaignId, "email") < campaign.email_daily_limit;
+        // メール送信が一時停止中（ログイン拒否・上限・通信障害）ならメールの会社には手を付けない
+        const emailOk = sentToday(campaignId, "email") < campaign.email_daily_limit && !emailPause(sender);
         if (!formOk && !emailOk) { reason = "本日の上限に到達"; return; }
         const channels = [formOk && "form", emailOk && "email"].filter(Boolean) as string[];
         const next = db.prepare(`SELECT id, channel FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel IN (${channels.map(() => "?").join(",")}) ORDER BY id LIMIT 1`).get(campaignId, ...channels) as { id: number; channel: string } | undefined;

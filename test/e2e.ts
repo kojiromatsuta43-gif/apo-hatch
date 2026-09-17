@@ -11,7 +11,9 @@ const { getDb } = await import("../src/db.js");
 const { importRowsToCampaign } = await import("../src/csv.js");
 const { launchBrowser, scanCompany } = await import("../src/engine.js");
 const { processJob } = await import("../src/worker.js");
-const { DEFAULT_TEMPLATE } = await import("../src/message.js");
+const { DEFAULT_TEMPLATE: RAW_TEMPLATE } = await import("../src/message.js");
+// 初期文面の【ここに…】は書き換えないと送信できない（文面チェックで止まる）ので、テスト用に埋めておく
+const DEFAULT_TEMPLATE = RAW_TEMPLATE.replace(/【ここに[^】]*】/g, "テスト用のサービス説明です");
 
 const received: Record<string, Record<string, string>> = {};
 const simpleHits: Record<string, string>[] = [];
@@ -341,7 +343,8 @@ assert.ok(received.overlay.naiyo.includes("オーバーレイ社"), "本文がin
 
 assert.equal(results["半角数字社"], "sent", "半角数字のみの電話 + maxlength本文");
 assert.equal(received.strictnum.tel, "0312345678");
-assert.ok(received.strictnum.msg.length <= 120 && received.strictnum.msg.length > 40, "本文がmaxlengthに収まる");
+// 送信データの改行は \r\n（2文字）になるが、ブラウザの maxlength は改行を1文字で数えるので、\n にそろえて数える
+{ const m = received.strictnum.msg.replace(/\r\n/g, "\n"); assert.ok(m.length <= 120 && m.length > 40, "本文がmaxlengthに収まる"); }
 assert.equal(results["チャレンジ社"], "skip_captcha", "ブラウザ確認ページはスキップ");
 assert.equal(results["姓名一体社"], "sent", "「姓・名」ラベル1つに欄2つ");
 assert.equal(received.seimei.nm1, "松田", "左の欄は姓"); assert.equal(received.seimei.nm2, "幸次郎", "右の欄は名");
