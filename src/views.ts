@@ -808,7 +808,8 @@ ${!st.configured
  *  画面のボタン名・見出しと言葉をそろえること（違うと探せない） */
 export function guideView(isAdmin: boolean): string {
   const step = (n: string, title: string, body: string, link = "") => `<div class="card" id="step-${title === "営業リストを取り込む" ? "list" : n}" style="position:relative;padding-left:64px"><div style="position:absolute;left:16px;top:16px;width:34px;height:34px;border-radius:50%;background:var(--honey);color:#1C1710;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</div><h2 style="margin-top:0">${title}</h2>${body}${link}</div>`;
-  const go = (href: string, label: string) => `<p style="margin:10px 0 0"><a class="btn sub small" href="${href}">${label} →</a></p>`;
+  // ガイドを見ながら操作できるよう、ガイド内のリンクは別タブで開く
+  const go = (href: string, label: string) => `<p style="margin:10px 0 0"><a class="btn sub small" href="${href}" target="_blank" rel="noopener">${label} ↗</a></p>`;
   return `<h1>ご利用ガイド</h1>
 <p class="muted">アポハッチくんは、問い合わせフォームとメールへの営業送信を自動で行うツールです。初めての方は、<b>上から順番に</b>進めてください。各画面にも説明が書いてあります。</p>
 <div class="card" style="background:var(--honey-50)"><b>全体の流れ</b>
@@ -883,7 +884,7 @@ ${step("6", "結果と反応を確認する", `<ul style="line-height:1.8;margin
 
 <div class="card"><h2 style="margin-top:0">よくある質問</h2>
 <p><b>Q. 料金はかかりますか？</b><br>テンプレートでの送信・社名の自動補完・返信の自動確認は無料です。AIを使う送り方を選んだ場合だけ、AIの料金がかかります。</p>
-<p><b>Q. 他の人のPCから画面を開けますか？</b><br>同じWi-Fi・社内ネットワークなら開けます。アドレス欄の localhost のリンクは他のPCでは開けないので、${isAdmin ? `<a href="/users">ユーザー管理</a>に表示されるURLを伝えてください` : "管理者に共有用のURLを聞いてください"}。</p>
+<p><b>Q. 他の人のPCから画面を開けますか？</b><br>同じWi-Fi・社内ネットワークなら開けます。アドレス欄の localhost のリンクは他のPCでは開けないので、${isAdmin ? `<a href="/users" target="_blank" rel="noopener">ユーザー管理</a>に表示されるURLを伝えてください` : "管理者に共有用のURLを聞いてください"}。</p>
 <p><b>Q. Gmailが「一時的に停止」されました</b><br>短時間に大量に送ったことが原因です。通常1時間〜24時間で戻ります。戻るまで送信を止め、1日の上限を下げ、日中に少しずつ送るようにしてください。</p>
 <p style="margin-bottom:0"><b>Q. 同じ会社に二重に送ってしまいませんか？</b><br>90日以内に送った会社（期間はキャンペーンで変更可）と、同じグループで登録済みの会社には送りません。送ったか判断できなかった会社は「失敗（要確認）」になるので、スクリーンショットで確認してから再送信してください。</p></div>`;
 }

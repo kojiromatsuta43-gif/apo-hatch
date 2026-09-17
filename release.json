@@ -1,6 +1,6 @@
 {
-  "version": "0.3.80",
-  "notes": "フォーム送信用のブラウザを入れられない古いOS（macOS 13など）でも、Google Chrome / Edge を自動で使って動くように",
+  "version": "0.3.81",
+  "notes": "ご利用ガイド内のリンク（送信者ページを開く など）を別のタブで開くように",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T08:23:10.088Z"
+  "published_at": "2026-09-17T08:35:19.802Z"
 }
