@@ -13,7 +13,7 @@ import { drainForShutdown, runCampaign, requestStop, isRunning, isScanning, scan
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, importPreviewView, errKind, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -1011,6 +1011,10 @@ app.get("/backup.json", (req, res) => {
 });
 
 // ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
+app.get("/guide", (req, res) => {
+  res.send(layout("ご利用ガイド", guideView(me(req).role === "admin"), takeFlash(req), navUser(req), updateReady));
+});
+
 app.get("/game", (req, res) => {
   if (!gameOnFor(req)) return res.redirect("/"); // 非表示ポートでは遊べない（人に見せる用のURL）
   const sc = scope(req);

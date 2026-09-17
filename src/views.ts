@@ -13,7 +13,7 @@ export function layout(title: string, body: string, flash = "", user: NavUser = 
 <style>
 :root{--honey:#FFC62E;--honey-50:#FFF8E1;--honey-100:#FFEDB3;--hive:#1C1710;--hive-600:#4A4237;--hive-200:#D9D4CC;--bg:#FAF8F3;--ok:#2E7D32;--ng:#C62828;--warn:#B26A00}
 *{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--hive);font-size:14px}
-header{background:var(--hive);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:18px}header a{color:#fff;text-decoration:none}header .logo{background:var(--honey);color:var(--hive);font-weight:700;padding:4px 12px 4px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px}header .logo .hatch{display:block;flex:none}header .brandsub{font-size:11px;letter-spacing:.06em;color:#C9C1B4;margin-left:-10px;align-self:center}header .who{margin-left:auto;color:#C9C1B4;font-size:12px}header a.sub{color:#C9C1B4;font-size:12px}header a.upd{background:var(--honey);color:var(--hive);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
+header{background:var(--hive);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap}header a{color:#fff;text-decoration:none;white-space:nowrap}header .logo{background:var(--honey);color:var(--hive);font-weight:700;padding:4px 12px 4px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px}header .logo .hatch{display:block;flex:none}header .brandsub{font-size:11px;letter-spacing:.06em;color:#C9C1B4;margin-left:-10px;align-self:center}header .who{margin-left:auto;color:#C9C1B4;font-size:12px}header a.sub{color:#C9C1B4;font-size:12px}header a.upd{background:var(--honey);color:var(--hive);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
 main{max-width:1100px;margin:0 auto;padding:20px}h1{font-size:20px;margin:0 0 14px}h2{font-size:16px;margin:22px 0 8px}
 .card{background:#fff;border:1px solid var(--hive-200);border-radius:12px;padding:16px;margin-bottom:16px}
 label{display:block;font-weight:600;margin:10px 0 4px}input[type=text],input[type=number],input[type=url],input[type=email],textarea,select{width:100%;padding:8px;border:1px solid var(--hive-200);border-radius:8px;font:inherit}textarea{min-height:140px}
@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -147,7 +147,7 @@ ${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 
 <li><b>新しいキャンペーン</b>を作成（送り方・文面を設定）→ <a href="/campaigns/new">作成する</a></li>
 <li>会社リスト（CSV / Excel / スプレッドシート）を<b>取り込み</b>、テスト送信で確認してから開始</li>
 </ol>
-<p class="muted small">まずは送信者の登録からどうぞ。迷ったら各画面の説明書きを読めば進められます。</p></div>` : `
+<p class="muted small">まずは送信者の登録からどうぞ。詳しい手順は <a href="/guide">ご利用ガイド</a> にまとめています。</p></div>` : `
 <table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
 ${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(jst(c.last_sent))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form> <form method="post" action="/campaigns/${c.id}/delete" class="inline" data-n="${esc(c.name)}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。\\n取り込んだ会社 ${c.total} 件・送信済み ${c.sent} 件の記録もすべて消え、元に戻せません。${c.sent ? "\\n送信済みの会社への再送防止も効かなくなります。" : ""}\\nよろしいですか？')"><button class="btn sub small" style="color:var(--ng)">削除</button></form></td></tr>`).join("")}
 </table>`}`;
@@ -775,6 +775,59 @@ ${!st.configured
  *  - GOGO!ランプが光ったら（ぺかったら）7を「目押し」で狙う。押し位置から4コマ以内なら引き込む。
  *  - BARと7が枠内に並べば「リーチ目」。BIG=7・7・7 / REG=7・7・BAR・BAR・BAR。
  *  - 内部抽選は設定6の65536分母テーブル。クレジットはフォーム送信数から（1送信=1枚、BET3）。 */
+/** 初めて使う人向けの「ご利用ガイド」。上から順に進めれば送信まで行けるようにする。
+ *  画面のボタン名・見出しと言葉をそろえること（違うと探せない） */
+export function guideView(isAdmin: boolean): string {
+  const step = (n: string, title: string, body: string, link = "") => `<div class="card" style="position:relative;padding-left:64px"><div style="position:absolute;left:16px;top:16px;width:34px;height:34px;border-radius:50%;background:var(--honey);color:#1C1710;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</div><h2 style="margin-top:0">${title}</h2>${body}${link}</div>`;
+  const go = (href: string, label: string) => `<p style="margin:10px 0 0"><a class="btn sub small" href="${href}">${label} →</a></p>`;
+  return `<h1>ご利用ガイド</h1>
+<p class="muted">アポハッチくんは、問い合わせフォームとメールへの営業送信を自動で行うツールです。初めての方は、<b>上から順番に</b>進めてください。各画面にも説明が書いてあります。</p>
+<div class="card" style="background:var(--honey-50)"><b>全体の流れ</b>
+<ol style="margin:6px 0 0;padding-left:1.3em;line-height:1.9"><li>送信者を登録</li><li>（任意）除外リストを登録</li><li>キャンペーンを作る</li><li>営業リストを取り込む</li><li>テスト送信で確認</li><li>本送信を開始</li><li>結果と反応を確認</li></ol></div>
+
+${step("1", "送信者を登録する", `<p>フォームに入力する「あなたの会社・担当者の情報」です。キャンペーンを作る前に必ず登録します。</p>
+<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>会社名・担当者名（例: 田中 太郎）・担当者名フリガナ（例: タナカ タロウ）・メール・電話・住所・会社URL</li>
+<li><b>メールでも送る場合</b>は「メールで送る場合の設定」に、送信用のGmail（Google Workspace）アドレスと<b>アプリパスワード</b>を入れ、「メール設定を確認」でOKになるか確かめます。<br><span class="muted small">アプリパスワードは Googleアカウント → セキュリティ → 2段階認証プロセス → アプリパスワード で作る英小文字16文字です（普段のログインパスワードではありません）。</span></li>
+<li>電話番号をフォームの必須欄だけに入れたい場合は、チェックで選べます</li></ul>`, go("/senders", "送信者ページを開く"))}
+
+${step("2", "（任意）除外リストを登録する", `<p>既存のお客様や「送ってはいけない会社」を先に登録しておくと、取り込んでも送られません。スプレッドシートからの貼り付け・URL・CSVでまとめて登録できます。</p>
+<p class="muted small">「営業お断り」と書かれたサイトや、配信停止・断りの返信があった会社は、自動でここに追加されます。</p>`, go("/suppressions", "除外リストを開く"))}
+
+${step("3", "キャンペーンを作る", `<p>「この文面で、この会社たちに、この送り方で送る」という送信のまとまりです。</p>
+<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li><b>送信者</b>：手順1で登録したもの。メールの差出人・フォームの入力内容はこの送信者になります</li>
+<li><b>送り方</b>：フォーム優先（無ければメール）／メール優先（無ければフォーム）／メールのみ／フォームのみ</li>
+<li><b>文面</b>：「テンプレートのみ」は無料。AIを使うモードは設定画面でAIキーを登録した場合だけ選べ、AIの料金がかかります</li>
+<li><b>1日の上限・送信時間帯</b>：メールは少なめに（作ったばかりのGmailは1日50〜100通から）。深夜の連続送信はアカウント停止の原因になります</li>
+<li><b>資料</b>：重いPDFの添付より、Googleドライブ等の公開リンクがおすすめ（「メールの本文にもこのリンクを載せる」にチェック）</li>
+<li><b>グループ</b>：フォーム用とメール用などに分けたキャンペーンで、同じ会社に重ねて送らないようにできます</li></ul>`, go("/campaigns/new", "新しいキャンペーンを作る"))}
+
+${step("4", "営業リストを取り込む", `<p>キャンペーン画面の「1. リストを取り込む」から、CSV・Excel・貼り付け・Googleスプレッドシートのどれかで取り込みます。<b>最低限「企業名」と「企業URL」の2列</b>があればOKです（メールで送るなら「メール」列も）。</p>
+<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>取り込む前にプレビューが出ます。列がずれていないか確認して「この内容で取り込む」</li>
+<li>除外リストの会社・90日以内に送った会社・同じグループで登録済みの会社は、自動で「送らない」に振り分けられます</li>
+<li>社名に「株式会社」などが無い場合は、送る直前に会社のHPから自動で補います（無料）</li>
+<li>間違えて取り込んだら、「取り込み履歴」の「全件削除」でその回の分をまとめて消せます</li>
+<li>フォームで送る場合は「事前チェックを実行」で、フォームの有無・営業お断り・画像認証を送る前に確認できます（任意）</li></ul>`)}
+
+${step("5", "テスト送信で確認する", `<p>キャンペーン画面の「🧪 テスト送信」から、<b>自社のフォームや自分宛てのメール</b>に送って、文面や入力内容を確認します。営業リストの会社には送られません。</p>
+<p class="muted small">「先頭の1社で文面をプレビュー」で、差し込み後の文面も確認できます。</p>`)}
+
+${step("6", "本送信を開始する", `<p>キャンペーン画面の「3. 本送信」で「開始する」を押すと、送信時間帯・1日の上限を守りながら自動で送ります。</p>
+<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>途中で止めるときは「一時停止」</li>
+<li>送信は<b>このPCの中で</b>動きます。PCがスリープしたり、ふたを閉じたり、アプリを終了すると止まります（起動すると続きから再開）。長時間送るときは電源につなぎ、自動でスリープしない設定に</li>
+<li>フォームが見つからない・画像認証がある・営業お断りのサイトには、安全のため送りません</li></ul>`)}
+
+${step("7", "結果と反応を確認する", `<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li><b>送信一覧</b>：会社ごとの状態（送信済・失敗・フォーム無し等）とスクリーンショット。失敗した会社は「修正して再送信」や「失敗した会社を再送信」、手で送った場合は「手動で送信済みにする」</li>
+<li><b>反応の一覧</b>：送信用メールの受信箱を15分ごとに読み、返信を「返信あり／アポ獲得／断り」に自動で記録します（受付確認の自動メールは数えません）。判定の根拠を見て、間違っていれば取り消せます</li>
+<li>メールの末尾には「メール配信停止」リンクが入り、送られてきた配信停止は自動で除外リストに入ります</li>
+<li>「結果をCSVで書き出す」で一覧を保存できます</li></ul>`)}
+
+<div class="card"><h2 style="margin-top:0">よくある質問</h2>
+<p><b>Q. 料金はかかりますか？</b><br>テンプレートでの送信・社名の自動補完・返信の自動確認は無料です。AIを使う送り方を選んだ場合だけ、AIの料金がかかります。</p>
+<p><b>Q. 他の人のPCから画面を開けますか？</b><br>同じWi-Fi・社内ネットワークなら開けます。アドレス欄の localhost のリンクは他のPCでは開けないので、${isAdmin ? `<a href="/users">ユーザー管理</a>に表示されるURLを伝えてください` : "管理者に共有用のURLを聞いてください"}。</p>
+<p><b>Q. Gmailが「一時的に停止」されました</b><br>短時間に大量に送ったことが原因です。通常1時間〜24時間で戻ります。戻るまで送信を止め、1日の上限を下げ、日中に少しずつ送るようにしてください。</p>
+<p style="margin-bottom:0"><b>Q. 同じ会社に二重に送ってしまいませんか？</b><br>90日以内に送った会社（期間はキャンペーンで変更可）と、同じグループで登録済みの会社には送りません。送ったか判断できなかった会社は「失敗（要確認）」になるので、スクリーンショットで確認してから再送信してください。</p></div>`;
+}
+
 export function gameView(sentCount: number): string {
   return `<h1>🎰 アポスロット <span class="tag">おまけ</span></h1>
 <p class="muted">フォーム送信が進むほどクレジットが貯まります（1送信=1枚・3枚で1回転）。仮想コインだけで、課金や実送信は一切ありません。ネオアイムジャグラーEX の配列・制御を再現した非公式ミニゲームです。</p>

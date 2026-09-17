@@ -1,6 +1,6 @@
 {
-  "version": "0.3.74",
-  "notes": "キャンペーン設定で資料の添付ファイルを削除できるように／資料の公開リンクをメール本文にも載せるか選べるように",
+  "version": "0.3.75",
+  "notes": "上部メニューのキャンペーンの左に「ご利用ガイド」を追加（初めての人向けの手順とよくある質問）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:34:24.539Z"
+  "published_at": "2026-09-17T05:37:19.340Z"
 }
