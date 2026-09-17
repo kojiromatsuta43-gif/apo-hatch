@@ -61,6 +61,29 @@ document.addEventListener("submit", (e) => {
   }
 }, true);
 </script>
+<script>
+// 入力途中の自動保存（data-draft を付けたフォーム: 送信者・キャンペーン）。
+// ご利用ガイドなど別の画面と行き来しても、書きかけの内容が消えないようにする。このブラウザの中だけに保存（パスワード・ファイルは保存しない）。
+// 保存ボタンを押した時点で消す（保存後に戻る画面にも同じフォームがあり、保存済みの内容を「復元」と出すと二重登録につながるため）。
+(()=>{const P="fo-draft:";
+const fields=f=>Array.from(f.elements).filter(e=>e.name&&!/^(password|file|hidden|submit|button|reset)$/.test(e.type));
+const snap=f=>{const o={};fields(f).forEach(e=>{if(e.type==="checkbox"||e.type==="radio"){(o[e.name]=o[e.name]||{})[e.value]=e.checked}else o[e.name]=e.value});return o};
+const put=(f,o)=>fields(f).forEach(e=>{const v=o[e.name];if(v===undefined)return;if(e.type==="checkbox"||e.type==="radio"){if(v&&typeof v==="object"&&e.value in v)e.checked=v[e.value]}else if(typeof v==="string")e.value=v;e.dispatchEvent(new Event("change",{bubbles:true}))});
+try{
+for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||k.indexOf(P)!==0)continue;let d={};try{d=JSON.parse(localStorage.getItem(k)||"{}")}catch(e){}
+if(Date.now()-(d.at||0)>30*864e5)localStorage.removeItem(k);}}catch(e){}
+document.querySelectorAll("form[data-draft]").forEach(f=>{const key=P+f.dataset.draft;const orig=snap(f);let d=null;
+try{d=JSON.parse(localStorage.getItem(key)||"null")}catch(e){}
+let restoring=false;
+if(d&&d.values&&JSON.stringify(d.values)!==JSON.stringify(orig)){restoring=true;put(f,d.values);restoring=false;
+const bar=document.createElement("div");bar.className="flash";bar.style.margin="0 0 12px";
+bar.innerHTML='✎ 前回の入力途中の内容を復元しました（'+new Date(d.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})+'）。まだ保存はされていません。 <button type="button" class="btn sub small">復元をやめて元に戻す</button>';
+bar.querySelector("button").onclick=()=>{restoring=true;put(f,orig);restoring=false;try{localStorage.removeItem(key)}catch(e){}bar.remove()};f.prepend(bar);}
+let t;const save=()=>{if(restoring)return;clearTimeout(t);t=setTimeout(()=>{try{const v=snap(f);if(JSON.stringify(v)===JSON.stringify(orig))localStorage.removeItem(key);else localStorage.setItem(key,JSON.stringify({at:Date.now(),values:v}))}catch(e){}},300)};
+f.addEventListener("input",save);f.addEventListener("change",save);
+f.addEventListener("submit",()=>{clearTimeout(t);try{localStorage.removeItem(key)}catch(e){}});
+});})();
+</script>
 <div id="fo-chara" aria-hidden="true">
 <div class="icon">
 <svg class="bee on" viewBox="0 0 48 48"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/><circle cx="16.8" cy="24.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="24.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 25.8Q24 27.6 26.5 25.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
@@ -155,7 +178,7 @@ ${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.
 
 export function senderForm(s?: Partial<SenderProfile>) {
   const v = (k: keyof SenderProfile) => esc(s?.[k] ?? "");
-  return `<form method="post" action="/senders${s?.id ? `/${s.id}` : ""}">
+  return `<form method="post" action="/senders${s?.id ? `/${s.id}` : ""}" data-draft="sender-${s?.id ?? "new"}">
 <div class="row"><div><label>ラベル（管理用）</label><input type="text" name="label" value="${v("label")}" placeholder="社内用 / ○○社用" required></div><div><label>会社名 *</label><input type="text" name="company" value="${v("company")}" required></div></div>
 <div class="row"><div><label>業種</label><input type="text" name="industry" value="${v("industry")}"></div><div><label>担当者名 *（姓と名の間にスペース）</label><input type="text" name="person" value="${v("person")}" placeholder="田中 太郎" required></div></div>
 <div class="row"><div><label>担当者名フリガナ</label><input type="text" name="person_kana" value="${v("person_kana")}" placeholder="タナカ タロウ"></div><div><label>メール *（フォームに入力するアドレス）</label><input type="email" name="email" value="${v("email")}" required></div></div>
@@ -163,7 +186,7 @@ export function senderForm(s?: Partial<SenderProfile>) {
 <label class="inline small" style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-weight:400"><input type="checkbox" name="tel_required_only" value="1" ${s?.tel_required_only ? "checked" : ""} style="width:auto;margin-top:3px"> <span><b>電話番号が必須の欄にだけ入力する</b>（任意の欄には書かない）<br><span class="muted">電話番号を相手に伝えたくない場合に。サイト側で必須だった場合は、弾かれた後の埋め直しで入力して再送します。</span></span></label></div></div>
 <div class="row3"><div><label>郵便番号</label><input type="text" name="postal" value="${v("postal")}" placeholder="114-0001"></div><div><label>住所（都道府県から）</label><input type="text" name="address" value="${v("address")}"></div><div><label>自社URL</label><input type="url" name="url" value="${v("url")}"></div></div>
 <h2>メールで送る場合の設定（任意。フォームだけなら不要）</h2>
-<p class="muted">Googleアカウントで2段階認証をオンにし「アプリパスワード」を発行して貼り付けてください。営業専用のアドレスを使うのが安全です（無料Gmailは1日500通、Workspaceは2,000通まで）。</p>
+<p class="muted">Googleアカウントで<a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2段階認証プロセス</a>をオンにし、<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード</a>を発行して貼り付けてください（リンクを押すと、いまブラウザでログイン中のGoogleアカウントの設定ページが別タブで開きます。送信に使うアカウントでログインしているか確認してください）。営業専用のアドレスを使うのが安全です（無料Gmailは1日500通、Workspaceは2,000通まで）。</p>
 <div class="row3"><div><label>送信用メールアドレス（Gmail等）</label><input type="text" name="smtp_user" value="${v("smtp_user")}" placeholder="sales@example.co.jp"></div><div><label>アプリパスワード（保存済みなら空のまま）</label><input type="password" name="smtp_pass" value="" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div><div><label>差出人として表示するアドレス（空なら左と同じ）</label><input type="text" name="from_email" value="${v("from_email")}"></div></div>
 <details class="small muted"><summary>Gmail以外のメールサーバー</summary><div class="row"><div><label>SMTPホスト</label><input type="text" name="smtp_host" value="${esc(s?.smtp_host ?? "smtp.gmail.com")}" placeholder="smtp.gmail.com"></div><div><label>ポート（465 or 587）</label><input type="number" name="smtp_port" value="${esc(s?.smtp_port ?? 465)}" placeholder="465"></div></div>
 <p class="muted small" style="margin:6px 0 0"><b>SMTPホストとは：</b>メールを送り出すサーバーのアドレスです。プロバイダごとに決まっています。<br>
@@ -183,7 +206,7 @@ export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaig
   const d = (k: keyof Campaign, fb: unknown = "") => esc(defaults[k] ?? fb);
   return `<h1>${editId ? `キャンペーンを編集: ${d("name")}` : "新しいキャンペーン"}</h1>
 ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a></p><p class="muted">配信チャネルの変更は、<b>これから取り込む会社</b>に適用されます（取り込み済みの会社の振り分けは変わりません）。</p>` : ""}
-<form method="post" action="${editId ? `/campaigns/${editId}/edit` : "/campaigns"}" class="card" enctype="multipart/form-data">
+<form method="post" action="${editId ? `/campaigns/${editId}/edit` : "/campaigns"}" class="card" enctype="multipart/form-data" data-draft="campaign-${editId ?? "new"}">
 <label>グループ（任意）</label><input type="text" name="group_name" value="${d("group_name")}" list="fo-groups" placeholder="例：福岡 飲食 9月（空欄なら自動で決めます）" style="max-width:420px"><datalist id="fo-groups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
 <p class="muted small" style="margin:4px 0 6px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・CAPTCHA</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
 ${(() => {
@@ -248,7 +271,7 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 <div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0" ${Number(defaults.ignore_refusal ?? 0) ? "" : "selected"}>送らない（推奨）</option><option value="1" ${Number(defaults.ignore_refusal ?? 0) ? "selected" : ""}>送る（クレームの恐れあり）</option></select></div><div></div></div>
 <h2>資料の添付（任意）</h2>
 <p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>
-<div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg">${defaults.attach_name ? `<p class="muted small" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">現在の添付: <b>${d("attach_name")}</b>（新しいファイルを選ぶと置き換わります）${editId ? `<input type="hidden" name="remove_attach" value="0"><button type="button" class="btn sub small" data-n="${d("attach_name")}" onclick="if(confirm('添付ファイル「' + this.dataset.n + '」を削除します。以後のメールは添付なしで送られます（画面のほかの変更も一緒に保存されます）。よろしいですか？')){var f=this.form;f.querySelector('input[name=remove_attach]').value='1';f.querySelectorAll('[required]').forEach(function(x){x.removeAttribute('required')});f.submit();}">添付を削除</button>` : ""}</p>` : ""}</div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" value="${d("material_url")}" placeholder="https://（Googleドライブ等の共有リンク）"><label class="inline small" style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:400"><input type="checkbox" name="material_url_in_email" value="1" style="width:auto" ${Number((defaults as { material_url_in_email?: number }).material_url_in_email ?? 0) ? "checked" : ""}> メールの本文にもこのリンクを載せる</label><p class="muted small" style="margin:2px 0 0">重い資料を添付すると、相手が受け取れずに戻ってきたり、Gmailが一時停止されやすくなります。メールでもリンクで送る場合は、ここにチェックを入れて上の添付を削除してください。</p><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
+<div class="row"><div><label>資料ファイル（メール添付用・PDF等）</label><input type="file" name="material_file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg">${defaults.attach_name ? `<p class="muted small" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">現在の添付: <b>${d("attach_name")}</b>（新しいファイルを選ぶと置き換わります）${editId ? `<input type="hidden" name="remove_attach" value="0"><button type="button" class="btn sub small" data-n="${d("attach_name")}" onclick="if(confirm('添付ファイル「' + this.dataset.n + '」を削除します。以後のメールは添付なしで送られます（画面のほかの変更も一緒に保存されます）。よろしいですか？')){var f=this.form;f.querySelector('input[name=remove_attach]').value='1';f.querySelectorAll('[required]').forEach(function(x){x.removeAttribute('required')});if(f.requestSubmit){f.requestSubmit()}else{f.submit()}}">添付を削除</button>` : ""}</p>` : ""}</div><div><label>資料の公開リンク（フォーム本文用・URL）</label><input type="url" name="material_url" value="${d("material_url")}" placeholder="https://（Googleドライブ等の共有リンク）"><label class="inline small" style="display:flex;gap:6px;align-items:center;margin-top:6px;font-weight:400"><input type="checkbox" name="material_url_in_email" value="1" style="width:auto" ${Number((defaults as { material_url_in_email?: number }).material_url_in_email ?? 0) ? "checked" : ""}> メールの本文にもこのリンクを載せる</label><p class="muted small" style="margin:2px 0 0">重い資料を添付すると、相手が受け取れずに戻ってきたり、Gmailが一時停止されやすくなります。メールでもリンクで送る場合は、ここにチェックを入れて上の添付を削除してください。</p><p class="muted small">このアプリは各自のPCで動くため、アップロードしたファイルに外部から見えるURLは付けられません。フォーム用にはドライブ等で共有した公開リンクを貼ってください。</p></div></div>
 <p><button class="btn">${editId ? "保存する" : "作成する"}</button></p></form>
 ${editId ? `<div class="card" style="border-color:var(--ng);margin-top:18px"><h2 style="margin-top:0;color:var(--ng)">キャンペーンを削除</h2>
 <p class="muted small">このキャンペーンと、取り込んだ会社・送信履歴・スクリーンショット・添付資料をすべて削除します。<b>元に戻せません。</b><br>送信済みの記録も消えるため、その会社への「再送を止める期間」のチェックが効かなくなります。除外リスト（営業お断り等）は全キャンペーン共通なので残ります。</p>
@@ -787,7 +810,7 @@ export function guideView(isAdmin: boolean): string {
 
 ${step("1", "送信者を登録する", `<p>フォームに入力する「あなたの会社・担当者の情報」です。キャンペーンを作る前に必ず登録します。</p>
 <ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>会社名・担当者名（例: 田中 太郎）・担当者名フリガナ（例: タナカ タロウ）・メール・電話・住所・会社URL</li>
-<li><b>メールでも送る場合</b>は「メールで送る場合の設定」に、送信用のGmail（Google Workspace）アドレスと<b>アプリパスワード</b>を入れ、「メール設定を確認」でOKになるか確かめます。<br><span class="muted small">アプリパスワードは Googleアカウント → セキュリティ → 2段階認証プロセス → アプリパスワード で作る英小文字16文字です（普段のログインパスワードではありません）。</span></li>
+<li><b>メールでも送る場合</b>は「メールで送る場合の設定」に、送信用のGmail（Google Workspace）アドレスと<b>アプリパスワード</b>を入れ、「メール設定を確認」でOKになるか確かめます。<br><span class="muted small">アプリパスワードは Googleアカウント → <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">セキュリティ</a> → <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2段階認証プロセス</a>（オンにする）→ <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード</a> で作る英小文字16文字です（普段のログインパスワードではありません）。リンクは別タブで開きます。Google Workspace で「アプリパスワード」が出ない場合は、会社の管理者に2段階認証の許可を依頼してください。</span></li>
 <li>電話番号をフォームの必須欄だけに入れたい場合は、チェックで選べます</li></ul>`, go("/senders", "送信者ページを開く"))}
 
 ${step("2", "（任意）除外リストを登録する", `<p>既存のお客様や「送ってはいけない会社」を先に登録しておくと、取り込んでも送られません。スプレッドシートからの貼り付け・URL・CSVでまとめて登録できます。</p>

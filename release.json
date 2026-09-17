@@ -1,6 +1,6 @@
 {
-  "version": "0.3.75",
-  "notes": "上部メニューのキャンペーンの左に「ご利用ガイド」を追加（初めての人向けの手順とよくある質問）",
+  "version": "0.3.76",
+  "notes": "送信者・キャンペーンの入力途中の内容を自動保存（ガイドと行き来しても消えない）／アプリパスワード・2段階認証の設定ページへのリンクを追加",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:37:19.340Z"
+  "published_at": "2026-09-17T05:45:44.311Z"
 }
