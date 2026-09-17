@@ -354,7 +354,7 @@ ${list.map((r) => {
 <label>③ または Google スプレッドシートのURL</label>
 <input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…">
 <p class="muted small">URLで取り込むには、スプレッドシートの共有を「リンクを知っている全員（閲覧可）」にしてください。</p>
-<p><button class="btn">取り込む</button></p></form>
+<p><button class="btn">取り込む</button> <a class="small" href="/guide#step-list" target="_blank" rel="noopener">フォーム無し・失敗を減らすには？（AIでリストを整えるプロンプト）</a></p></form>
 ${extra.lastImport ? importReport(extra.lastImport) : ""}
 ${(() => {
     // 取り込み履歴。間違えて取り込んだ分を、取り込み1回ぶん丸ごと消せる（一覧は200件までなので、選択削除では消しきれない）
@@ -801,12 +801,12 @@ ${!st.configured
 /** 初めて使う人向けの「ご利用ガイド」。上から順に進めれば送信まで行けるようにする。
  *  画面のボタン名・見出しと言葉をそろえること（違うと探せない） */
 export function guideView(isAdmin: boolean): string {
-  const step = (n: string, title: string, body: string, link = "") => `<div class="card" style="position:relative;padding-left:64px"><div style="position:absolute;left:16px;top:16px;width:34px;height:34px;border-radius:50%;background:var(--honey);color:#1C1710;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</div><h2 style="margin-top:0">${title}</h2>${body}${link}</div>`;
+  const step = (n: string, title: string, body: string, link = "") => `<div class="card" id="step-${title === "営業リストを取り込む" ? "list" : n}" style="position:relative;padding-left:64px"><div style="position:absolute;left:16px;top:16px;width:34px;height:34px;border-radius:50%;background:var(--honey);color:#1C1710;font-weight:800;display:flex;align-items:center;justify-content:center">${n}</div><h2 style="margin-top:0">${title}</h2>${body}${link}</div>`;
   const go = (href: string, label: string) => `<p style="margin:10px 0 0"><a class="btn sub small" href="${href}">${label} →</a></p>`;
   return `<h1>ご利用ガイド</h1>
 <p class="muted">アポハッチくんは、問い合わせフォームとメールへの営業送信を自動で行うツールです。初めての方は、<b>上から順番に</b>進めてください。各画面にも説明が書いてあります。</p>
 <div class="card" style="background:var(--honey-50)"><b>全体の流れ</b>
-<ol style="margin:6px 0 0;padding-left:1.3em;line-height:1.9"><li>送信者を登録</li><li>（任意）除外リストを登録</li><li>キャンペーンを作る</li><li>営業リストを取り込む</li><li>テスト送信で確認</li><li>本送信を開始</li><li>結果と反応を確認</li></ol></div>
+<ol style="margin:6px 0 0;padding-left:1.3em;line-height:1.9"><li>送信者を登録</li><li>（任意）除外リストを登録</li><li>キャンペーンを作る</li><li>営業リストを取り込む</li><li>本送信を開始</li><li>結果と反応を確認</li></ol></div>
 
 ${step("1", "送信者を登録する", `<p>フォームに入力する「あなたの会社・担当者の情報」です。キャンペーンを作る前に必ず登録します。</p>
 <ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>会社名・担当者名（例: 田中 太郎）・担当者名フリガナ（例: タナカ タロウ）・メール・電話・住所・会社URL</li>
@@ -829,17 +829,46 @@ ${step("4", "営業リストを取り込む", `<p>キャンペーン画面の「
 <li>除外リストの会社・90日以内に送った会社・同じグループで登録済みの会社は、自動で「送らない」に振り分けられます</li>
 <li>社名に「株式会社」などが無い場合は、送る直前に会社のHPから自動で補います（無料）</li>
 <li>間違えて取り込んだら、「取り込み履歴」の「全件削除」でその回の分をまとめて消せます</li>
-<li>フォームで送る場合は「事前チェックを実行」で、フォームの有無・営業お断り・画像認証を送る前に確認できます（任意）</li></ul>`)}
+<li>フォームで送る場合は「事前チェックを実行」で、フォームの有無・営業お断り・画像認証を送る前に確認できます（任意）</li></ul>
+<div style="margin-top:14px;padding:12px 14px;background:var(--honey-50);border:1px solid var(--honey);border-radius:10px">
+<b>📋 取り込む前に、AIでリストを整える（おすすめ）</b>
+<p class="small" style="margin:6px 0">リストのURLが古い・トップページしか無い・営業お断りの会社が混ざっている、などが原因で「フォーム無し」「失敗」が多くなります。<b>ChatGPT・Claude・Gemini など、Webを閲覧できるAI</b>に、下の文章と営業リスト（ファイル添付か貼り付け）を一緒に入力してください。出てきた表をスプレッドシートに貼り付けて、そのまま取り込めます。</p>
+<textarea id="fo-listprompt" readonly style="min-height:220px;font-size:12px;line-height:1.6">あなたは営業リストの整備担当です。添付（または下に貼り付けた）企業リストを、問い合わせフォーム・メールへの営業送信に使えるように整えてください。
 
-${step("5", "テスト送信で確認する", `<p>キャンペーン画面の「🧪 テスト送信」から、<b>自社のフォームや自分宛てのメール</b>に送って、文面や入力内容を確認します。営業リストの会社には送られません。</p>
-<p class="muted small">「先頭の1社で文面をプレビュー」で、差し込み後の文面も確認できます。</p>`)}
+【必ず守ること】
+・各社の公式サイトを実際に開いて確認してください。確認できなかった項目は推測で埋めず、空欄にしてください（存在しないURLやメールアドレスを作らないこと）。
+・件数が多い場合は50社ずつ処理し、途中で止まったら続きから再開してください。
 
-${step("6", "本送信を開始する", `<p>キャンペーン画面の「3. 本送信」で「開始する」を押すと、送信時間帯・1日の上限を守りながら自動で送ります。</p>
+【各社について確認・修正すること】
+1. 企業名：正式な社名にする（「株式会社」「有限会社」「合同会社」などの法人格を省略しない。前株・後株も公式の表記どおり）。
+2. 企業URL：その会社の公式サイトのトップページ（https:// から始まるURL）。求人サイト・ポータルサイト・SNS・地図サイトのURLは使わない。
+3. 問い合わせフォーム：公式サイト内の、実際に入力欄がある「お問い合わせ」ページのURL。
+　・採用応募・資料請求専用・個人向けサポート・FAQ・ログインが必要なページは不可。
+　・フォームが外部サービス（Googleフォーム、formrun など）に置かれている場合は、そのURLでよい。
+　・フォームが見つからなければ空欄。
+4. メール：公式サイトに掲載されている問い合わせ用・代表のメールアドレス（info@ など）。個人のアドレスや採用専用のアドレスは避ける。無ければ空欄。
+5. 大業界・小業界・都道府県・代表者名：公式サイトの会社概要で分かれば入れる。
+
+【リストから除外する会社（表に出さない）】
+・サイトやフォームに「営業目的のお問い合わせはご遠慮ください」「営業お断り」などと書かれている会社
+・閉業・倒産している会社、公式サイトが存在しない会社
+・官公庁・自治体・学校（ドメインが go.jp / lg.jp / ac.jp / ed.jp）
+・同じ会社の重複（同じドメインは1行にまとめる）
+
+【出力形式】
+・次の見出しの表を、タブ区切り（スプレッドシートにそのまま貼り付けられる形）で出力してください。見出しの文字は変えないでください。
+企業名	企業URL	問い合わせフォーム	メール	大業界	小業界	都道府県	代表者名	備考
+・「備考」には、除外はしなかったが注意が必要な点（例：フォームに画像認証あり、フォームが2ページ構成、電話番号が必須 など）を短く書いてください。
+・最後に、除外した会社の一覧と除外の理由を、別の表で出してください。</textarea>
+<p style="margin:6px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button type="button" class="btn small" onclick="var t=document.getElementById('fo-listprompt');var b=this;(navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject()).then(function(){b.textContent='コピーしました ✓'}).catch(function(){t.select();document.execCommand('copy');b.textContent='コピーしました ✓'})">プロンプトをコピー</button><span class="muted small">AIは間違えることがあります。取り込み後のプレビューで列がずれていないか確認してください。件数が多いときは50社ずつ頼むと精度が上がります。Webを閲覧できないAIはURLを作り話することがあるので使わないでください。</span></p>
+</div>`)}
+
+${step("5", "本送信を開始する", `<p>キャンペーン画面の「3. 本送信」で「開始する」を押すと、送信時間帯・1日の上限を守りながら自動で送ります。</p>
 <ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>途中で止めるときは「一時停止」</li>
 <li>送信は<b>このPCの中で</b>動きます。PCがスリープしたり、ふたを閉じたり、アプリを終了すると止まります（起動すると続きから再開）。長時間送るときは電源につなぎ、自動でスリープしない設定に</li>
 <li>フォームが見つからない・画像認証がある・営業お断りのサイトには、安全のため送りません</li></ul>`)}
 
-${step("7", "結果と反応を確認する", `<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li><b>送信一覧</b>：会社ごとの状態（送信済・失敗・フォーム無し等）とスクリーンショット。失敗した会社は「修正して再送信」や「失敗した会社を再送信」、手で送った場合は「手動で送信済みにする」</li>
+${step("6", "結果と反応を確認する", `<ul style="line-height:1.8;margin:0;padding-left:1.2em"><li><b>送信一覧</b>：会社ごとの状態（送信済・失敗・フォーム無し等）とスクリーンショット。失敗した会社は「修正して再送信」や「失敗した会社を再送信」、手で送った場合は「手動で送信済みにする」</li>
 <li><b>反応の一覧</b>：送信用メールの受信箱を15分ごとに読み、返信を「返信あり／アポ獲得／断り」に自動で記録します（受付確認の自動メールは数えません）。判定の根拠を見て、間違っていれば取り消せます</li>
 <li>メールの末尾には「メール配信停止」リンクが入り、送られてきた配信停止は自動で除外リストに入ります</li>
 <li>「結果をCSVで書き出す」で一覧を保存できます</li></ul>`)}

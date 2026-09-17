@@ -1,6 +1,6 @@
 {
-  "version": "0.3.76",
-  "notes": "送信者・キャンペーンの入力途中の内容を自動保存（ガイドと行き来しても消えない）／アプリパスワード・2段階認証の設定ページへのリンクを追加",
+  "version": "0.3.77",
+  "notes": "ご利用ガイドにAIで営業リストを整えるプロンプト（コピー可）を追加し、テスト送信の手順を削除",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:45:44.311Z"
+  "published_at": "2026-09-17T05:52:32.495Z"
 }
