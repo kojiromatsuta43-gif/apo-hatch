@@ -1,6 +1,6 @@
 {
-  "version": "0.3.77",
-  "notes": "ご利用ガイドにAIで営業リストを整えるプロンプト（コピー可）を追加し、テスト送信の手順を削除",
+  "version": "0.3.78",
+  "notes": "ご利用ガイドのアプリパスワード手順から「セキュリティ」を削除（2段階認証のリンクから直接行けるため）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:52:32.495Z"
+  "published_at": "2026-09-17T05:53:06.476Z"
 }

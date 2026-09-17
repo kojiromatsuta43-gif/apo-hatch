@@ -810,7 +810,7 @@ export function guideView(isAdmin: boolean): string {
 
 ${step("1", "送信者を登録する", `<p>フォームに入力する「あなたの会社・担当者の情報」です。キャンペーンを作る前に必ず登録します。</p>
 <ul style="line-height:1.8;margin:0;padding-left:1.2em"><li>会社名・担当者名（例: 田中 太郎）・担当者名フリガナ（例: タナカ タロウ）・メール・電話・住所・会社URL</li>
-<li><b>メールでも送る場合</b>は「メールで送る場合の設定」に、送信用のGmail（Google Workspace）アドレスと<b>アプリパスワード</b>を入れ、「メール設定を確認」でOKになるか確かめます。<br><span class="muted small">アプリパスワードは Googleアカウント → <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">セキュリティ</a> → <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2段階認証プロセス</a>（オンにする）→ <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード</a> で作る英小文字16文字です（普段のログインパスワードではありません）。リンクは別タブで開きます。Google Workspace で「アプリパスワード」が出ない場合は、会社の管理者に2段階認証の許可を依頼してください。</span></li>
+<li><b>メールでも送る場合</b>は「メールで送る場合の設定」に、送信用のGmail（Google Workspace）アドレスと<b>アプリパスワード</b>を入れ、「メール設定を確認」でOKになるか確かめます。<br><span class="muted small">アプリパスワードは <a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2段階認証プロセス</a>（オンにする）→ <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード</a> で作る英小文字16文字です（普段のログインパスワードではありません）。リンクは別タブで開きます。Google Workspace で「アプリパスワード」が出ない場合は、会社の管理者に2段階認証の許可を依頼してください。</span></li>
 <li>電話番号をフォームの必須欄だけに入れたい場合は、チェックで選べます</li></ul>`, go("/senders", "送信者ページを開く"))}
 
 ${step("2", "（任意）除外リストを登録する", `<p>既存のお客様や「送ってはいけない会社」を先に登録しておくと、取り込んでも送られません。スプレッドシートからの貼り付け・URL・CSVでまとめて登録できます。</p>
