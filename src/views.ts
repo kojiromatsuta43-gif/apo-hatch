@@ -235,7 +235,16 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 })();
 </script>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
-<div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1" ${Number(defaults.weekdays_only ?? 1) ? "selected" : ""}>はい</option><option value="0" ${defaults.weekdays_only !== undefined && !Number(defaults.weekdays_only) ? "selected" : ""}>土日も送る</option></select></div></div>
+<div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}" title="フォーム" placeholder="フォーム"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}" title="メール" placeholder="メール"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1" ${Number(defaults.weekdays_only ?? 1) ? "selected" : ""}>はい</option><option value="0" ${defaults.weekdays_only !== undefined && !Number(defaults.weekdays_only) ? "selected" : ""}>土日も送る</option></select></div></div>
+<div class="small" style="margin:-4px 0 14px;padding:10px 12px;background:var(--honey-50);border:1px solid var(--honey);border-radius:8px;line-height:1.7">
+<b>⚠ メールの上限は少なめに（Gmailのアカウント停止を防ぐため）</b><br>
+短時間に大量に送ると、Googleに「普段と違う利用」と判断され、<b>アカウントが一時停止</b>されます（通常1時間〜最大24時間。停止中は送信も返信の確認もできません）。上限の数だけでなく、次の条件が重なると止められやすくなります。<br>
+・<b>作ったばかりのアカウント</b>：最初の1週間は1日<b>50〜100通</b>、問題なければ2週目に200通…と少しずつ増やしてください（いきなり500通以上は危険）<br>
+・<b>深夜・早朝の連続送信</b>：送信時間帯は平日の日中（例: 9〜18時）にしてください<br>
+・<b>重い添付ファイル</b>：数MB以上のPDFを毎通添付すると負荷が大きく、受け取れずに戻ってくる会社もあります。資料は添付せず、本文にGoogleドライブ等のリンクを載せるのがおすすめです<br>
+・<b>届かないアドレスが多い</b>：戻ってくるメール（アドレス不明など）が多いと迷惑メール送信者とみなされやすくなります。古いリストは送る前に見直してください<br>
+<span class="muted">目安: Gmail（無料）は1日約500通、Google Workspace は1日約2,000通が Google 側の上限ですが、上の条件次第でそれよりずっと少ない数でも止まります。フォーム送信はメールアカウントを使わないため、この制限はありません。</span>
+</div>
 <div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0" ${Number(defaults.ignore_refusal ?? 0) ? "" : "selected"}>送らない（推奨）</option><option value="1" ${Number(defaults.ignore_refusal ?? 0) ? "selected" : ""}>送る（クレームの恐れあり）</option></select></div><div></div></div>
 <h2>資料の添付（任意）</h2>
 <p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>

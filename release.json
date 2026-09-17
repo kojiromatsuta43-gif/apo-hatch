@@ -1,6 +1,6 @@
 {
-  "version": "0.3.71",
-  "notes": "返信の判定を改善（送信先メールのドメインでも照合・配信停止の自動送信を断りに・受付確認メールの除外を強化・アポの言葉を追加）",
+  "version": "0.3.72",
+  "notes": "キャンペーン設定の「1日の上限」にGmailのアカウント停止を防ぐための注意事項を追加",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T04:48:12.687Z"
+  "published_at": "2026-09-17T05:26:33.417Z"
 }
