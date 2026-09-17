@@ -99,6 +99,24 @@ const jStop = job(camp, "配信停止株式会社", "info@stop.co.jp", "stop.co.
 applyIncomingMail(MAILBOX, mail("info@stop.co.jp", "配信停止", ""));
 assert.equal(get(jStop).outcome, "declined");
 
+// HPのドメインと送信先メールのドメインが違う会社（送信先 ln-sales@lognavi.com、返信は担当者の k-kanou@lognavi.com）
+const jDiff = job(camp, "別ドメイン株式会社", "ln-sales@lognavi.example", "aspark.example");
+assert.equal(applyIncomingMail(MAILBOX, mail("k-kanou@lognavi.example", "Re: 【ご提案】人事担当者との商談機会について", "ぜひ1度お話の機会を頂戴できますと幸いです。9月18日(金)16:00～17:00にて登録させていただきました。")), jDiff, "送信先メールのドメインでも突き合わせる");
+assert.equal(get(jDiff).outcome, "appointment");
+// Apple Mail の配信停止（件名「配信停止」＋ Auto-Submitted）は断り
+const jApple = job(camp, "アップルメール株式会社", "info@apple-unsub.jp", "apple-unsub.jp");
+assert.equal(applyIncomingMail(MAILBOX, mail("yoshi@apple-unsub.jp", "配信停止", "このメールは“配信停止”というメッセージへの登録を解除するためにApple Mailから送信されました。", true)), jApple);
+assert.equal(get(jApple).outcome, "declined");
+// 返信本文の「配信停止をお願いいたします」は断り（件名の「商談」はアポにしない）
+const jSenior = job(camp, "シニア株式会社", "info@senior.example", "corp.senior.example");
+applyIncomingMail(MAILBOX, mail("info@senior.example", "Re: 【ご提案】人事担当者との商談機会について", "田中様 お世話になります。ご連絡有難うございます。下記件ですが、配信停止をお願いいたします。"));
+assert.equal(get(jSenior).outcome, "declined");
+// 受付確認メール（件名に「内容のご確認」「控え」、本文に「サイトより送信されています」）は数えない
+const jCtrl = job(camp, "控え株式会社", "", "hikae.example", "form");
+assert.equal(applyIncomingMail(MAILBOX, mail("support@hikae.example", "【株式会社控え】お問い合わせ 控え", "※本メールは(株)控え ウェブサイトより送信されています")), null);
+assert.equal(applyIncomingMail(MAILBOX, mail("support@hikae.example", "お知らせ", "～このメールは、システムからの自動返信です～")), null);
+assert.equal(get(jCtrl).outcome, "");
+
 console.log("replies: ALL OK");
 
 // 送信中に止まったメール: 送信済みフォルダの控えで判断

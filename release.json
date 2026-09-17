@@ -1,6 +1,6 @@
 {
-  "version": "0.3.70",
-  "notes": "反応の一覧（判定の根拠つき）を追加し、間違った判定を選んで取り消せるように／受付確認メールやこちらの文面の引用で誤判定しないよう改善",
+  "version": "0.3.71",
+  "notes": "返信の判定を改善（送信先メールのドメインでも照合・配信停止の自動送信を断りに・受付確認メールの除外を強化・アポの言葉を追加）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T01:50:57.092Z"
+  "published_at": "2026-09-17T04:48:12.687Z"
 }

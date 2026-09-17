@@ -18,14 +18,14 @@ export type IncomingMail = {
 export type ReplyVerdict = { outcome: "replied" | "appointment" | "declined"; reason: string };
 
 // 自動返信・受付確認・エラーメール。フォーム送信後に届く「お問い合わせを受け付けました」は会社のドメインから来るが、人の返信ではない
-const AUTO_SUBJECT_RE = /(自動返信|自動応答|自動送信|自動配信|auto[- ]?reply|automatic reply|out of office|不在|受付完了|受け付けました|受付のお知らせ|受付確認|送信完了|お問い?合わ?せ(を)?(受け付け|受付|承り|ありがとう)|お問い?合わ?せ内容の確認|(お問い?合わ?せ|ご連絡|ご送信|送信|ご依頼|ご相談)(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|フォーム(より|から)|受付番号|Undeliver|Delivery Status|Mail Delivery|配信(に)?失敗|配信不能|returned mail|failure notice)/i;
-const AUTO_BODY_RE = /(このメールは(自動|送信専用)|本メールは(自動|送信専用|システム)|(自動|システム)(で|により)?(送信|配信|返信)(され|して|いた|しており|しています)|送信専用(アドレス|メール)|(返信|ご返信)(いただいても|されても|頂いても)[^。\n]{0,20}(お答え|回答|対応|返答)(でき|いたしかね|致しかね)|以下の内容で(受け付け|受付|承り|送信)|下記の内容で(受け付け|受付|承り|送信))/;
+const AUTO_SUBJECT_RE = /(自動返信|自動応答|自動送信|自動配信|auto[- ]?reply|automatic reply|out of office|不在|受付完了|受け付けました|受付のお知らせ|受付確認|送信完了|お問い?合わ?せ(を)?(受け付け|受付|承り|ありがとう)|お問い?合わ?せ内容の確認|(お問い?合わ?せ|ご連絡|ご送信|送信|ご依頼|ご相談)(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|フォーム(より|から)|受付番号|お問い?合わ?せ内容の?(ご)?確認|お問い?合わ?せ確認|お問い?合わ?せ\s*控え|登録(いただき|頂き)?ありがとう|Undeliver|Delivery Status|Mail Delivery|配信(に)?失敗|配信不能|returned mail|failure notice)/i;
+const AUTO_BODY_RE = /(このメールは(自動|送信専用)|本メールは(自動|送信専用|システム)|(自動|システム)(で|により)?(送信|配信|返信)(され|して|いた|しており|しています)|送信専用(アドレス|メール)|(返信|ご返信)(いただいても|されても|頂いても)[^。\n]{0,20}(お答え|回答|対応|返答)(でき|いたしかね|致しかね)|以下の内容で(受け付け|受付|承り|送信)|下記の内容で(受け付け|受付|承り|送信)|自動送信した|自動返信です|(ウェブサイト|ホームページ|webサイト|WEBサイト|サイト)(より|から)(自動)?送信されて|(お送り|送信)(頂|いただ)きました内容)/;
 const AUTO_FROM_RE = /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|noreply|bounce)/i;
 
 // 断り（今後送らない）。「本メッセージが不要な場合は…」等、こちらの文面の引用は本文から取り除いてから見る
 const DECLINE_RE = /(不要です|不要でございます|必要(は|も)?(ござい|あり)ません|お断り|見送(り|らせ|ります|ることに)|遠慮(いた|致|させ|し|くだ|下さ)|控えさせ|差し控え|配信(を)?停止|送らないで|送付(は|を)?(不要|ご遠慮|お控え)|ご連絡(は|を)?(不要|結構|お控え|ご遠慮)|(今後|以後)[^。\n]{0,15}(不要|ご遠慮|お控え|控えて|送らない|結構)|検討(は|を)?(して)?(おりません|いたしかね|致しかね|できかね)|予定(は|が)?(ござい|あり)ません|間に合って|結構です|対応(いた|致)しかね|お受け(でき|いたし|致し)かね|(リスト|名簿)から(外|削除|除外)|営業(メール|のご連絡)?(は|を)?(お断り|禁止|受け付けて))/;
 // アポ・前向き（日程調整や話を聞きたい）
-const APPO_RE = /(日程|日時|候補日|ご都合|打ち?合わ?せ|面談|ミーティング|商談|お時間(を)?(いただ|頂|取|作|頂戴)|お話(を)?(伺|お聞き|聞かせ|聞き)|詳しく(伺|お聞き|聞きた|教えて|知りた)|zoom|teams|google\s*meet|オンライン(で|会議|面談|ミーティング)|ご来社|ご訪問|(資料|詳細|見積|お見積)(を|も)?(送|お送り|いただ|頂|ご送付|ください|下さい)|ご説明(を)?(いただ|頂|お願い))/i;
+const APPO_RE = /(日程|日時|候補日|ご都合|打ち?合わ?せ|面談|ミーティング|商談|お時間(を)?(いただ|頂|取|作|頂戴)|お話(を)?(伺|お聞き|聞かせ|聞き)|詳しく(伺|お聞き|聞きた|教えて|知りた)|zoom|teams|google\s*meet|オンライン(で|会議|面談|ミーティング)|ご来社|ご訪問|(資料|詳細|見積|お見積)(を|も)?(送|お送り|いただ|頂|ご送付|ください|下さい)|ご説明(を)?(いただ|頂|お願い)|お話(の|する)?(機会|場|時間)|機会を(頂戴|いただ|頂)|(予約|登録)(させて)?(いただ|頂)きました|予約(いた|致)しました|\d{1,2}月\d{1,2}日[^。\n]{0,12}\d{1,2}[:：]\d{2}|\d{1,2}\/\d{1,2}[^。\n]{0,12}\d{1,2}[:：]\d{2})/i;
 
 /** 返信本文から、こちらが送った文面の引用・署名より下の部分を取り除く（引用内の「不要な場合は」等で誤判定しないため） */
 const norm = (s: string) => s.replace(/[\s　▪️・■□●○◆◇▼▶︎*＊\-ー―─_=＝:：|｜>＞「」【】()（）]/g, "");
@@ -92,7 +92,10 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
   const from = m.from.trim().toLowerCase();
   const fromDomain = from.split("@")[1] ?? "";
   if (!fromDomain || from === mailbox.toLowerCase()) return null;
-  if (m.autoHeader || AUTO_FROM_RE.test(from.split("@")[0] ?? "")) return null;
+  // 本メールの「配信停止」案内（List-Unsubscribe）を相手のメールソフトから押すと、件名「配信停止」・自動送信ヘッダー付きで届く。
+  // これは相手の意思表示なので自動返信扱いにしない
+  const unsubscribe = /^\s*配信停止/.test(m.subject);
+  if (!unsubscribe && (m.autoHeader || AUTO_FROM_RE.test(from.split("@")[0] ?? ""))) return null;
   const at = m.date.toISOString().replace("T", " ").slice(0, 19);
   // この受信箱（送信用アカウント）を使う送信者から、このメールより前に送った会社（直近90日）
   const base = `SELECT j.id, j.company_name, j.email, j.domain, j.sent_at, j.outcome, j.outcome_note, j.message_used, s.owner_user_id
@@ -104,12 +107,13 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
   if (!job && !FREE_MAIL_DOMAINS.has(fromDomain)) {
     const parts = fromDomain.split(".");
     const cands = parts.map((_, i) => parts.slice(i).join(".")).filter((d) => d.includes(".") && !/^(co|ne|or|ac|go|com|net|org)\.[a-z]{2}$/.test(d));
-    if (cands.length) job = db.prepare(`${base} AND lower(j.domain) IN (${cands.map(() => "?").join(",")}) ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), ...cands) as SentJob | undefined;
+    const ph = cands.map(() => "?").join(",");
+    if (cands.length) job = db.prepare(`${base} AND (lower(j.domain) IN (${ph}) OR (j.email<>'' AND lower(substr(j.email, instr(j.email,'@')+1)) IN (${ph}))) ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), ...cands, ...cands) as SentJob | undefined;
   }
   if (!job) return null;
   const body = stripQuoted(m.text, `${job.message_used}\n${FOOTER_ECHO}`);
   // 自動返信の判定は引用を除いた本文で行う（引用されたこちらの文面の言葉で誤判定しないため）
-  if (isAutoMail({ ...m, text: body })) return null;
+  if (!unsubscribe && isAutoMail({ ...m, text: body })) return null;
   const v = classifyReply(m.subject, body);
   // 人が手で付けた反応は触らない。自動で付けたものは、より強い判定（アポ・断り）が来たときだけ上げる
   const auto = job.outcome === "" || job.outcome_note.startsWith("自動判定");
