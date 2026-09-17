@@ -117,6 +117,22 @@ assert.equal(applyIncomingMail(MAILBOX, mail("support@hikae.example", "【株式
 assert.equal(applyIncomingMail(MAILBOX, mail("support@hikae.example", "お知らせ", "～このメールは、システムからの自動返信です～")), null);
 assert.equal(get(jCtrl).outcome, "");
 
+// 「メール配信停止」リンク（mailto）: 件名「配信停止」・本文に対象アドレス。個人アドレスから送られても、対象アドレスで会社を特定して断りにする
+{
+  const { buildEmailBody, unsubscribeMailto } = await import("../src/email.js");
+  const html = buildEmailBody("本文", { company: "株式会社BizLabo", person: "田中", email: MAILBOX, reply_email: "" } as never, "info@link-stop.jp").html;
+  assert.ok(html.includes(">メール配信停止</a>") && html.includes(`mailto:${MAILBOX}?subject=${encodeURIComponent("配信停止")}`), "HTMLメールに配信停止リンク");
+  assert.ok(decodeURIComponent(unsubscribeMailto(MAILBOX, "info@link-stop.jp")).includes("対象アドレス: info@link-stop.jp"));
+  const jLink = job(camp, "リンク停止株式会社", "info@link-stop.jp", "link-stop.jp");
+  assert.equal(applyIncomingMail(MAILBOX, mail("someone.private@gmail.com", "配信停止", "配信停止を希望します。\n対象アドレス: info@link-stop.jp\n（このまま送信してください）")), jLink, "対象アドレスで会社を特定");
+  assert.equal(get(jLink).outcome, "declined");
+  assert.ok(db.prepare("SELECT 1 FROM form_suppressions WHERE domain='link-stop.jp'").get(), "除外リストに入る");
+  // 返信に引用された「メール配信停止」の文字では断りにしない
+  const jQuote = job(camp, "リンク引用株式会社", "info@link-quote.jp", "link-quote.jp");
+  applyIncomingMail(MAILBOX, mail("info@link-quote.jp", "Re: ご提案", "ご連絡ありがとうございます。社内で確認します。\n\n今後このご案内が不要な場合は、以下のリンクからお手続きください。以後お送りしません。\nメール配信停止"));
+  assert.equal(get(jQuote).outcome, "replied");
+}
+
 console.log("replies: ALL OK");
 
 // 送信中に止まったメール: 送信済みフォルダの控えで判断

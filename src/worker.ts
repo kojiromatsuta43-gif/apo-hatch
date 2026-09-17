@@ -149,7 +149,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     if (!chk.ok) return finish("failed", chk.reason ?? "差出人メールが使えません", { message_used: message });
     if (opts.dryRun) return finish("queued", "テスト（メールは送っていない）", { message_used: message });
     try {
-      const body = buildEmailBody(message, sender);
+      const body = buildEmailBody(message, sender, job.email);
       // 資料ファイルがあればメールに添付する（フォームは添付できないので本文リンクで対応済み）
       const attachments = campaign.attach_path && fs.existsSync(campaign.attach_path)
         ? [{ path: campaign.attach_path, filename: campaign.attach_name || "資料.pdf" }]

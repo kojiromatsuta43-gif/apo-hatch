@@ -56,7 +56,16 @@ export function optOut(email: string, reason: string, ownerUserId?: number) {
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
 /** 本文に法定の署名・停止案内を付けてテキスト/HTMLを作る（単体版は停止リンクが無いので「返信で停止」） */
-export function buildEmailBody(message: string, sender: SenderProfile): { text: string; html: string } {
+/** 「メール配信停止」リンク（mailto）。押すと相手のメールソフトで件名「配信停止」・宛先入りのメールが作られ、
+ *  送ってもらうと返信の自動確認（replies.ts）が「断り」にして除外リストに入れる。
+ *  このアプリは各自のPCで動き外部から開けるURLを持てないため、Webの停止ページではなくメールで受け付ける。
+ *  返信元のアドレスが送信先と違っても会社を特定できるよう、本文に送信先アドレスを入れておく */
+export function unsubscribeMailto(replyTo: string, to = ""): string {
+  const body = `配信停止を希望します。${to ? `\n対象アドレス: ${to}` : ""}\n（このまま送信してください）`;
+  return `mailto:${replyTo}?subject=${encodeURIComponent("配信停止")}&body=${encodeURIComponent(body)}`;
+}
+
+export function buildEmailBody(message: string, sender: SenderProfile, to = ""): { text: string; html: string } {
   const replyTo = sender.reply_email || sender.email;
   const footer = [
     "──────────",
@@ -70,7 +79,7 @@ export function buildEmailBody(message: string, sender: SenderProfile): { text: 
   ].filter((l) => l !== "");
   const text = `${message.trim()}\n\n${footer.join("\n")}`;
   const paras = message.trim().split(/\n{2,}/).map((p) => `<p style="margin:0 0 1em;line-height:1.7">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
-  const html = `<div style="font-family:-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;font-size:14px;color:#1C1710;max-width:640px">${paras}<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="font-size:12px;color:#555;line-height:1.7;margin:0">${footer.slice(1).map(esc).join("<br>")}</p></div>`;
+  const html = `<div style="font-family:-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;font-size:14px;color:#1C1710;max-width:640px">${paras}<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="font-size:12px;color:#555;line-height:1.7;margin:0">${footer.slice(1, -1).map(esc).join("<br>")}</p><p style="font-size:12px;color:#555;line-height:1.7;margin:12px 0 0">今後このご案内が不要な場合は、以下のリンクからお手続きください。以後お送りしません。<br><a href="${esc(unsubscribeMailto(replyTo, to))}" style="color:#1a0dab">メール配信停止</a></p></div>`;
   return { text, html };
 }
 
@@ -84,7 +93,7 @@ export async function sendEmail(sender: SenderProfile, input: { from: string; to
     text: input.text,
     html: input.html,
     attachments: input.attachments,
-    headers: { "List-Unsubscribe": `<mailto:${replyTo}?subject=配信停止>` },
+    headers: { "List-Unsubscribe": `<${unsubscribeMailto(replyTo, input.to)}>` },
   });
   return r.messageId ?? "";
 }

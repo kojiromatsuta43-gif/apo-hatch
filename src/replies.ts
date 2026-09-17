@@ -50,6 +50,7 @@ export function stripQuoted(text: string, sentMessage = ""): string {
     if (/^\d{4}(年|\/|-)\d{1,2}(月|\/|-)\d{1,2}日?.{0,80}(<|＜|&lt;)[^>＞]+@[^>＞]+(>|＞|&gt;).{0,10}[:：]?$/.test(line)) break;
     if (/^(差出人|From)\s*[:：]/i.test(line) && out.length > 0) break;
     if (/^(>|＞)/.test(line)) continue;
+    if (/^\[?メール配信停止\]?(\s*<mailto:[^>]*>)?$/.test(line)) continue; // こちらの署名の配信停止リンクの文字
     if (sentLines.has(line) || (sentMessage && isEcho(line))) continue;
     out.push(raw);
   }
@@ -82,7 +83,7 @@ export function classifyReply(subject: string, body: string): ReplyVerdict & { e
 type SentJob = { id: number; company_name: string; email: string; domain: string; sent_at: string; outcome: string; outcome_note: string; message_used: string; owner_user_id: number | null };
 
 // こちらのメールの署名・配信停止の案内（email.ts の buildEmailBody）。返信に引用されて「配信停止」で断りにならないよう除く
-const FOOTER_ECHO = "今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください\n以後お送りしません。";
+const FOOTER_ECHO = "今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください\n以後お送りしません。\n今後このご案内が不要な場合は、以下のリンクからお手続きください。";
 
 const RANK: Record<string, number> = { "": 0, replied: 1, appointment: 2, declined: 2 };
 
@@ -109,6 +110,11 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
     const cands = parts.map((_, i) => parts.slice(i).join(".")).filter((d) => d.includes(".") && !/^(co|ne|or|ac|go|com|net|org)\.[a-z]{2}$/.test(d));
     const ph = cands.map(() => "?").join(",");
     if (cands.length) job = db.prepare(`${base} AND (lower(j.domain) IN (${ph}) OR (j.email<>'' AND lower(substr(j.email, instr(j.email,'@')+1)) IN (${ph}))) ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), ...cands, ...cands) as SentJob | undefined;
+  }
+  // 「メール配信停止」リンクから作られたメールは、本文に送信先アドレスが入っている（転送先や個人アドレスから送られても特定できる）
+  if (!job && unsubscribe) {
+    const target = m.text.match(/対象アドレス[:：]\s*([^\s<>]+@[^\s<>]+)/)?.[1]?.toLowerCase();
+    if (target) job = db.prepare(`${base} AND lower(j.email)=? ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), target) as SentJob | undefined;
   }
   if (!job) return null;
   const body = stripQuoted(m.text, `${job.message_used}\n${FOOTER_ECHO}`);

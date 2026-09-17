@@ -1,6 +1,6 @@
 {
-  "version": "0.3.72",
-  "notes": "キャンペーン設定の「1日の上限」にGmailのアカウント停止を防ぐための注意事項を追加",
+  "version": "0.3.73",
+  "notes": "メールの署名に「メール配信停止」リンクを追加。押して送られた配信停止メールを自動で断り・除外リストに登録",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T05:26:33.417Z"
+  "published_at": "2026-09-17T05:30:30.425Z"
 }
