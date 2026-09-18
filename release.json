@@ -1,6 +1,6 @@
 {
-  "version": "0.3.81",
-  "notes": "ご利用ガイド内のリンク（送信者ページを開く など）を別のタブで開くように",
+  "version": "0.3.82",
+  "notes": "会社の詳細画面に「メールで送信」ボタンを追加（フォームで送れなかった会社に、その場でメール送信）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-17T08:35:19.802Z"
+  "published_at": "2026-09-18T09:28:55.327Z"
 }

@@ -561,7 +561,7 @@ ${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_cap
 <form method="post" action="/jobs/${j.id}/fix" data-busy>
 <div class="row"><div><label>フォームURL</label><input type="url" name="form_url" value="${esc(j.form_url)}"></div><div><label>企業URL</label><input type="url" name="site_url" value="${esc(j.site_url)}"></div></div>
 <div class="row"><div><label>会社名</label><input type="text" name="company_name" value="${esc(j.company_name)}"></div><div><label>メール（メール送信に切り替える場合）</label><input type="email" name="email" value="${esc(j.email)}"></div></div>
-<p><button class="btn">修正して再送信</button> <span class="muted small">送信には10〜30秒かかります</span></p></form></div>` : ""}
+<p><button class="btn">修正して再送信</button> <button class="btn sub" name="via" value="email" formnovalidate>メールで送信</button> <span class="muted small">「メールで送信」は、フォームをあきらめて上のメール宛てに送ります。送信には10〜30秒かかります</span></p></form></div>` : ""}
 <form method="post" action="/suppressions" class="inline"><input type="hidden" name="domain" value="${esc(j.domain)}"><input type="hidden" name="reason" value="手動（${esc(j.company_name)}）"><button class="btn danger">このドメインを除外</button></form>
 ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jobs/${j.id}/outcome"><p>${[["replied", "返信あり"], ["appointment", "アポ獲得"], ["declined", "断り・不要（今後送らない）"], ["", "取り消し"]].map(([k, l]) => `<button class="btn ${j.outcome === k && k ? "" : "sub"} small" name="outcome" value="${k}">${l}</button>`).join(" ")}</p><input type="text" name="note" value="${esc(j.outcome_note)}" placeholder="メモ（返信内容・次のアクション）"></form>` : ""}
 <h2>送った文面</h2><pre>${esc(j.message_used)}</pre></div>

@@ -841,19 +841,23 @@ app.post("/jobs/:id/fix", async (req, res) => {
   const siteUrl = String(req.body.site_url ?? "").trim();
   const company = String(req.body.company_name ?? "").trim() || j.company_name;
   const email = String(req.body.email ?? "").trim().toLowerCase();
-  const channel = !formUrl && email ? "email" : j.channel === "email" && formUrl ? "form" : j.channel;
+  // 「メールで送信」ボタンなら、フォームURLが入っていてもメールに切り替える
+  const via = String(req.body.via ?? "");
+  if (via === "email" && !email) return redirectWith(res, `/jobs/${id}#fix`, "メールアドレスを入れてから「メールで送信」を押してください");
+  const channel = via === "email" ? "email" : !formUrl && email ? "email" : j.channel === "email" && formUrl ? "form" : j.channel;
   const domain = domainOf(formUrl || siteUrl) || (email ? email.split("@")[1] ?? j.domain : j.domain);
   // status は変えない（直前の失敗ステータスを processJob が履歴として拾えるようにするため）
   db.prepare("UPDATE form_jobs SET form_url=?, site_url=?, company_name=?, email=?, channel=?, domain=?, updated_at=datetime('now') WHERE id=?")
     .run(formUrl, siteUrl, company, email, channel, domain, id);
-  const browser = await launchBrowser();
+  // メール送信ではブラウザを使わないので起動しない（そのぶん速く、古いOSでも動く）
+  const browser = channel === "email" ? null : await launchBrowser();
   try {
-    const r = await processJob(browser, id);
-    redirectWith(res, `/jobs/${id}`, `修正して再送信した結果: ${STATUS_LABEL[r.status] ?? r.status}`);
+    const r = await processJob(browser as never, id);
+    redirectWith(res, `/jobs/${id}`, `${channel === "email" ? "メールで送信した結果" : "修正して再送信した結果"}: ${STATUS_LABEL[r.status] ?? r.status}${r.result_text ? `（${r.result_text.split("\n")[0].slice(0, 60)}）` : ""}`);
   } catch (e) {
     redirectWith(res, `/jobs/${id}`, `再送信エラー: ${String((e as Error).message)}`);
   } finally {
-    await browser.close().catch(() => {});
+    await browser?.close().catch(() => {});
   }
 });
 
