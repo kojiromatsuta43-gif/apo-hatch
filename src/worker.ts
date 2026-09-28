@@ -220,10 +220,12 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         state.lastActive = Date.now();
         const { campaign, sender } = loadCampaign(campaignId);
         if (!opts.ignoreWindow && !inSendWindow(campaign)) { reason = "送信時間帯外"; return; }
-        const formOk = sentToday(campaignId, "form") < campaign.daily_limit;
+        // 「メールだけ／フォームだけ」を選んで開始した場合は、その種類だけを送る
+        const only = String((campaign as { send_only?: string }).send_only ?? "");
+        const formOk = only !== "email" && sentToday(campaignId, "form") < campaign.daily_limit;
         // メール送信が一時停止中（ログイン拒否・上限・通信障害）ならメールの会社には手を付けない
-        const emailOk = sentToday(campaignId, "email") < campaign.email_daily_limit && !emailPause(sender);
-        if (!formOk && !emailOk) { reason = "本日の上限に到達"; return; }
+        const emailOk = only !== "form" && sentToday(campaignId, "email") < campaign.email_daily_limit && !emailPause(sender);
+        if (!formOk && !emailOk) { reason = only ? `${only === "email" ? "メール" : "フォーム"}の送信が上限または一時停止` : "本日の上限に到達"; return; }
         const channels = [formOk && "form", emailOk && "email"].filter(Boolean) as string[];
         const next = db.prepare(`SELECT id, channel FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel IN (${channels.map(() => "?").join(",")}) ORDER BY id LIMIT 1`).get(campaignId, ...channels) as { id: number; channel: string } | undefined;
         if (!next) { reason = "queue empty or 本日の上限"; return; }

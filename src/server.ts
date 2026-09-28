@@ -512,10 +512,12 @@ app.post("/campaigns/:id/start", (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   if (isRunning(id)) return redirectWith(res, `/campaigns/${id}`, "すでに実行中です");
-  db.prepare("UPDATE form_campaigns SET status='running' WHERE id=?").run(id);
+  const only = ["email", "form"].includes(String(req.body.only)) ? String(req.body.only) : "";
+  db.prepare("UPDATE form_campaigns SET status='running', send_only=? WHERE id=?").run(only, id);
   const ignoreWindow = req.body.ignore_window === "1";
   runCampaign(id, { ignoreWindow }).then((r) => console.log(`[campaign ${id}] ${r.processed}件処理 (${r.reason})`)).catch((e) => console.error(e));
-  redirectWith(res, `/campaigns/${id}`, ignoreWindow ? "送信を開始しました（時間帯を無視）" : "送信を開始しました。送信時間帯外の場合は時間になると自動で始まります");
+  const onlyLabel = only === "email" ? "メールの会社だけ" : only === "form" ? "フォームの会社だけ" : "すべて";
+  redirectWith(res, `/campaigns/${id}`, `送信を開始しました（対象: ${onlyLabel}${ignoreWindow ? "・時間帯を無視" : ""}）${ignoreWindow ? "" : "。送信時間帯外の場合は時間になると自動で始まります"}`);
 });
 
 app.post("/campaigns/:id/scan", (req, res) => {

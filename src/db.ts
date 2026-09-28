@@ -210,6 +210,9 @@ function migrate(db: Database.Database) {
   // 1=メールサーバーの証明書の検証をゆるめる。セキュリティソフトや社内ネットワークが通信に割り込んでいて
   // 「self-signed certificate in certificate chain」で送れないPC向けの回避策（既定はオフ）
   addCol("sender_profiles", "tls_insecure", "INTEGER NOT NULL DEFAULT 0");
+  // 送る対象の絞り込み。''=すべて / 'email'=メールの会社だけ / 'form'=フォームの会社だけ。
+  // 「メールだけ先に送りたい（フォームは事前チェックしてから）」という使い方のため。開始のたびに選び直せる
+  addCol("form_campaigns", "send_only", "TEXT NOT NULL DEFAULT ''");
   // おまけのゲームの表示。新しく入れたPCでは最初は出さない（他社に配ったときに「ふざけている」と見られないように）。
   // この設定ができる前から使っていたPC（キャンペーンがある）は、これまで通り表示にしておく
   if (!db.prepare("SELECT 1 FROM settings WHERE key='game_enabled'").get()) {
@@ -289,6 +292,7 @@ export type Campaign = {
   attach_name: string;    // 添付時に見せるファイル名
   group_name: string;     // 同じグループ内では同じ会社に重ねて送らない。空=グループなし
   material_url_in_email: number;
+  send_only: string;
 };
 
 // フリーメールはドメインが同じでも別の会社。グループ内の重複判定ではドメインではなくメールアドレスで比べる

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.85",
-  "notes": "セキュリティソフト等の割り込みで「self-signed certificate」になるPC向けに、証明書の確認を省く設定を追加（送信者ごと・既定オフ）",
+  "version": "0.3.86",
+  "notes": "本送信で「メールの会社だけ／フォームの会社だけ」を選べるように（事前チェック前のフォームに送ってしまうのを防ぐ）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-28T16:44:42.338Z"
+  "published_at": "2026-09-28T16:52:39.696Z"
 }
