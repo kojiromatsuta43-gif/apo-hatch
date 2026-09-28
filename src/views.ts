@@ -137,7 +137,7 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string) {
+export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, senders: { id: number; label: string; company: string; person: string }[] = []) {
   // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
@@ -154,6 +154,12 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
+${senders.length ? `<details class="card" style="padding:12px 16px;margin:0 0 14px"><summary style="cursor:pointer"><b>キャンペーンの設定を読み込む</b> <span class="muted small">（別のPCのアポハッチくんで書き出したファイル）</span></summary>
+<p class="muted small" style="margin:8px 0">キャンペーン画面の「設定をファイルに書き出す」で作った .json を選ぶと、<b>同じ文面・設定のキャンペーン</b>が作られます（会社リスト・送信履歴・送信者は含まれません）。</p>
+<form method="post" action="/campaigns/import" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<input type="file" name="file" accept=".json,application/json" required style="max-width:320px">
+<label class="inline small">送信者: <select name="sender_id" style="width:auto">${senders.map((s) => `<option value="${s.id}">${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select></label>
+<button class="btn sub small">読み込む</button></form></details>` : ""}
 ${(() => {
     // 全キャンペーン横断のサマリー。rows から集計するだけなので、この即時関数を消せば丸ごと外せる
     if (rows.length === 0) return "";
@@ -402,7 +408,7 @@ ${extra.emailPaused ? `<div class="flash" style="border-color:var(--ng);margin:0
 <form method="post" action="/campaigns/${c.id}/email-resume" style="margin-top:6px"><button class="btn sub small">今すぐ再開</button></form></div>` : ""}
 ${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline" data-busy><button class="btn" data-busytext="送信を開始しています…">開始する（${cnt("queued")}件）</button> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>`}
-${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${nRetry}社）</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
+${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${nRetry}社）</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/export.json" title="別のPCのアポハッチくんで、同じ文面・設定のキャンペーンを作れます">設定をファイルに書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
 <p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。</p></div>
 
 <h2 id="list">送信一覧${extra.matched ? `（${extra.matched.n > 200 ? `${extra.matched.n}件中 最新200件を表示` : `${extra.matched.n}件`}）` : "（最新200件）"}</h2>
@@ -587,9 +593,21 @@ ${q.kind === "choice" && q.options?.length
 export function suppressionsView(
   rows: { id: number; company_name: string; domain: string | null; email: string | null; tel: string; reason: string; created_at: string }[],
   optouts: { email: string; reason: string; created_at: string }[] = [],
-  imported?: { added: number; already: number; noKey: number; noKeyNames: string[] }
+  imported?: { added: number; already: number; noKey: number; noKeyNames: string[] },
+  sync?: { url: string; lastAt?: string; lastResult?: string } | null
 ) {
-  return `<h1>除外リスト</h1><p class="muted">ここに登録した会社には、全キャンペーンで送りません。営業お断りを検知した先は自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
+  return `<h1>除外リスト</h1>
+${(() => {
+    // チームで別々のPCに入れている場合、断りの会社を1つのスプレッドシートで共有して、各自が自動で取り込めるようにする
+    const last = sync?.lastAt ? new Date(sync.lastAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    return `<div class="card" style="background:var(--honey-50)"><h2 style="margin-top:0">共有の除外リスト（チームで同じNGリストを使う）</h2>
+<p class="muted small" style="margin:0 0 10px">Googleスプレッドシートを1つ「共有NGリスト」に決めて、そのURLを登録すると、<b>1日1回そこから自動で取り込みます</b>（起動から2分後にも1回）。チームの全員が同じURLを登録すれば、誰かが追加した断り先が全員に行き渡ります。<br>シートは「リンクを知っている全員（閲覧可）」にし、1行目を見出し（会社名 / ドメイン / メール など）にしてください。</p>
+<form method="post" action="/suppressions/sync-url" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<input type="url" name="sheet_url" value="${esc(sync?.url ?? "")}" placeholder="https://docs.google.com/spreadsheets/d/…" style="flex:1;min-width:320px">
+<button class="btn sub small">保存</button></form>
+${sync ? `<form method="post" action="/suppressions/sync-now" style="margin-top:8px" data-busy><button class="btn sub small" data-busytext="取り込み中…">今すぐ取り込む</button> <span class="muted small">${last ? `最終取り込み: ${esc(last)}` : "まだ取り込んでいません"}${sync.lastResult ? ` ／ ${esc(sync.lastResult)}` : ""}</span></form>
+<p class="muted small" style="margin:6px 0 0">解除するには、URLを空にして「保存」を押してください。</p>` : ""}</div>`;
+  })()}<p class="muted">ここに登録した会社には、全キャンペーンで送りません。営業お断りを検知した先は自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
 ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.added}件 / 登録済み ${imported.already}件${imported.noKey ? ` / 登録できず ${imported.noKey}件（ドメインもメールも無いため）: ${esc(imported.noKeyNames.join("、"))}` : ""}</div>` : ""}
 <div class="card"><h2 style="margin-top:0">1件ずつ追加</h2>
 <form method="post" action="/suppressions"><div class="row3">

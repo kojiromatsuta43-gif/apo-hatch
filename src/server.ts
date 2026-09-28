@@ -252,7 +252,8 @@ app.get("/", (req, res) => {
       (SELECT COUNT(*) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.outcome IN ('replied','appointment')) reactions,
       (SELECT MAX(sent_at) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') last_sent
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.group_name='' , c.group_name, c.id DESC`).all(...scope(req).args) as any[];
-  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel()), takeFlash(req), navUser(req), updateReady));
+  const sc2 = scope(req);
+  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel(), db.prepare(`SELECT id, label, company, person FROM sender_profiles WHERE ${sc2.sql} ORDER BY id`).all(...sc2.args) as { id: number; label: string; company: string; person: string }[]), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
@@ -705,6 +706,46 @@ function jobFilter(q: Record<string, unknown>) {
   return { statusFilter, qFilter, outcomeFilter, impFilter, sql: where.join(" AND "), args };
 }
 
+// ---- キャンペーンの設定をファイルで渡す ----
+// 別のPCのアポハッチくんに同じ文面・設定を用意するための書き出し／読み込み。
+// 会社リスト・送信履歴・送信者（メールのパスワード）は含めない（設定と文面だけ）
+const CAMPAIGN_EXPORT_COLS = ["name", "mode", "subject_text", "template_text", "ai_instruction", "channel", "daily_limit", "email_daily_limit", "send_window_start", "send_window_end", "weekdays_only", "resend_days", "ignore_refusal", "material_url", "material_url_in_email", "group_name"] as const;
+
+app.get("/campaigns/:id/export.json", (req, res) => {
+  const c = ownedCampaign(req, Number(req.params.id));
+  if (!c) return res.status(404).send("not found");
+  const settings: Record<string, unknown> = {};
+  for (const k of CAMPAIGN_EXPORT_COLS) settings[k] = (c as unknown as Record<string, unknown>)[k];
+  const out = { app: "apo-hatch", type: "campaign", version: currentVersion(), exported_at: new Date().toISOString(), note: "キャンペーンの設定と文面だけです（会社リスト・送信履歴・送信者は含みません）", campaign: settings };
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="campaign-${c.id}.json"`);
+  res.send(JSON.stringify(out, null, 2));
+});
+
+app.post("/campaigns/import", upload.single("file"), (req, res) => {
+  try {
+    const raw = req.file ? req.file.buffer.toString("utf8") : String(req.body.pasted ?? "");
+    if (!raw.trim()) return redirectWith(res, "/", "キャンペーンのファイル（.json）を選ぶか、中身を貼り付けてください");
+    const data = JSON.parse(raw) as { app?: string; type?: string; campaign?: Record<string, unknown> };
+    const c = data.campaign;
+    if (data.app !== "apo-hatch" || data.type !== "campaign" || !c) return redirectWith(res, "/", "アポハッチくんのキャンペーン設定ファイルではありません");
+    const senderId = Number(req.body.sender_id);
+    if (!ownedSender(req, senderId)) return redirectWith(res, "/", "送信者を選んでください（読み込んだ設定は、自分の送信者に結び付けます）");
+    const str = (k: string, fb = "") => String(c[k] ?? fb);
+    const num = (k: string, fb: number) => (Number.isFinite(Number(c[k])) ? Number(c[k]) : fb);
+    const channel = ["form_first", "email_first", "email_only", "form_only"].includes(str("channel")) ? str("channel") : "form_first";
+    const mode = ["template", "tpl_ai", "hybrid", "ai"].includes(str("mode")) ? str("mode") : "template";
+    const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name, material_url_in_email, status)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'draft')`)
+      .run(me(req).id, str("name", "読み込んだキャンペーン"), senderId, mode, str("subject_text"), str("template_text"), str("ai_instruction"),
+        num("daily_limit", 300), num("send_window_start", 9), num("send_window_end", 18), Number(c.weekdays_only) ? 1 : 0, channel,
+        num("email_daily_limit", 100), num("resend_days", 90), Number(c.ignore_refusal) ? 1 : 0, str("material_url"), str("group_name"), Number(c.material_url_in_email) ? 1 : 0);
+    redirectWith(res, `/campaigns/${r.lastInsertRowid}`, "キャンペーンの設定を読み込みました。会社リストを取り込んで開始してください");
+  } catch (e) {
+    redirectWith(res, "/", `読み込みエラー: ${String((e as Error).message).slice(0, 120)}`);
+  }
+});
+
 // ---- 取り込み履歴と、取り込み単位・全件の削除 ----
 // 一覧は200件までしか出ないため、2000件などを間違えて取り込むと「選択して削除」では消しきれなかった。
 export type ImportBatch = { key: string; label: string; at: string; total: number; sent: number; queued: number };
@@ -980,7 +1021,7 @@ app.get("/suppressions", (req, res) => {
   const optouts = db.prepare(`SELECT * FROM email_optouts WHERE ${sc.sql} ORDER BY created_at DESC LIMIT 500`).all(...sc.args) as any[];
   const imported = suppImports.get(me(req).id);
   suppImports.delete(me(req).id);
-  res.send(layout("除外リスト", suppressionsView(rows, optouts, imported), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("除外リスト", suppressionsView(rows, optouts, imported, loadSuppSync(me(req).id)), takeFlash(req), navUser(req), updateReady));
 });
 
 /** 除外リストをCSVで書き出す。列は取り込みと同じなので、別PCの「CSVでまとめて追加」にそのまま読み込める
@@ -993,6 +1034,61 @@ app.get("/suppressions/export.csv", (req, res) => {
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", "attachment; filename=suppressions.csv");
   res.send("﻿" + lines.join("\n"));
+});
+
+// ---- 共有の除外リスト（スプレッドシート）を自動で取り込む ----
+// チームで別々のPCに入れて使う場合、断りの会社を全員に行き渡らせる手段が無かった（PCごとに独立のため）。
+// 1つのスプレッドシートを「共有NGリスト」にして、各自のアポハッチくんが1日1回そこから取り込む。
+type SuppSync = { url: string; userId: number; lastAt?: string; lastResult?: string };
+const suppSyncKey = (userId: number) => `supp_sync:${userId}`;
+function loadSuppSync(userId: number): SuppSync | null {
+  try { const v = JSON.parse(getSetting(suppSyncKey(userId), "null")) as SuppSync | null; return v?.url ? v : null; } catch { return null; }
+}
+function saveSuppSync(userId: number, v: SuppSync) { setSetting.run(suppSyncKey(userId), JSON.stringify(v)); }
+
+/** 共有スプレッドシートから除外リストを取り込む。戻り値は画面に出す結果の文 */
+async function syncSuppressionsFor(userId: number): Promise<string> {
+  const cfg = loadSuppSync(userId);
+  if (!cfg) return "共有リストのURLが設定されていません";
+  try {
+    const rows = parseSuppressionText(await fetchGoogleSheetCsv(cfg.url));
+    if (!rows.length) return "取り込める行がありませんでした（1行目の見出しと、会社名・URL/ドメイン・メールの列を確認してください）";
+    const r = importSuppressions(rows, userId, "共有リストから自動取り込み");
+    const msg = `追加 ${r.added}件 / すでに登録済み ${r.already}件${r.noKey ? ` / 判別できず ${r.noKey}件` : ""}`;
+    saveSuppSync(userId, { ...cfg, lastAt: new Date().toISOString(), lastResult: msg });
+    return msg;
+  } catch (e) {
+    const msg = `エラー: ${String((e as Error).message).slice(0, 120)}`;
+    saveSuppSync(userId, { ...cfg, lastAt: new Date().toISOString(), lastResult: msg });
+    return msg;
+  }
+}
+
+/** 設定されている全員ぶんを取り込む（1日1回・起動2分後にも1回） */
+async function syncAllSuppressions() {
+  const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'supp_sync:%'").all() as { key: string; value: string }[];
+  for (const r of rows) {
+    const userId = Number(r.key.split(":")[1]);
+    if (!Number.isInteger(userId)) continue;
+    const msg = await syncSuppressionsFor(userId);
+    console.log(`[apo-hatch] 共有除外リストの取り込み（ユーザー${userId}）: ${msg}`);
+  }
+}
+
+// 共有リストのURLを保存する
+app.post("/suppressions/sync-url", (req, res) => {
+  const url = String(req.body.sheet_url ?? "").trim();
+  const uid = me(req).id;
+  if (!url) { db.prepare("DELETE FROM settings WHERE key=?").run(suppSyncKey(uid)); return redirectWith(res, "/suppressions", "共有リストの自動取り込みを解除しました"); }
+  if (!/spreadsheets\/d\//.test(url)) return redirectWith(res, "/suppressions", "GoogleスプレッドシートのURL（/spreadsheets/d/… を含む）を貼ってください");
+  saveSuppSync(uid, { url, userId: uid, ...(loadSuppSync(uid) ?? {}) , lastAt: loadSuppSync(uid)?.lastAt, lastResult: loadSuppSync(uid)?.lastResult });
+  redirectWith(res, "/suppressions", "共有リストを登録しました。1日1回、自動で取り込みます（今すぐ取り込むこともできます）");
+});
+
+// 今すぐ取り込む
+app.post("/suppressions/sync-now", async (req, res) => {
+  const msg = await syncSuppressionsFor(me(req).id);
+  redirectWith(res, "/suppressions", `共有リストから取り込みました: ${msg}`);
 });
 
 /** 除外リストをCSVでまとめて追加 */
@@ -1175,6 +1271,10 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
 // ---- 返信の自動確認: 送信用メールの受信箱を15分ごとに見て、反応（返信／アポ／断り）を記録 ----
 setTimeout(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 60_000);
 setInterval(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 15 * 60_000);
+
+// ---- 共有の除外リスト（スプレッドシート）を1日1回取り込む ----
+setTimeout(() => { syncAllSuppressions().catch((e) => console.error("[supp-sync]", e)); }, 120_000);
+setInterval(() => { syncAllSuppressions().catch((e) => console.error("[supp-sync]", e)); }, 24 * 60 * 60_000);
 
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
 setInterval(() => {

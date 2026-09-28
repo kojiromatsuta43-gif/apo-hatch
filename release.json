@@ -1,6 +1,6 @@
 {
-  "version": "0.3.83",
-  "notes": "重要: ブラウザ起動に失敗すると「実行中」のまま二度と再開しなくなる不具合を修正（送信が止まったままになる原因）",
+  "version": "0.3.84",
+  "notes": "共有の除外リスト（スプレッドシートから1日1回自動取り込み）と、キャンペーン設定の書き出し・読み込みを追加",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-28T15:11:14.859Z"
+  "published_at": "2026-09-28T15:48:25.308Z"
 }
