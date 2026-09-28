@@ -1,6 +1,6 @@
 {
-  "version": "0.3.82",
-  "notes": "会社の詳細画面に「メールで送信」ボタンを追加（フォームで送れなかった会社に、その場でメール送信）",
+  "version": "0.3.83",
+  "notes": "重要: ブラウザ起動に失敗すると「実行中」のまま二度と再開しなくなる不具合を修正（送信が止まったままになる原因）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-18T09:28:55.327Z"
+  "published_at": "2026-09-28T15:11:14.859Z"
 }

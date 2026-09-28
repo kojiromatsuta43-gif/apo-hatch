@@ -9,7 +9,7 @@ import { getDb, getSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, STATUS_
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause } from "./email.js";
-import { drainForShutdown, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
+import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
@@ -1178,8 +1178,10 @@ setInterval(() => { checkReplies().catch((e) => console.error("[replies]", e)); 
 
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
 setInterval(() => {
+  // 固まったまま「実行中」で残っているものがあれば解除してから、送信を再開する
+  for (const id of clearStaleRuns()) console.log(`[apo-hatch] キャンペーン ${id} の実行が止まったままだったので、再開できるようにしました`);
   const ids = db.prepare("SELECT id FROM form_campaigns WHERE status='running'").all() as { id: number }[];
-  for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => console.error(e));
+  for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => console.error(`[campaign ${id}]`, e));
 }, 60000);
 
 setInterval(cleanupSessions, 24 * 60 * 60 * 1000);

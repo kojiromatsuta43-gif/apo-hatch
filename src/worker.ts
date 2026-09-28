@@ -8,7 +8,8 @@ import { composeMessage, findNgWords, activeProvider, lintMessage } from "./mess
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
 
-const running = new Map<number, { stop: boolean }>();
+// 実行中のキャンペーン。lastActive は「最後に動いた時刻」で、固まったまま残った実行を見つけるために使う
+const running = new Map<number, { stop: boolean; lastActive: number }>();
 
 /** 要確認画面で選ばれた回答（JSON）を安全に読む */
 function parseManualAnswers(json: string): { label: string; answer: string }[] {
@@ -20,6 +21,17 @@ const MAX_WAIT = Number(process.env.FO_MAX_WAIT_MS ?? 15000);
 
 export function isRunning(campaignId: number) {
   return running.has(campaignId);
+}
+
+/** 固まったまま残った「実行中」を片付ける。送信中の会社が無く、15分以上なにも動いていない実行だけを対象にする。
+ *  （念のための保険。これが無いと、何かの拍子に実行中のまま残ったキャンペーンが永久に再開されない） */
+export function clearStaleRuns(): number[] {
+  const cleared: number[] = [];
+  if (inFlight > 0) return cleared;
+  for (const [id, st] of running) {
+    if (Date.now() - st.lastActive > 15 * 60_000) { running.delete(id); cleared.push(id); }
+  }
+  return cleared;
 }
 // 送信処理（1社分）の実行中の数。アプリを止めるときに、送信の途中で切らないよう待つために使う
 let inFlight = 0;
@@ -186,16 +198,26 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boolean; onProgress?: (j: Job) => void } = {}): Promise<{ processed: number; reason: string }> {
   if (running.has(campaignId)) return { processed: 0, reason: "already running" };
   if (shuttingDown) return { processed: 0, reason: "アプリ終了中" };
-  const state = { stop: false };
+  const state = { stop: false, lastActive: Date.now() };
   running.set(campaignId, state);
   const db = getDb();
   db.prepare("UPDATE form_campaigns SET status='running' WHERE id=?").run(campaignId);
   let processed = 0;
   let reason = "queue empty";
-  const browser = await launchBrowser();
+  // ブラウザの起動に失敗したら「実行中」の記録を必ず消す。
+  // 以前はここで失敗すると実行中のまま残り、画面は「実行中」なのに二度と送らない状態になっていた（実例: 10日間止まっていた）
+  let browser: Browser;
+  try {
+    browser = await launchBrowser();
+  } catch (e) {
+    running.delete(campaignId);
+    console.error(`[campaign ${campaignId}] ブラウザを起動できませんでした:`, e);
+    throw e;
+  }
   try {
     const worker = async () => {
       while (!state.stop) {
+        state.lastActive = Date.now();
         const { campaign, sender } = loadCampaign(campaignId);
         if (!opts.ignoreWindow && !inSendWindow(campaign)) { reason = "送信時間帯外"; return; }
         const formOk = sentToday(campaignId, "form") < campaign.daily_limit;
@@ -245,7 +267,7 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
 export async function scanCampaign(campaignId: number): Promise<{ scanned: number; reason: string }> {
   const key = -campaignId;
   if (running.has(key) || running.has(campaignId)) return { scanned: 0, reason: "already running" };
-  const state = { stop: false };
+  const state = { stop: false, lastActive: Date.now() };
   running.set(key, state);
   const db = getDb();
   let scanned = 0;
@@ -255,6 +277,7 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
     browser = await launchBrowser();
     for (;;) {
       if (state.stop) break;
+      state.lastActive = Date.now(); // 動いている印（固まった実行の片付け clearStaleRuns に消されないように）
       const job = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel='form' AND scanned_at IS NULL ORDER BY id LIMIT 1").get(campaignId) as Job | undefined;
       if (!job) break;
       db.prepare("UPDATE form_jobs SET scanned_at=datetime('now') WHERE id=?").run(job.id);
