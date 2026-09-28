@@ -238,7 +238,7 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
         continue;
       }
       const state = (db.prepare("SELECT * FROM reply_scans WHERE mailbox=?").get(mailbox) as ScanState | undefined) ?? { mailbox, uidvalidity: "", last_uid: 0, checked_at: null, error: "", found: 0 };
-      const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000 });
+      const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000, ...(s.tls_insecure ? { tls: { rejectUnauthorized: false } } : {}) });
       client.on("error", () => { /* 切断等。下の catch で拾う */ });
       let found = 0;
       try {
@@ -348,7 +348,7 @@ export async function verifyInterruptedEmails(): Promise<{ sent: number; requeue
     const s = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(senderId) as SenderProfile | undefined;
     if (!s || !s.smtp_user || !s.smtp_pass) { out.unknown += jobs.length; continue; }
     const keepsSentCopy = /gmail|google/i.test(s.smtp_host || "smtp.gmail.com");
-    const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000 });
+    const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000, ...(s.tls_insecure ? { tls: { rejectUnauthorized: false } } : {}) });
     client.on("error", () => { /* 下の catch で拾う */ });
     try {
       await client.connect();

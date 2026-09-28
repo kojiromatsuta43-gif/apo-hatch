@@ -997,7 +997,7 @@ app.post("/senders", (req, res) => {
   // チェックボックスは未チェックだと送られてこないので、値の有無で 0/1 にする
   const telReqOnly = req.body.tel_required_only ? 1 : 0;
   const replyCheck = req.body.reply_check ? 1 : 0;
-  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only, reply_check) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly, replyCheck);
+  db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only, reply_check, tls_insecure) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly, replyCheck, req.body.tls_insecure ? 1 : 0);
   redirectWith(res, "/senders", "送信者を追加しました");
 });
 app.post("/senders/:id", (req, res) => {
@@ -1009,7 +1009,7 @@ app.post("/senders/:id", (req, res) => {
   const telReqOnly = req.body.tel_required_only ? 1 : 0;
   // 設定を直したら、メール送信の一時停止は解除する（直したのに止まったままにならないように）
   { const old = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(Number(req.params.id)) as SenderProfile | undefined; if (old) clearEmailPause(old); }
-  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?, reply_check=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, req.body.reply_check ? 1 : 0, ...(pass ? [pass] : []), Number(req.params.id));
+  db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?, reply_check=?, tls_insecure=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, req.body.reply_check ? 1 : 0, req.body.tls_insecure ? 1 : 0, ...(pass ? [pass] : []), Number(req.params.id));
   redirectWith(res, "/senders", "保存しました");
 });
 

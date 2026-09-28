@@ -207,6 +207,9 @@ function migrate(db: Database.Database) {
   addCol("form_campaigns", "material_url_in_email", "INTEGER NOT NULL DEFAULT 0");
   // 1=送信用メールの受信箱を読んで、返信（反応）と戻りメールを自動で記録する。0=読まない
   addCol("sender_profiles", "reply_check", "INTEGER NOT NULL DEFAULT 1");
+  // 1=メールサーバーの証明書の検証をゆるめる。セキュリティソフトや社内ネットワークが通信に割り込んでいて
+  // 「self-signed certificate in certificate chain」で送れないPC向けの回避策（既定はオフ）
+  addCol("sender_profiles", "tls_insecure", "INTEGER NOT NULL DEFAULT 0");
   // おまけのゲームの表示。新しく入れたPCでは最初は出さない（他社に配ったときに「ふざけている」と見られないように）。
   // この設定ができる前から使っていたPC（キャンペーンがある）は、これまで通り表示にしておく
   if (!db.prepare("SELECT 1 FROM settings WHERE key='game_enabled'").get()) {
@@ -248,6 +251,7 @@ export type SenderProfile = {
   smtp_pass: string;
   tel_required_only: number;
   reply_check: number;
+  tls_insecure: number;
 };
 
 export type User = {

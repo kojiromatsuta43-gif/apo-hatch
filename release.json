@@ -1,6 +1,6 @@
 {
-  "version": "0.3.84",
-  "notes": "共有の除外リスト（スプレッドシートから1日1回自動取り込み）と、キャンペーン設定の書き出し・読み込みを追加",
+  "version": "0.3.85",
+  "notes": "セキュリティソフト等の割り込みで「self-signed certificate」になるPC向けに、証明書の確認を省く設定を追加（送信者ごと・既定オフ）",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-28T15:48:25.308Z"
+  "published_at": "2026-09-28T16:44:42.338Z"
 }

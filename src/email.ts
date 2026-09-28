@@ -28,7 +28,13 @@ export function checkSmtpPassword(sender: SenderProfile): string | null {
 
 function transport(sender: SenderProfile) {
   const port = sender.smtp_port || 465;
-  return nodemailer.createTransport({ host: sender.smtp_host || "smtp.gmail.com", port, secure: port === 465, auth: { user: sender.smtp_user, pass: normalizePass(sender.smtp_pass) } });
+  return nodemailer.createTransport({
+    host: sender.smtp_host || "smtp.gmail.com", port, secure: port === 465,
+    auth: { user: sender.smtp_user, pass: normalizePass(sender.smtp_pass) },
+    // セキュリティソフト等が通信に割り込むPCでは証明書が差し替わり「self-signed certificate」で送れない。
+    // 送信者ごとに明示的にオンにしたときだけ、証明書の検証をゆるめる
+    ...(sender.tls_insecure ? { tls: { rejectUnauthorized: false } } : {}),
+  });
 }
 
 /** SMTPの生エラーを、原因と直し方がわかる日本語にする */
@@ -39,6 +45,7 @@ export function explainSmtpError(e: unknown, sender: SenderProfile): string {
     return `Googleにログインを拒否されました。${hint ?? "アプリパスワードが失効しているか、送信用メールアドレスが違う可能性があります"}`;
   }
   if (/534|Application-specific password required/i.test(raw)) return "このアカウントは2段階認証が必要です。Googleアカウントで2段階認証プロセスをオンにしてから、アプリパスワードを作り直してください";
+  if (/self.signed|unable to verify|certificate|CERT_/i.test(raw)) return "メールサーバーの証明書を確認できませんでした。セキュリティソフト（ESET・カスペルスキー等）や社内ネットワークがメール通信に割り込んでいる可能性があります。ソフトの「メール保護／SSLスキャン」をオフにするか、送信者プロフィールの「セキュリティソフトの影響で送れない場合」にチェックを入れてください";
   if (/ETIMEDOUT|ECONNREFUSED|ENOTFOUND/i.test(raw)) return `メールサーバー（${sender.smtp_host || "smtp.gmail.com"}:${sender.smtp_port || 465}）に接続できませんでした。ネットワークかSMTPホスト名・ポートを確認してください`;
   if (/Daily user sending (limit|quota) exceeded|550-5\.4\.5/i.test(raw)) return "Gmailの1日の送信上限に達しました。翌日まで待つか、1日の上限を下げてください";
   return raw.slice(0, 200);
