@@ -357,9 +357,16 @@ app.get("/campaigns/:id", (req, res) => {
   const scanned = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND scanned_at IS NOT NULL").get(id) as { n: number }).n;
   // 「失敗した会社を再送信」の対象を一覧で見せる（どの会社が対象か分かるように）
   const retryTargets = retryTargetJobs(id);
+  // 今日・今月の送信数（東京時間で数える）。キャンペーン画面でもすぐ分かるように
+  const period = db.prepare(`SELECT
+      COALESCE(SUM(date(sent_at,'+9 hours')=date('now','+9 hours') AND channel='form'),0) todayForm,
+      COALESCE(SUM(date(sent_at,'+9 hours')=date('now','+9 hours') AND channel='email'),0) todayEmail,
+      COALESCE(SUM(strftime('%Y-%m',sent_at,'+9 hours')=strftime('%Y-%m','now','+9 hours') AND channel='form'),0) monthForm,
+      COALESCE(SUM(strftime('%Y-%m',sent_at,'+9 hours')=strftime('%Y-%m','now','+9 hours') AND channel='email'),0) monthEmail
+    FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='sent' AND sent_at IS NOT NULL`).get(id) as { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number };
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う

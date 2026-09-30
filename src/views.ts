@@ -296,7 +296,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -325,7 +325,22 @@ ${(() => {
       const sub = a > n ? `<span class="muted small">試行 ${a}回</span>` : "";
       return `<div class="stat">${label}<b${color ? ` style="color:${color}"` : ""}>${n}<span style="font-size:12px;font-weight:400">社</span></b>${sub}</div>`;
     };
-    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}<div class="stat"><a href="#reactions" style="color:inherit">反応</a><b class="small">返信${extra.outcomes.replied ?? 0}／アポ${extra.outcomes.appointment ?? 0}／断り${extra.outcomes.declined ?? 0}</b>${cnt("sent") ? `<span class="muted">反応率 ${((((extra.outcomes.replied ?? 0) + (extra.outcomes.appointment ?? 0)) / cnt("sent")) * 100).toFixed(1)}%</span>` : ""}</div></div>${replyScanLine()}`;
+    return `<div class="stats"><div class="stat">全件<b>${total}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">重複除く</span></div>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}${(() => {
+      // 「返信0／アポ1」だと、アポも返信の一種なのに別々に見えて分かりにくかった。合計と内訳で出す
+      const app = extra.outcomes.appointment ?? 0, dec = extra.outcomes.declined ?? 0, other = extra.outcomes.replied ?? 0;
+      const all = app + dec + other;
+      const sent = cnt("sent");
+      const rate = sent ? (all / sent) * 100 : 0;
+      const rateText = !sent ? "" : all === 0 ? "返信率 0%" : rate < 0.1 ? "返信率 0.1%未満" : `返信率 ${rate.toFixed(1)}%`;
+      return `<div class="stat"><a href="#reactions" style="color:inherit">返信があった会社</a><b>${all}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">アポ${app}・断り${dec}・その他${other}${rateText ? `／${rateText}` : ""}</span></div>`;
+    })()}</div>
+${(() => {
+      // 今日・今月の送信数。ペースを把握して上限に当たる前に気づけるように（詳しい推移は「送信数」画面へ）
+      const p = extra.period;
+      if (!p) return "";
+      const box = (label: string, form: number, email: number) => `<div class="stat">${label}の送信<b>${form + email}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">フォーム${form}・メール${email}</span></div>`;
+      return `<div class="stats" style="margin-top:0">${box("今日", p.todayForm, p.todayEmail)}${box("今月", p.monthForm, p.monthEmail)}<div class="stat" style="justify-content:center"><a class="btn sub small" href="/stats?campaign=${c.id}">日別・月別の推移を見る →</a></div></div>`;
+    })()}${replyScanLine()}`;
   })()}
 
 ${(() => {
