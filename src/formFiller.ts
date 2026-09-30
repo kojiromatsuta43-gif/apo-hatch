@@ -36,7 +36,11 @@ const RULES: [Category, RegExp][] = [
   ["name_last", /(姓|苗字|名字|lastname|last_name|last-name|family|\bsei\b|surname)/i],
   // 部署名は「〜名」で下の名前に当たってしまうので、名前の判定より先に見る（「部署名」に下の名前が入る事故の対策）
   ["department", /(部署|部門|department|division)/i],
-  ["name_first", /(^|[^氏会社品件題法人職媒校体署門舗設院織課局室属])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i], // 校体: 「学校名」「団体名」、署門舗…: 「部署名」「店舗名」「施設名」等を下の名前と誤判定した事故の対策
+  // 「住所1（都道府県）」は都道府県の選択欄なので、住所より先に判定する
+  ["prefecture", /(都道府県|prefecture|pref\b)/i],
+  // 住所の欄（住所3（町名番地）等）は名前より先に判定する。「町名」の「名」を下の名前と誤判定し、住所欄に名前が入る事故があった
+  ["address", /(住所\s*[0-9０-９]|町名|番地|丁目|建物名|市区町村|street\s*address|address\s*line)/i],
+  ["name_first", /(^|[^氏会社品件題法人職媒校体署門舗設院織課局室属町])名(?![前称刺簿])|firstname|first_name|first-name|given|\bmei\b/i], // 校体: 「学校名」「団体名」、署門舗…: 「部署名」「店舗名」「施設名」、町: 「町名」を下の名前と誤判定した事故の対策
   ["company", /(会社|企業|法人|社名|貴社|御社|団体|組織|屋号|店舗名|店名|company|corp|organization|organisation|firm)/i],
   ["position", /(役職|職位|position|title.*役)/i],
   ["name", /(氏名|お名前|名前|担当者|ご担当|your-name|\bname\b|fullname|full_name|full-name)/i],
@@ -236,6 +240,28 @@ function prefectureOf(address: string): string {
   return PREFS.find((p) => address.startsWith(p) || address.startsWith(p.replace(/[都府県]$/, ""))) ?? "";
 }
 
+/** 住所を「都道府県／市区町村／町名番地／建物名」に分ける。分かれた入力欄があるフォーム用。
+ *  例: 東京都港区新橋4-5-1 アーバン新橋ビル3階 → 東京都 / 港区 / 新橋4-5-1 / アーバン新橋ビル3階 */
+export function splitAddress(address: string): { pref: string; city: string; town: string; building: string } {
+  const a = (address ?? "").trim();
+  const pref = prefectureOf(a);
+  let rest = pref ? a.slice(a.startsWith(pref) ? pref.length : pref.replace(/[都府県]$/, "").length) : a;
+  // 建物名は「スペース以降」か「ビル・マンション名＋階/号室」で切り出す
+  let building = "";
+  const sp = rest.search(/[ 　]/);
+  if (sp >= 0) { building = rest.slice(sp).trim(); rest = rest.slice(0, sp); }
+  else {
+    const b = rest.match(/(?:[^\d\s]{2,})(?:ビル|マンション|ハイツ|コーポ|タワー|荘)[^\s]*$/);
+    if (b) { building = b[0]; rest = rest.slice(0, rest.length - b[0].length); }
+  }
+  // 市区町村は「郡+町村」「市+区」も1つとして扱う
+  // 政令市は「札幌市北区」までを市区町村として扱う（郡＋町村も1つにまとめる）
+  const m = rest.match(/^((?:.+?[郡])?)((?:.+?市(?:.+?区)?)|(?:.+?[区町村]))/);
+  const city = m ? `${m[1] ?? ""}${m[2]}` : "";
+  const town = city ? rest.slice(city.length).trim() : rest.trim();
+  return { pref, city, town, building };
+}
+
 export type FillReport = { filled: string[]; unfilled: string[]; hasMessage: boolean; log: string[] };
 
 /** 電話・郵便番号を「ハイフン無しの数字だけ」で入れるべき欄か（maxlength / pattern / inputmode / placeholder / ラベルから判断） */
@@ -318,6 +344,20 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
       i++;
     }
   }
+  // メール欄の直後にある「確認のためもう一度…」の欄は、ラベルに「メール」が無くても確認欄として扱う
+  for (let i = 0; i + 1 < textLike.length; i++) {
+    const a = textLike[i], b = textLike[i + 1];
+    if (a.formIndex !== b.formIndex) continue;
+    if (catMap.get(a.idx) !== "email") continue;
+    const cb = catMap.get(b.idx);
+    if (cb === "email_confirm" || cb === "email") continue;
+    const confirmish = /(確認|もう一度|再入力|再度|verify|confirm|re-?enter|kakunin)/i.test(`${b.sig} ${b.name} ${b.placeholder}`);
+    if (!confirmish) continue;
+    if (b.type !== "email" && b.type !== "text" && b.type !== "") continue;
+    catMap.set(b.idx, "email_confirm");
+    report.log.push(`メール確認欄として判定: idx${b.idx}（元 ${cb}）`);
+  }
+
   const catOf = (f: FieldInfo): Category => catMap.get(f.idx) ?? classify(f);
 
   const counters: Record<string, number> = {};
@@ -415,7 +455,16 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
           ok = await setText(f, val); break;
         }
         case "prefecture": ok = await setText(f, prefectureOf(s.address)); break;
-        case "address": ok = await setText(f, nth === 1 ? s.address : ""); break;
+        case "address": {
+          // 「住所2（市区町村）」のように分かれている欄は、ラベルに合わせて入れ分ける（1欄だけのフォームは従来どおり全部入れる）
+          const parts = splitAddress(s.address);
+          const sig = f.sig;
+          const val = /(建物|マンション|ビル名|部屋|号室|アパート)/.test(sig) ? parts.building
+            : /(市区町村|市町村|区市町村|city)/i.test(sig) ? parts.city
+            : /(町名|番地|丁目|street|address.?[23])/i.test(sig) ? [parts.town, ""].filter(Boolean).join("")
+            : nth === 1 ? s.address : "";
+          ok = await setText(f, val); break;
+        }
         case "url": ok = await setText(f, s.url); break;
         case "type": case "agree": break;
       }

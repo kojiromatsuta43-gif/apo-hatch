@@ -12,8 +12,9 @@ import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clea
 import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
+import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, importPreviewView, errKind, type NavUser } from "./views.js";
+import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -979,6 +980,13 @@ app.get("/senders/:id", (req, res) => {
 });
 const SENDER_COLS = ["label", "company", "industry", "person", "person_kana", "email", "reply_email", "tel", "postal", "address", "url", "from_email", "smtp_user", "smtp_host", "smtp_port"];
 // 送信者フォームの簡易チェック。問題があれば日本語メッセージ、無ければ null
+const PREF_RE = /^(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県)/;
+/** 住所が都道府県から始まっていないと、フォームの「都道府県」の選択肢を選べない（先頭の北海道のまま送られる事故があった） */
+function prefWarning(address: string): string {
+  const a = (address ?? "").trim();
+  return a && !PREF_RE.test(a) ? "　※ 住所は都道府県から入力してください（フォームの都道府県の選択肢が正しく選べません）" : "";
+}
+
 function validateSender(body: Record<string, unknown>): string | null {
   const g = (k: string) => String(body[k] ?? "").trim();
   if (!g("company")) return "会社名を入力してください";
@@ -1000,7 +1008,7 @@ app.post("/senders", (req, res) => {
   const telReqOnly = req.body.tel_required_only ? 1 : 0;
   const replyCheck = req.body.reply_check ? 1 : 0;
   db.prepare(`INSERT INTO sender_profiles(owner_user_id, ${SENDER_COLS.join(",")}, smtp_pass, tel_required_only, reply_check, tls_insecure) VALUES(?, ${SENDER_COLS.map(() => "?").join(",")}, ?, ?, ?, ?)`).run(me(req).id, ...vals, String(req.body.smtp_pass ?? "").trim(), telReqOnly, replyCheck, req.body.tls_insecure ? 1 : 0);
-  redirectWith(res, "/senders", "送信者を追加しました");
+  redirectWith(res, "/senders", `送信者を追加しました${prefWarning(String(req.body.address ?? ""))}`);
 });
 app.post("/senders/:id", (req, res) => {
   if (!ownedSender(req, Number(req.params.id))) return res.status(403).send(DENIED);
@@ -1012,7 +1020,7 @@ app.post("/senders/:id", (req, res) => {
   // 設定を直したら、メール送信の一時停止は解除する（直したのに止まったままにならないように）
   { const old = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(Number(req.params.id)) as SenderProfile | undefined; if (old) clearEmailPause(old); }
   db.prepare(`UPDATE sender_profiles SET ${SENDER_COLS.map((c) => `${c}=?`).join(",")}, tel_required_only=?, reply_check=?, tls_insecure=?${pass ? ", smtp_pass=?" : ""} WHERE id=?`).run(...vals, telReqOnly, req.body.reply_check ? 1 : 0, req.body.tls_insecure ? 1 : 0, ...(pass ? [pass] : []), Number(req.params.id));
-  redirectWith(res, "/senders", "保存しました");
+  redirectWith(res, "/senders", `保存しました${prefWarning(String(req.body.address ?? ""))}`);
 });
 
 // ---- suppressions / settings ----
@@ -1149,10 +1157,41 @@ app.get("/backup.json", (req, res) => {
 
 // ミニゲーム（誰でも遊べる息抜き）。クレジットは「自分のキャンペーンでフォーム送信できた件数」から貯まる
 // おまけのゲームの表示オン／オフ（管理者のみ）
+app.post("/settings/notify", (req, res) => {
+  db.prepare("INSERT INTO settings(key,value) VALUES('notify_desktop',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(req.body.notify_desktop === "1" ? "1" : "0");
+  redirectWith(res, "/settings", req.body.notify_desktop === "1" ? "送信が止まったときにパソコンへ通知します" : "パソコンへの通知をオフにしました");
+});
+
+// 通知の見え方を確認する
+app.post("/settings/notify-test", (req, res) => {
+  notify("テスト通知", "この通知が出れば設定はOKです（送信が止まったときにも同じように出ます）", `test:${Date.now()}`);
+  redirectWith(res, "/settings", "テスト通知を送りました（画面の右上などに出ます。出ない場合はOS側の通知設定をご確認ください）");
+});
+
 app.post("/settings/game", requireAdmin, (req, res) => {
   const on = req.body.game_enabled === "1";
   db.prepare("INSERT INTO settings(key,value) VALUES('game_enabled',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(on ? "1" : "0");
   redirectWith(res, "/settings", on ? "おまけのゲームを表示します（共有用URLでは表示されません）" : "おまけのゲームを非表示にしました");
+});
+
+// ---- 送信数（日別・月別） ----
+// 「今日は何件送ったか」「今月はどれくらいか」を見るための画面。日時は東京時間で数える（DBは世界標準時）
+app.get("/stats", (req, res) => {
+  const mode = String(req.query.mode) === "month" ? "month" : "day";
+  const campaignId = Number(req.query.campaign) || 0;
+  const sc = scope(req);
+  const where = [`j.is_test=0`, `j.sent_at IS NOT NULL`, `j.status='sent'`, sc.sql.replace("owner_user_id", "c.owner_user_id")];
+  const args: (string | number)[] = [...sc.args];
+  if (campaignId) { where.push("c.id=?"); args.push(campaignId); }
+  const bucket = mode === "month" ? "strftime('%Y-%m', j.sent_at, '+9 hours')" : "date(j.sent_at, '+9 hours')";
+  const limit = mode === "month" ? 12 : 30;
+  const rows = db.prepare(`SELECT ${bucket} period, SUM(j.channel='form') form, SUM(j.channel='email') email, COUNT(*) total
+    FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE ${where.join(" AND ")}
+    GROUP BY period ORDER BY period DESC LIMIT ${limit}`).all(...args) as { period: string; form: number; email: number; total: number }[];
+  const campaigns = db.prepare(`SELECT id, name FROM form_campaigns c WHERE ${sc.sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY id DESC`).all(...sc.args) as { id: number; name: string }[];
+  // 合計は「いま表示している期間（直近30日／12か月）」の合計にする（全期間と混ざらないように）
+  const totals = rows.reduce((a, r) => ({ total: a.total + r.total, form: a.form + r.form, email: a.email + r.email }), { total: 0, form: 0, email: 0 });
+  res.send(layout("送信数", statsView(rows.reverse(), mode, campaigns, campaignId, totals), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/guide", (req, res) => {
@@ -1178,7 +1217,7 @@ app.get("/settings", requireAdmin, (req, res) => {
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
-  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1"), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1", notifyEnabled()), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -1281,7 +1320,10 @@ setInterval(() => { syncAllSuppressions().catch((e) => console.error("[supp-sync
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
 setInterval(() => {
   // 固まったまま「実行中」で残っているものがあれば解除してから、送信を再開する
-  for (const id of clearStaleRuns()) console.log(`[apo-hatch] キャンペーン ${id} の実行が止まったままだったので、再開できるようにしました`);
+  for (const id of clearStaleRuns()) {
+    console.log(`[apo-hatch] キャンペーン ${id} の実行が止まったままだったので、再開できるようにしました`);
+    notify("送信が止まっていたので再開します", `キャンペーン #${id} が15分以上動いていなかったため、自動で再開しました`, `stale:${id}`);
+  }
   const ids = db.prepare("SELECT id FROM form_campaigns WHERE status='running'").all() as { id: number }[];
   for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => console.error(`[campaign ${id}]`, e));
 }, 60000);

@@ -4,6 +4,7 @@ import fs from "node:fs";
 import type { Browser } from "playwright";
 import { getDb, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
+import { notify } from "./notify.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
@@ -163,6 +164,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     if (!chk.ok) {
       // 設定が足りないのは全社共通なので、1社ずつ失敗にせず送信を止めて待機に戻す（送信者を保存すると解除）
       setEmailPause(sender, 24 * 60, chk.reason ?? "差出人メールが使えません");
+      notify("メール送信を止めました（設定が必要）", chk.reason ?? "差出人メールが使えません", `senderng:${sender.id}`);
       return finish("queued", `メール送信を一時停止しました: ${chk.reason ?? "差出人メールが使えません"}`, { message_used: message });
     }
     if (opts.dryRun) return finish("queued", "テスト（メールは送っていない）", { message_used: message });
@@ -179,6 +181,7 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
       const minutes = smtpPauseMinutes(e);
       if (minutes) {
         setEmailPause(sender, minutes, why);
+        notify("メール送信を一時停止しました", `${why}（${minutes >= 60 ? `${Math.round(minutes / 60)}時間` : `${minutes}分`}後に自動で再開。フォーム送信は続きます）`, `pause:${sender.id}`);
         return finish("queued", `メール送信を一時停止しました（${minutes >= 60 ? `${Math.round(minutes / 60)}時間` : `${minutes}分`}後に自動で再開）: ${why}`, { message_used: message });
       }
       return finish("failed", `メール送信エラー: ${why}`, { message_used: message });
@@ -261,6 +264,10 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
     const left = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0").get(campaignId) as { n: number }).n;
     // 時間帯外・上限で止まった場合は running のまま残し、スケジューラが再開する
     db.prepare("UPDATE form_campaigns SET status=? WHERE id=?").run(left === 0 ? "done" : state.stop && !shuttingDown ? "paused" : "running", campaignId); // アプリ終了で止めた場合は実行中のまま（次の起動で再開）
+    if (left === 0 && processed > 0) {
+      const name = (db.prepare("SELECT name FROM form_campaigns WHERE id=?").get(campaignId) as { name: string } | undefined)?.name ?? `#${campaignId}`;
+      notify("送信が完了しました", `「${name}」の待機がすべて終わりました（今回 ${processed}件）`, `done:${campaignId}`);
+    }
   }
   return { processed, reason };
 }

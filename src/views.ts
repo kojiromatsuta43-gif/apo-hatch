@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -634,7 +634,7 @@ ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リス
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true) {
   const configured = ai.provider !== "none";
   // データの概要: 集計して表示するだけの追加カード。このブロックを消せば丸ごと外せる
   const overview = stats
@@ -645,6 +645,10 @@ export function settingsView(ngWords: string[], ai: import("./message.js").AiCon
   const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>
 ${overview}
+<div class="card"><h2 style="margin-top:0">送信が止まったときの通知</h2>
+<p class="muted small">メール送信が一時停止したとき・送信が全部終わったとき・止まっていた送信を自動再開したときに、<b>パソコンの通知</b>（Macは通知センター、Windowsはトースト）でお知らせします。画面を見ていなくても気づけます。</p>
+<form method="post" action="/settings/notify" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="notify_desktop" style="width:auto"><option value="1" ${notifyOn ? "selected" : ""}>通知する</option><option value="0" ${notifyOn ? "" : "selected"}>通知しない</option></select><button class="btn sub small">保存</button></form>
+<form method="post" action="/settings/notify-test" style="margin-top:8px"><button class="btn sub small">テスト通知を出す</button></form></div>
 <div class="card"><h2 style="margin-top:0">おまけのゲーム</h2>
 <p class="muted small">送信の待ち時間用のスロットゲームです。上のメニューに「🎰 ゲーム」を出すかどうかを選べます（人に画面を見せるときは共有用URLを使えば、オンでも表示されません）。</p>
 <form method="post" action="/settings/game" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="game_enabled" style="width:auto"><option value="0" ${gameEnabled ? "" : "selected"}>表示しない</option><option value="1" ${gameEnabled ? "selected" : ""}>表示する</option></select><button class="btn sub small">保存</button></form></div>
@@ -907,6 +911,38 @@ ${step("6", "結果と反応を確認する", `<ul style="line-height:1.8;margin
 <p><b>Q. 他の人のPCから画面を開けますか？</b><br>同じWi-Fi・社内ネットワークなら開けます。アドレス欄の localhost のリンクは他のPCでは開けないので、${isAdmin ? `<a href="/users" target="_blank" rel="noopener">ユーザー管理</a>に表示されるURLを伝えてください` : "管理者に共有用のURLを聞いてください"}。</p>
 <p><b>Q. Gmailが「一時的に停止」されました</b><br>短時間に大量に送ったことが原因です。通常1時間〜24時間で戻ります。戻るまで送信を止め、1日の上限を下げ、日中に少しずつ送るようにしてください。</p>
 <p style="margin-bottom:0"><b>Q. 同じ会社に二重に送ってしまいませんか？</b><br>90日以内に送った会社（期間はキャンペーンで変更可）と、同じグループで登録済みの会社には送りません。送ったか判断できなかった会社は「失敗（要確認）」になるので、スクリーンショットで確認してから再送信してください。</p></div>`;
+}
+
+/** 送信数（日別・月別）。棒グラフはCSSだけで描く（ライブラリは増やさない） */
+export function statsView(
+  rows: { period: string; form: number; email: number; total: number }[],
+  mode: "day" | "month",
+  campaigns: { id: number; name: string }[],
+  campaignId: number,
+  totals: { total: number; form: number; email: number },
+): string {
+  const max = Math.max(1, ...rows.map((r) => r.total));
+  const label = (p: string) => (mode === "month" ? p.replace("-", "/") : `${Number(p.slice(5, 7))}/${Number(p.slice(8, 10))}`);
+  const weekday = (p: string) => (mode === "day" ? ["日", "月", "火", "水", "木", "金", "土"][new Date(`${p}T00:00:00+09:00`).getDay()] : "");
+  const q = (m: string, c: number) => `/stats?mode=${m}${c ? `&campaign=${c}` : ""}`;
+  return `<h1>送信数</h1>
+<p class="muted">送信できた件数を、東京時間の日付で数えています（フォームとメールの合計）。</p>
+<form method="get" action="/stats" class="inline" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+<label class="inline small">表示: <select name="mode" onchange="this.form.submit()" style="width:auto;padding:4px 8px"><option value="day" ${mode === "day" ? "selected" : ""}>日別（直近30日）</option><option value="month" ${mode === "month" ? "selected" : ""}>月別（直近12か月）</option></select></label>
+<label class="inline small">キャンペーン: <select name="campaign" onchange="this.form.submit()" style="width:auto;padding:4px 8px"><option value="">すべて</option>${campaigns.map((c) => `<option value="${c.id}" ${campaignId === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+<a class="btn sub small" href="${q(mode, campaignId)}">更新</a>
+</form>
+<div class="stats"><div class="stat">この期間の合計<b>${totals.total ?? 0}<span style="font-size:12px;font-weight:400">件</span></b></div><div class="stat">フォーム<b>${totals.form ?? 0}<span style="font-size:12px;font-weight:400">件</span></b></div><div class="stat">メール<b>${totals.email ?? 0}<span style="font-size:12px;font-weight:400">件</span></b></div></div>
+${rows.length === 0 ? `<div class="card"><p class="muted">この条件では送信の記録がありません。</p></div>` : `<div class="card" style="overflow-x:auto">
+<table style="width:100%"><tr><th style="width:110px">${mode === "month" ? "月" : "日付"}</th><th style="width:60%">件数</th><th style="width:70px">フォーム</th><th style="width:70px">メール</th><th style="width:70px">合計</th></tr>
+${rows.map((r) => {
+    const fw = Math.round((r.form / max) * 100), ew = Math.round((r.email / max) * 100);
+    return `<tr><td class="small">${esc(label(r.period))}${weekday(r.period) ? `<span class="muted">（${weekday(r.period)}）</span>` : ""}</td>
+<td><div style="display:flex;height:16px;background:#f1efe9;border-radius:3px;overflow:hidden;min-width:120px"><div title="フォーム ${r.form}件" style="width:${fw}%;background:var(--honey)"></div><div title="メール ${r.email}件" style="width:${ew}%;background:#4A5387"></div></div></td>
+<td class="small">${r.form}</td><td class="small">${r.email}</td><td><b>${r.total}</b></td></tr>`;
+  }).join("")}
+</table>
+<p class="muted small" style="margin:8px 0 0"><span style="display:inline-block;width:12px;height:10px;background:var(--honey);vertical-align:-1px"></span> フォーム　<span style="display:inline-block;width:12px;height:10px;background:#4A5387;vertical-align:-1px"></span> メール</p></div>`}`;
 }
 
 export function gameView(sentCount: number): string {
