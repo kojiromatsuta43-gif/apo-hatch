@@ -15,7 +15,7 @@ import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmai
 import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
 import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, errKind, type NavUser } from "./views.js";
-import { authMiddleware, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
+import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -210,6 +210,19 @@ app.post("/users", requireAdmin, (req, res) => {
     redirectWith(res, "/users", String((e as Error).message));
   }
 });
+// ログインIDの変更（管理者のみ）。全員が admin だと誰のアカウントか分からず、狙われやすいため変えられるようにする
+app.post("/users/:id/username", requireAdmin, (req, res) => {
+  const id = Number(req.params.id);
+  try {
+    const before = db.prepare("SELECT username FROM users WHERE id=?").get(id) as { username: string } | undefined;
+    if (!before) return redirectWith(res, "/users", "そのアカウントが見つかりません");
+    renameUser(id, String(req.body.username ?? ""));
+    redirectWith(res, "/users", `ログインIDを「${before.username}」→「${String(req.body.username).trim().toLowerCase()}」に変更しました。本人に伝えてください`);
+  } catch (e) {
+    redirectWith(res, "/users", String((e as Error).message));
+  }
+});
+
 app.post("/users/:id/reset", requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const u = db.prepare("SELECT * FROM users WHERE id=?").get(id) as { username: string } | undefined;

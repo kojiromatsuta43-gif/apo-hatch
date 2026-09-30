@@ -799,7 +799,9 @@ ${shareUrlsCard(shareUrls)}
 <h2>アカウント一覧</h2>
 <table><tr><th>ID</th><th>ログインID</th><th>表示名</th><th>権限</th><th>状態</th><th>最終ログイン</th><th></th></tr>
 ${users.map((u) => `<tr>
-<td>${u.id}</td><td><code>${esc(u.username)}</code></td><td>${esc(u.display_name)}</td>
+<td>${u.id}</td>
+<td><form method="post" action="/users/${u.id}/username" class="inline" style="display:flex;gap:4px;align-items:center" onsubmit="return confirm('ログインIDを変更します。本人に新しいIDを伝えてください。よろしいですか？')"><input type="text" name="username" value="${esc(u.username)}" pattern="[a-zA-Z0-9._-]{3,32}" title="半角英数字・._- の3〜32文字" style="width:150px;padding:3px 6px;font-family:inherit"><button class="btn sub small">変更</button></form></td>
+<td>${esc(u.display_name)}</td>
 <td>${u.role === "admin" ? "管理者" : "一般"}</td>
 <td>${u.active ? '<span class="tag sent">有効</span>' : '<span class="tag">停止中</span>'}</td>
 <td class="small">${esc(jst(u.last_login_at) || "―")}</td>
@@ -808,7 +810,7 @@ ${users.map((u) => `<tr>
 <form method="post" action="/users/${u.id}/toggle" class="inline"><button class="btn sub small">${u.active ? "停止する" : "再開する"}</button></form>
 </td></tr>`).join("")}
 </table>
-<p class="muted">停止したアカウントはログインできなくなります（データは残ります）。一般ユーザーは自分が作ったキャンペーン・送信者・送信履歴だけが見えます。「営業お断り」の除外リストは安全のため全ユーザー共通で突合されます（画面に出るのは自分が登録した分だけです）。</p>`;
+<p class="muted">ログインIDは、その場で書き換えて「変更」を押せば変えられます（本人に新しいIDを伝えてください。パスワードとデータはそのままです）。停止したアカウントはログインできなくなります（データは残ります）。一般ユーザーは自分が作ったキャンペーン・送信者・送信履歴だけが見えます。「営業お断り」の除外リストは安全のため全ユーザー共通で突合されます（画面に出るのは自分が登録した分だけです）。</p>`;
 }
 
 /** アップデート画面（管理者のみ） */

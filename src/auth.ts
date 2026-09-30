@@ -1,6 +1,7 @@
 // ログイン（単体版）。ユーザーごとにアカウントを発行し、キャンペーン・送信者・送信履歴を分離する。
 // BRIDGE HATCH に組み込む場合は本体の認証を使うので、このファイルは不要になる。
 import crypto from "node:crypto";
+import os from "node:os";
 import type { Request, Response, NextFunction } from "express";
 import { getDb, type User } from "./db.js";
 
@@ -28,6 +29,16 @@ export function randomPassword(len = 12): string {
 }
 
 // ---- ユーザー ----
+/** ログインIDを変更する（管理者が「ユーザー管理」から。ログイン中のセッションはそのまま使える） */
+export function renameUser(userId: number, newUsername: string): void {
+  const db = getDb();
+  const name = newUsername.trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,32}$/.test(name)) throw new Error("ログインIDは半角英数字・._- の3〜32文字にしてください");
+  const dup = db.prepare("SELECT id FROM users WHERE username=?").get(name) as { id: number } | undefined;
+  if (dup && dup.id !== userId) throw new Error("そのログインIDはすでに使われています");
+  db.prepare("UPDATE users SET username=? WHERE id=?").run(name, userId);
+}
+
 export function createUser(username: string, password: string, opts: { role?: "admin" | "user"; displayName?: string; mustChange?: boolean } = {}): User {
   const db = getDb();
   const name = username.trim().toLowerCase();
@@ -53,11 +64,23 @@ export function listUsers(): User[] {
 }
 
 /** 起動時: ユーザーが1人もいなければ管理者を作る。パスワードは ADMIN_PASSWORD か自動生成 */
+/** 最初の管理者のログインID。どのPCも「admin」だと、同じIDを狙われやすく、誰のアカウントか分からなくなるため、
+ *  そのパソコンのユーザー名（例: johnnydeppstreasures）から作る。使えない場合はパソコン名、どちらも駄目なら admin */
+export function defaultAdminUsername(): string {
+  const clean = (v: string) => v.normalize("NFKC").toLowerCase().replace(/[^a-z0-9._-]/g, "");
+  const candidates = [os.userInfo?.().username ?? "", os.hostname().split(".")[0] ?? ""];
+  for (const c of candidates) {
+    const name = clean(c).slice(0, 32);
+    if (/^[a-z0-9._-]{3,32}$/.test(name)) return name;
+  }
+  return "admin";
+}
+
 export function ensureFirstAdmin(): { username: string; password: string } | null {
   const db = getDb();
   const n = (db.prepare("SELECT COUNT(*) n FROM users").get() as { n: number }).n;
   if (n > 0) return null;
-  const username = (process.env.ADMIN_USER ?? "admin").toLowerCase();
+  const username = (process.env.ADMIN_USER ?? defaultAdminUsername()).toLowerCase();
   const password = process.env.ADMIN_PASSWORD ?? randomPassword();
   createUser(username, password, { role: "admin", displayName: "管理者", mustChange: !process.env.ADMIN_PASSWORD });
   return { username, password };

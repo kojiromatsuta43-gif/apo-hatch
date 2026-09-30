@@ -1,6 +1,6 @@
 {
-  "version": "0.3.89",
-  "notes": "反応の表示で「アポ・断り」を大きく表示／推移リンクの見た目を修正",
+  "version": "0.3.90",
+  "notes": "初回の管理者IDをパソコンのユーザー名から作るように（全員adminを回避）／ユーザー管理でログインIDを変更できるように",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-30T17:19:06.797Z"
+  "published_at": "2026-09-30T19:24:03.572Z"
 }
