@@ -1,6 +1,6 @@
 {
-  "version": "0.3.88",
-  "notes": "キャンペーン画面に今日・今月の送信数を表示／反応の表示を「返信があった会社 N社（アポ・断り・その他の内訳）」に変更",
+  "version": "0.3.89",
+  "notes": "反応の表示で「アポ・断り」を大きく表示／推移リンクの見た目を修正",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-30T17:12:57.164Z"
+  "published_at": "2026-09-30T17:19:06.797Z"
 }

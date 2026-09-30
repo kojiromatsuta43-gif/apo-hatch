@@ -332,14 +332,16 @@ ${(() => {
       const sent = cnt("sent");
       const rate = sent ? (all / sent) * 100 : 0;
       const rateText = !sent ? "" : all === 0 ? "返信率 0%" : rate < 0.1 ? "返信率 0.1%未満" : `返信率 ${rate.toFixed(1)}%`;
-      return `<div class="stat"><a href="#reactions" style="color:inherit">返信があった会社</a><b>${all}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">アポ${app}・断り${dec}・その他${other}${rateText ? `／${rateText}` : ""}</span></div>`;
+      // アポと断りが一番知りたい数字なので大きく出す（合計と返信率は下に小さく）
+      return `<div class="stat"><a href="#reactions" style="color:inherit">反応</a><b style="font-size:24px;line-height:1.25">アポ <span style="color:var(--ok)">${app}</span><span style="font-weight:400;color:#bbb">／</span>断り <span style="color:var(--ng)">${dec}</span></b><span class="muted small">返信 合計${all}社（その他${other}）${rateText ? `／${rateText}` : ""}</span></div>`;
     })()}</div>
 ${(() => {
       // 今日・今月の送信数。ペースを把握して上限に当たる前に気づけるように（詳しい推移は「送信数」画面へ）
       const p = extra.period;
       if (!p) return "";
       const box = (label: string, form: number, email: number) => `<div class="stat">${label}の送信<b>${form + email}<span style="font-size:12px;font-weight:400">社</span></b><span class="muted small">フォーム${form}・メール${email}</span></div>`;
-      return `<div class="stats" style="margin-top:0">${box("今日", p.todayForm, p.todayEmail)}${box("今月", p.monthForm, p.monthEmail)}<div class="stat" style="justify-content:center"><a class="btn sub small" href="/stats?campaign=${c.id}">日別・月別の推移を見る →</a></div></div>`;
+      return `<div class="stats" style="margin-top:0">${box("今日", p.todayForm, p.todayEmail)}${box("今月", p.monthForm, p.monthEmail)}</div>
+<p class="small" style="margin:6px 0 0"><a href="/stats?campaign=${c.id}">日別・月別の推移を見る →</a></p>`;
     })()}${replyScanLine()}`;
   })()}
 
