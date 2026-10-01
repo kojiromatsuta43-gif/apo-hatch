@@ -1,6 +1,7 @@
 // ログイン（単体版）。ユーザーごとにアカウントを発行し、キャンペーン・送信者・送信履歴を分離する。
 // BRIDGE HATCH に組み込む場合は本体の認証を使うので、このファイルは不要になる。
 import crypto from "node:crypto";
+import { errorPage } from "./ui/layout.js";
 import os from "node:os";
 import type { Request, Response, NextFunction } from "express";
 import { getDb, type User } from "./db.js";
@@ -137,7 +138,7 @@ export function authMiddleware(req: AuthedRequest, res: Response, next: NextFunc
 }
 
 export function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
-  if (req.user?.role !== "admin") return res.status(403).send("管理者のみが使える画面です");
+  if (req.user?.role !== "admin") return res.status(403).send(errorPage(403, req.user ? { username: req.user.username, display_name: req.user.display_name, role: req.user.role, path: req.path } : null));
   next();
 }
 

@@ -299,6 +299,14 @@ function migrate(db: Database.Database) {
   // 事前チェックで出す「送れそう度」0〜100（-1=未計測）。送れる会社から先に回せるようにする
   addCol("form_jobs", "scan_score", "INTEGER NOT NULL DEFAULT -1");
 
+  // 一覧と集計を速くするためのインデックス（#143）。4,000社を超えると、更新日時での並び替えや反応の集計が重くなり始める
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_form_jobs_updated ON form_jobs(campaign_id, updated_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_form_jobs_outcome ON form_jobs(outcome)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_form_jobs_status_updated ON form_jobs(status, updated_at)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_form_jobs_sent_at ON form_jobs(sent_at)`);
+  // 要対応を「見送り」にした日時（#115）。NULL=見送っていない
+  addCol("form_jobs", "dismissed_at", "TEXT");
+
   // 画面で見られるエラーログ。これまでは黒い画面（ターミナル）を見るしかなく、閉じると何も分からなかった。
   // 直近500件だけ残す（applog.ts 側で間引く）
   db.exec(`CREATE TABLE IF NOT EXISTS app_logs (
@@ -310,6 +318,13 @@ function migrate(db: Database.Database) {
     text TEXT NOT NULL DEFAULT ''
   )`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_app_logs_kind ON app_logs(kind, id)`);
+
+  // 右下のキャラクター（演出）。ゲームと同じく、新しく入れたPCでは最初は出さない（他社の管理画面として軽く見えないように）。
+  // この設定ができる前から使っていたPCは、これまで通り表示にしておく
+  if (!db.prepare("SELECT 1 FROM settings WHERE key='effects_enabled'").get()) {
+    const used = (db.prepare("SELECT COUNT(*) n FROM form_campaigns").get() as { n: number }).n > 0;
+    db.prepare("INSERT INTO settings(key,value) VALUES('effects_enabled',?)").run(used ? "1" : "0");
+  }
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
@@ -454,6 +469,7 @@ export type Job = {
   pending_questions: string;
   manual_answers: string;
   variant: string;
+  dismissed_at: string | null;
 };
 
 export const STATUS_LABEL: Record<JobStatus, string> = {

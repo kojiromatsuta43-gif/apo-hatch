@@ -7,6 +7,7 @@
 // これは「期限と台数を管理し、うっかり期限切れのまま使われるのを防ぐ」ためのもので、強固なコピー防止ではありません。
 // 既定では送信を止めません（license_enforce=1 のときだけ、未登録・期限切れで1日50件に制限します）。
 import crypto from "node:crypto";
+import { S } from "./settings.js";
 import { getSetting, setSetting } from "./db.js";
 
 /** 配布元の公開鍵（秘密鍵は license-keys/private.pem にあり、gitには入れない） */
@@ -51,7 +52,7 @@ export function verifyLicense(keyText: string): { ok: boolean; payload?: License
 }
 
 export function licenseStatus(): LicenseStatus {
-  const key = getSetting("license_key", "").trim();
+  const key = getSetting(S.licenseKey, "").trim();
   if (!key) return { state: "none", label: "ライセンス未登録（お試し利用）" };
   const v = verifyLicense(key);
   if (!v.ok || !v.payload) return { state: "invalid", label: "ライセンスキーが正しくありません（配布元にご確認ください）" };
@@ -66,13 +67,13 @@ export function licenseStatus(): LicenseStatus {
 }
 
 export function setLicenseKey(key: string): LicenseStatus {
-  setSetting("license_key", String(key ?? "").trim());
+  setSetting(S.licenseKey, String(key ?? "").trim());
   return licenseStatus();
 }
 
 /** 制限をかけるか（既定はオフ＝止めない）。オンのときだけ、未登録・期限切れで1日50件までにする */
 export function licenseEnforced(): boolean {
-  return getSetting("license_enforce", "0") === "1";
+  return getSetting(S.licenseEnforce, "0") === "1";
 }
 export const TRIAL_DAILY_LIMIT = 50;
 

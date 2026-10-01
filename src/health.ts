@@ -2,6 +2,7 @@
 // 動かない原因（ブラウザが無い・メール設定が足りない・住所が無い・空き容量・スリープ）を
 // 聞き出すやり取りなしで、利用者自身が画面で切り分けられるようにする。
 import fs from "node:fs";
+import { S } from "./settings.js";
 import os from "node:os";
 import path from "node:path";
 import { DATA_DIR, getDb, getSetting, jst, type SenderProfile } from "./db.js";
@@ -155,10 +156,10 @@ export function diagnosticsText(): string {
   try { push("ブラウザ", browserExecutablePath() ?? "Playwright の Chromium"); } catch (e) { push("ブラウザ", `エラー: ${String((e as Error).message ?? e).slice(0, 120)}`); }
   push("AI", activeProvider());
   push("自動起動", autostartEnabled() ? "オン" : "オフ");
-  push("自動更新", getSetting("auto_update", "0") === "1" ? "オン" : "オフ");
-  push("更新チャネル", getSetting("update_channel", "stable") === "beta" ? "先行版" : "安定版");
+  push("自動更新", getSetting(S.autoUpdate, "0") === "1" ? "オン" : "オフ");
+  push("更新チャネル", getSetting(S.updateChannel, "stable") === "beta" ? "先行版" : "安定版");
   push("ライセンス", licenseStatus().label);
-  push("通知", getSetting("notify_desktop", "1") === "1" ? "オン" : "オフ");
+  push("通知", getSetting(S.notifyDesktop, "1") === "1" ? "オン" : "オフ");
 
   L.push("", "--- 件数 ---");
   const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n;

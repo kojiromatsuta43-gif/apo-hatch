@@ -1,4 +1,5 @@
 import { hasEntity } from "./company.js";
+import { S } from "./settings.js";
 // 企業DB（COMPANY_DB.md の列名）や任意のCSVを取り込む。列名の別名に対応。
 import { parse } from "csv-parse/sync";
 import { domainOf, getDb, getSetting, isExcludedDomain, channelMode, findGroupDuplicate } from "./db.js";
@@ -115,7 +116,7 @@ export type ExcludedRow = { company: string; reason: string; where: string };
 /** 設定で指定した「送りたくない業種・キーワード」（#87）。会社名・業種・小業種に含まれていたら取り込み時に除外する。
  *  病院・士業など、自社の方針で当てたくない相手を会社ごとに決められるようにするためのもの。 */
 export function excludedKeywords(): string[] {
-  return getSetting("excluded_industries", "")
+  return getSetting(S.excludedIndustries, "")
     .split(/[\n,、，]/)
     .map((w) => w.trim())
     .filter((w) => w.length >= 2);

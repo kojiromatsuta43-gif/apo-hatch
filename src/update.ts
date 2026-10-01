@@ -1,6 +1,7 @@
 // 配布後のアップデート。GitHub に置いた release.json を見て、新しければ本体ファイルだけ入れ替える。
 // data/（リスト・送信履歴・アカウント）には一切触らない。
 import fs from "node:fs";
+import { S } from "./settings.js";
 import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
@@ -32,7 +33,7 @@ export type UpdateStatus = {
 /** いまの更新チャネル。設定画面で切り替える（既定は安定版） */
 export function updateChannel(): "stable" | "beta" {
   try {
-    return getSetting("update_channel", "stable") === "beta" ? "beta" : "stable";
+    return getSetting(S.updateChannel, "stable") === "beta" ? "beta" : "stable";
   } catch { return "stable"; } // DBがまだ無いタイミング
 }
 

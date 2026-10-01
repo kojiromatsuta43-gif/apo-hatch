@@ -1,13 +1,14 @@
 // 送信が止まったときなどに、パソコンの通知（Macの通知センター／Windowsのトースト）で知らせる。
 // 追加のソフトは使わず、OS標準のコマンドを呼ぶだけ。失敗しても送信には影響させない（best-effort）。
 import { execFile } from "node:child_process";
+import { S } from "./settings.js";
 import { getSetting } from "./db.js";
 
 /** 直近に出した通知。同じ内容を何度も出さない（1時間に1回まで） */
 const lastSent = new Map<string, number>();
 
 export function notifyEnabled(): boolean {
-  return getSetting("notify_desktop", "1") === "1";
+  return getSetting(S.notifyDesktop, "1") === "1";
 }
 
 /** パソコンに通知を出す。key が同じ通知は1時間に1回だけ。 */

@@ -131,6 +131,20 @@ export function pickEmailSender(campaign: Campaign, primary?: SenderProfile): { 
   return null;
 }
 
+/** 時間帯の外にいるとき、次に送信が始まる時刻を言葉にする（#132）。「止まっている」と誤解されないように */
+export function nextWindowText(c: Pick<Campaign, "send_window_start" | "send_window_end" | "weekdays_only">): string {
+  const now = nowJst();
+  for (let add = 0; add < 8; add++) {
+    const d = new Date(now.getTime() + add * 86400_000);
+    const wd = d.getUTCDay();
+    if (c.weekdays_only && (wd === 0 || wd === 6)) continue;
+    if (add === 0 && now.getUTCHours() >= c.send_window_start) continue; // 今日の開始時刻は過ぎている
+    const label = add === 0 ? "今日" : add === 1 ? "明日" : `${d.getUTCMonth() + 1}/${d.getUTCDate()}（${"日月火水木金土"[wd]}）`;
+    return `次の送信は ${label} ${c.send_window_start}:00 に始まります`;
+  }
+  return "";
+}
+
 export function sentToday(campaignId: number, channel?: "form" | "email"): number {
   const d = nowJst().toISOString().slice(0, 10);
   const r = getDb()

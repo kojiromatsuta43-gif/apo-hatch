@@ -3,106 +3,10 @@ import { STATUS_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, channelMode, jst, type Camp
 import { AI_MODELS, type Lint } from "./message.js";
 import { TEMPLATE_LIBRARY } from "./templates.js";
 
-export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export type NavUser = { username: string; display_name: string; role: string; gameOn?: boolean; todo?: number } | null;
 
-export function layout(title: string, body: string, flash = "", user: NavUser = null, updateReady = false): string {
-  return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} | アポハッチくん</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Crect%20width%3D%2248%22%20height%3D%2248%22%20rx%3D%2210%22%20fill%3D%22%23FFF8E1%22%2F%3E%3Cpath%20d%3D%22M20%2015C18.5%2010%2016%208.5%2013.5%208%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222.2%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M28%2015C29.5%2010%2032%208.5%2034.5%208%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222.2%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2212.8%22%20cy%3D%227.4%22%20r%3D%222.4%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2235.2%22%20cy%3D%227.4%22%20r%3D%222.4%22%20fill%3D%22%231C1710%22%2F%3E%3Cellipse%20cx%3D%229.5%22%20cy%3D%2221%22%20rx%3D%227.6%22%20ry%3D%225.3%22%20fill%3D%22%23fff%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%221.6%22%20transform%3D%22rotate%28-24%209.5%2021%29%22%2F%3E%3Cellipse%20cx%3D%2238.5%22%20cy%3D%2221%22%20rx%3D%227.6%22%20ry%3D%225.3%22%20fill%3D%22%23fff%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%221.6%22%20transform%3D%22rotate%2824%2038.5%2021%29%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2214%22%20width%3D%2222%22%20height%3D%2229%22%20rx%3D%2211%22%20fill%3D%22%23FFC62E%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2228.5%22%20width%3D%2222%22%20height%3D%224.6%22%20fill%3D%22%231C1710%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2237%22%20width%3D%2222%22%20height%3D%224.6%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2219.6%22%20cy%3D%2222.5%22%20r%3D%222.3%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2228.4%22%20cy%3D%2222.5%22%20r%3D%222.3%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2220.4%22%20cy%3D%2221.7%22%20r%3D%22.8%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2229.2%22%20cy%3D%2221.7%22%20r%3D%22.8%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E">
-<style>
-:root{--honey:#FFC62E;--honey-50:#FFF8E1;--honey-100:#FFEDB3;--hive:#1C1710;--hive-600:#4A4237;--hive-200:#D9D4CC;--bg:#FAF8F3;--ok:#2E7D32;--ng:#C62828;--warn:#B26A00}
-*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;background:var(--bg);color:var(--hive);font-size:14px}
-header{background:var(--hive);color:#fff;padding:10px 20px;display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap}header a{color:#fff;text-decoration:none;white-space:nowrap}header .logo{background:var(--honey);color:var(--hive);font-weight:700;padding:4px 12px 4px 8px;border-radius:8px;display:inline-flex;align-items:center;gap:6px}header .logo .hatch{display:block;flex:none}header .brandsub{font-size:11px;letter-spacing:.06em;color:#C9C1B4;margin-left:-10px;align-self:center}header .who{margin-left:auto;color:#C9C1B4;font-size:12px}header a.sub{color:#C9C1B4;font-size:12px}header a.upd{background:var(--honey);color:var(--hive);font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px}
-main{max-width:1100px;margin:0 auto;padding:20px}h1{font-size:20px;margin:0 0 14px}h2{font-size:16px;margin:22px 0 8px}
-.card{background:#fff;border:1px solid var(--hive-200);border-radius:12px;padding:16px;margin-bottom:16px}
-label{display:block;font-weight:600;margin:10px 0 4px}input[type=text],input[type=number],input[type=url],input[type=email],textarea,select{width:100%;padding:8px;border:1px solid var(--hive-200);border-radius:8px;font:inherit}textarea{min-height:140px}
-.row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}.row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.btn{display:inline-block;background:var(--honey);color:var(--hive);border:0;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer;text-decoration:none;font:inherit}.btn.sub{background:#fff;border:1px solid var(--hive-200)}.btn.danger{background:#fff;border:1px solid var(--ng);color:var(--ng)}
-table{width:100%;border-collapse:collapse;background:#fff}th,td{border-bottom:1px solid var(--hive-200);padding:7px 8px;text-align:left;vertical-align:top}th{background:var(--honey-50);font-size:12px}
-.tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600;background:#eee}.tag.sent{background:#E8F5E9;color:var(--ok)}.tag.failed{background:#FFEBEE;color:var(--ng)}.tag.queued{background:var(--honey-100)}.tag.sending{background:#E3F2FD}.tag.skip{background:#F3E5F5;color:#6A1B9A}
-.stats{display:flex;gap:10px;flex-wrap:wrap}.stat{background:#fff;border:1px solid var(--hive-200);border-radius:10px;padding:10px 14px;min-width:110px}.stat b{display:block;font-size:22px}
-.flash{background:var(--honey-100);padding:10px 14px;border-radius:8px;margin-bottom:14px}.muted{color:var(--hive-600);font-size:12px}pre{white-space:pre-wrap;background:#faf7ef;padding:10px;border-radius:8px;font-size:12px}
-.inline{display:inline}.small{font-size:12px}
-.spin{display:inline-block;width:11px;height:11px;border:2px solid #90CAF9;border-top-color:#1565C0;border-radius:50%;animation:sp .9s linear infinite;vertical-align:-1px;margin-right:5px}@keyframes sp{to{transform:rotate(360deg)}}
-.bar{height:16px;background:var(--honey-50);border:1px solid var(--hive-200);border-radius:999px;overflow:hidden;margin:8px 0 4px;max-width:560px}.bar i{display:block;height:100%;background:var(--honey);border-radius:999px;transition:width .6s ease}
-tr.hl td{background:var(--honey-50)}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--honey)}
-.histbtn{background:none;border:1px solid var(--hive-200);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--hive-600);cursor:pointer;margin-top:3px}
-tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
-.card.testcard{background:var(--honey-50);border-color:var(--honey)}
-.errkind{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;background:#FFF3E0;color:#B26A00;margin-right:4px;white-space:nowrap}
-#fo-chara{position:fixed;right:18px;bottom:16px;display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:999px;background:transparent;transition:background .35s;pointer-events:none;z-index:50}
-#fo-chara.hopper-mode{background:#8BC34A;box-shadow:0 3px 10px rgba(0,0,0,.18)}
-#fo-chara .icon{position:relative;width:52px;height:52px;flex:none}
-#fo-chara svg{position:absolute;inset:0;width:100%;height:100%;opacity:0;transition:opacity .25s}
-#fo-chara .on{opacity:1}
-#fo-chara .bee.on{animation:fo-buzz 1.1s ease-in-out infinite}
-#fo-chara .hopper.on{animation:fo-hop 1.6s ease-in-out infinite}
-#fo-chara .name{font-weight:700;color:#1C1710;font-size:13px;white-space:nowrap;max-width:0;overflow:hidden;opacity:0;transition:max-width .35s,opacity .35s}
-#fo-chara.hopper-mode .name{max-width:120px;opacity:1}
-#fo-chara.morph .icon{animation:fo-morph .6s ease}
-@keyframes fo-buzz{0%,100%{transform:translateY(0) rotate(-3deg)}25%{transform:translateY(-5px) rotate(2deg)}50%{transform:translateY(-2px) rotate(-2deg)}75%{transform:translateY(-6px) rotate(3deg)}}
-@keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
-@keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
-</style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a>${user.todo ? `<a href="/todo" style="background:#C62828;color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px" title="自動で送れなかった会社。1画面で対応できます">要対応 ${user.todo}</a>` : `<a href="/todo">要対応</a>`}<a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/health">動作チェック</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
-<main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
-<script>
-// 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
-document.addEventListener("submit", (e) => {
-  const f = e.target;
-  if (!(f instanceof HTMLFormElement) || !f.hasAttribute("data-busy")) return;
-  const btn = f.querySelector('button[type=submit], button:not([type])');
-  if (btn) {
-    if (btn.dataset.clicked === "1") { e.preventDefault(); return; }
-    btn.dataset.clicked = "1"; btn.disabled = true;
-    btn.dataset.label = btn.innerHTML;
-    btn.innerHTML = '<span class="spin"></span>' + (btn.dataset.busytext || "処理中…");
-  }
-}, true);
-</script>
-<script>
-// 入力途中の自動保存（data-draft を付けたフォーム: 送信者・キャンペーン）。
-// ご利用ガイドなど別の画面と行き来しても、書きかけの内容が消えないようにする。このブラウザの中だけに保存（パスワード・ファイルは保存しない）。
-// 保存ボタンを押した時点で消す（保存後に戻る画面にも同じフォームがあり、保存済みの内容を「復元」と出すと二重登録につながるため）。
-(()=>{const P="fo-draft:";
-const fields=f=>Array.from(f.elements).filter(e=>e.name&&!/^(password|file|hidden|submit|button|reset)$/.test(e.type));
-const snap=f=>{const o={};fields(f).forEach(e=>{if(e.type==="checkbox"||e.type==="radio"){(o[e.name]=o[e.name]||{})[e.value]=e.checked}else o[e.name]=e.value});return o};
-const put=(f,o)=>fields(f).forEach(e=>{const v=o[e.name];if(v===undefined)return;if(e.type==="checkbox"||e.type==="radio"){if(v&&typeof v==="object"&&e.value in v)e.checked=v[e.value]}else if(typeof v==="string")e.value=v;e.dispatchEvent(new Event("change",{bubbles:true}))});
-try{
-for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(!k||k.indexOf(P)!==0)continue;let d={};try{d=JSON.parse(localStorage.getItem(k)||"{}")}catch(e){}
-if(Date.now()-(d.at||0)>30*864e5)localStorage.removeItem(k);}}catch(e){}
-document.querySelectorAll("form[data-draft]").forEach(f=>{const key=P+f.dataset.draft;const orig=snap(f);let d=null;
-try{d=JSON.parse(localStorage.getItem(key)||"null")}catch(e){}
-let restoring=false;
-if(d&&d.values&&JSON.stringify(d.values)!==JSON.stringify(orig)){restoring=true;put(f,d.values);restoring=false;
-const bar=document.createElement("div");bar.className="flash";bar.style.margin="0 0 12px";
-bar.innerHTML='✎ 前回の入力途中の内容を復元しました（'+new Date(d.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})+'）。まだ保存はされていません。 <button type="button" class="btn sub small">復元をやめて元に戻す</button>';
-bar.querySelector("button").onclick=()=>{restoring=true;put(f,orig);restoring=false;try{localStorage.removeItem(key)}catch(e){}bar.remove()};f.prepend(bar);}
-let t;const save=()=>{if(restoring)return;clearTimeout(t);t=setTimeout(()=>{try{const v=snap(f);if(JSON.stringify(v)===JSON.stringify(orig))localStorage.removeItem(key);else localStorage.setItem(key,JSON.stringify({at:Date.now(),values:v}))}catch(e){}},300)};
-f.addEventListener("input",save);f.addEventListener("change",save);
-f.addEventListener("submit",()=>{clearTimeout(t);try{localStorage.removeItem(key)}catch(e){}});
-});})();
-</script>
-<div id="fo-chara" aria-hidden="true">
-<div class="icon">
-<svg class="bee on" viewBox="0 0 48 48"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/><circle cx="16.8" cy="24.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="24.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 25.8Q24 27.6 26.5 25.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
-<svg class="hopper" viewBox="0 0 48 48"><path d="M20 12C18 7.5 15.5 6 13 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 12C30 7.5 32.5 6 35 5.5" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.4" cy="5" r="2.2" fill="#1C1710"/><circle cx="35.6" cy="5" r="2.2" fill="#1C1710"/><path d="M12 22L6 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M36 22L42 15" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><path d="M10 20 14 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M38 20 34 26" stroke="#7CB342" stroke-width="4" stroke-linecap="round"/><path d="M12 32L7 40M36 32L41 40" stroke="#1C1710" stroke-width="3" stroke-linecap="round"/><rect x="13" y="12" width="22" height="30" rx="11" fill="#9CCC65" stroke="#1C1710" stroke-width="2"/><rect x="13" y="28" width="22" height="4" fill="#7CB342"/><rect x="13" y="35" width="22" height="4" fill="#7CB342"/><circle cx="19.6" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="20.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="19.7" r=".8" fill="#fff"/><circle cx="29.2" cy="19.7" r=".8" fill="#fff"/><circle cx="16.8" cy="23.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="23.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 24.8Q24 26.6 26.5 24.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
-</div>
-<span class="name">アポバッタくん</span>
-</div>
-<script>
-// 蜂とバッタを10秒ごとに交互に変身させる（送信の進捗とは無関係の演出）。
-// バッタのときだけ緑の背景と「アポバッタくん」の名前を表示する。
-(()=>{const box=document.getElementById("fo-chara");if(!box)return;
-const bee=box.querySelector(".bee"),hop=box.querySelector(".hopper");
-const t=setInterval(()=>{box.classList.remove("morph");void box.offsetWidth;box.classList.add("morph");
-setTimeout(()=>{const toHopper=!hop.classList.contains("on");bee.classList.toggle("on");hop.classList.toggle("on");box.classList.toggle("hopper-mode",toHopper);},240);},10000);
-addEventListener("pagehide",()=>clearInterval(t),{once:true});})();
-</script>
-</body></html>`;
-}
+import { esc, layout, n, type NavUser } from "./ui/layout.js";
+export { esc, layout, n, type NavUser };
 
 export function statusTag(s: JobStatus) {
   const cls = s === "sent" ? "sent" : s === "failed" ? "failed" : s === "queued" ? "queued" : s === "sending" ? "sending" : "skip";
@@ -146,7 +50,17 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-/** ホーム上部の「今日やることが分かる1画面」（#49）。数字が複数の画面に散っていたのをまとめる */
+// ---- 表示用の日本語（#102）。内部の値（paused / template など）をそのまま画面に出さない ----
+export const CAMPAIGN_STATUS_LABEL: Record<string, string> = { draft: "準備中", running: "送信中", paused: "一時停止", done: "完了" };
+export const MODE_LABEL: Record<string, string> = { template: "テンプレート", ai: "全文AI", hybrid: "冒頭だけAI", tpl_ai: "テンプレート＋AI回答" };
+export function campaignStatusTag(status: string, running = false): string {
+  const cls = running || status === "running" ? "sending" : status === "done" ? "sent" : status === "paused" ? "queued" : "skip";
+  return `<span class="tag ${cls}">${esc(running ? "送信中" : CAMPAIGN_STATUS_LABEL[status] ?? status)}</span>`;
+}
+/** 色の意味の凡例（#111）。どの画面でも同じ意味で使う */
+export const STATUS_LEGEND = `<div class="legend"><span><i style="background:var(--c-ok)"></i>送れた</span><span><i style="background:var(--c-ng)"></i>手が必要</span><span><i style="background:#D9A400"></i>待ち</span><span><i style="background:var(--c-info)"></i>進行中</span><span><i style="background:#9A958C"></i>対象外</span></div>`;
+
+/** ホーム上部の「今日やることが分かる1画面」（#49 #108 #132 #137） */
 export type HomeSummary = {
   todayForm: number; todayEmail: number; monthForm: number; monthEmail: number;
   appointments: number; replies: number; declines: number;
@@ -154,79 +68,93 @@ export type HomeSummary = {
   todo: number; todoCaptcha: number;
   emailPaused: { label: string; until: number; reason: string }[];
   senders: number; campaigns: number;
+  capForm: number; capEmail: number;   // 今日送れる上限（開始中のキャンペーンの合計）
+  nextStart: string;                   // 時間帯外のとき、次に始まる時刻
+  setupDone: number; setupTotal: number;
+  newAppointments: { id: number; company: string; at: string }[]; // 直近3日のアポ
 };
 
 function homeCard(h: HomeSummary): string {
-  const stat = (label: string, value: string, sub = "", href = "") => {
-    const inner = `<div class="stat" style="min-width:132px"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ""}</div>`;
+  const stat = (label: string, value: string, sub = "", href = "", color = "") => {
+    const inner = `<div class="stat" style="min-width:140px"><span class="muted" data-nohelp>${label}</span><b${color ? ` style="color:${color}"` : ""}>${value}</b>${sub ? `<span class="muted" data-nohelp>${sub}</span>` : ""}</div>`;
     return href ? `<a href="${href}" style="text-decoration:none;color:inherit">${inner}</a>` : inner;
   };
   // いま一番やるべきことを1つだけ出す（最初の人が迷わないように）
-  const next = !h.senders ? { t: "はじめの設定（6ステップ）から始めましょう。送信者の登録 → メール設定 → リスト取り込み の順に案内します", b: "はじめの設定を開く", href: "/setup" }
+  const next = !h.senders ? { t: "はじめの設定（6ステップ）から始めましょう", b: "はじめの設定を開く", href: "/setup" }
     : !h.campaigns ? { t: "キャンペーンを作って、会社リストを取り込みましょう", b: "はじめの設定を開く", href: "/setup" }
-    : h.todo > 0 ? { t: `自動で送れなかった会社が ${h.todo}件あります。1画面で対応できます`, b: "要対応を見る", href: "/todo" }
-    : h.queued > 0 && !h.runningNames.length ? { t: `送信待ちが ${h.queued}件あります。開始すると送信時間帯に自動で送ります`, b: "キャンペーンを開く", href: "#list" }
+    : h.newAppointments.length ? { t: `アポ・前向きな返信が ${h.newAppointments.length}件あります: ${h.newAppointments.map((a) => a.company).join("、")}`, b: "内容を見る", href: `/jobs/${h.newAppointments[0].id}` }
+    : h.queued > 0 && !h.runningNames.length ? { t: `送信待ちが ${n(h.queued)}社あります。開始すると送信時間帯に自動で送ります`, b: "キャンペーンを開く", href: "/campaigns" }
+    : h.todo > 0 ? { t: `自動で送れなかった会社が ${n(h.todo)}社あります。まず「今日やる10件」から`, b: "要対応を見る", href: "/todo" }
     : h.runningNames.length ? { t: `送信中: ${h.runningNames.join("、")}`, b: "", href: "" }
     : { t: "いまやることはありません。お疲れさまでした", b: "", href: "" };
-  return `<div class="card" style="background:linear-gradient(180deg,var(--honey-50),#fff)">
+  const sentToday = h.todayForm + h.todayEmail;
+  const cap = h.capForm + h.capEmail;
+  const pct = cap ? Math.min(100, Math.round((sentToday / cap) * 100)) : 0;
+  return `<div class="card">
+  <p style="margin:0 0 14px;font-size:17px"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn primary small" href="${next.href}" style="margin-left:8px">${esc(next.b)}</a>` : ""}</p>
+  ${cap ? `<div style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;max-width:620px" class="small"><span><b>今日の進み具合</b>　${n(sentToday)} / ${n(cap)}件</span><span class="muted" data-nohelp>${pct}%</span></div>
+  <div class="bar"><i style="width:${pct}%"></i></div>
+  <div class="muted" data-nohelp>${h.windowOk ? (h.runningNames.length ? "送信中です" : "送信できる時間帯です") : `いまは送信時間帯の外です。${esc(h.nextStart)}`}</div></div>`
+    : h.windowOk ? "" : `<p class="muted" data-nohelp style="margin:0 0 14px">いまは送信時間帯の外です。${esc(h.nextStart)}</p>`}
   <div class="stats">
-    ${stat("今日の送信", String(h.todayForm + h.todayEmail), `フォーム${h.todayForm}・メール${h.todayEmail}`, "/stats")}
-    ${stat("今月の送信", String(h.monthForm + h.monthEmail), `フォーム${h.monthForm}・メール${h.monthEmail}`, "/stats?mode=month")}
-    ${stat("アポ", String(h.appointments), `断り${h.declines}・返信${h.replies}`)}
-    ${stat("送信待ち", String(h.queued), h.runningNames.length ? "送信中" : h.windowOk ? "送信できる時間帯" : "時間帯外", "#list")}
-    ${h.todo ? stat("要対応", String(h.todo), h.todoCaptcha ? `うち画像認証 ${h.todoCaptcha}` : "", "/todo") : ""}
+    ${stat("今日の送信", n(sentToday), `フォーム${n(h.todayForm)}・メール${n(h.todayEmail)}`, "/stats")}
+    ${stat("今月の送信", n(h.monthForm + h.monthEmail), `フォーム${n(h.monthForm)}・メール${n(h.monthEmail)}`, "/stats?mode=month")}
+    ${stat("アポ", n(h.appointments), `返信${n(h.replies)}・断り${n(h.declines)}`, "/stats#analysis", h.appointments ? "var(--c-ok)" : "")}
+    ${stat("送信待ち", n(h.queued), "社", "/campaigns")}
+    ${stat("要対応", n(h.todo), h.todoCaptcha ? `うち画像認証 ${n(h.todoCaptcha)}` : "社", "/todo", h.todo ? "var(--c-ng)" : "")}
   </div>
-  <p style="margin:12px 0 0"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn small" href="${next.href}">${esc(next.b)}</a>` : ""}</p>
-  ${h.emailPaused.length ? `<p class="small" style="margin:8px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${h.emailPaused.map((p) => `${esc(p.label)}（${esc(p.reason.slice(0, 60))}／${new Date(p.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}に再開）`).join("、")}</p>` : ""}
-  ${h.windowOk ? "" : `<p class="small muted" style="margin:6px 0 0">いまは送信時間帯の外です（${esc(h.windowText)}）。時間になると自動で送り始めます。</p>`}
+  ${h.emailPaused.length ? `<p class="small" style="margin:12px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${h.emailPaused.map((p) => `${esc(p.label)}（${esc(p.reason.slice(0, 60))}／${new Date(p.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}に再開）`).join("、")}</p>` : ""}
+  ${h.setupDone < h.setupTotal ? `<p class="small" style="margin:12px 0 0">はじめの設定: <b>${h.setupDone} / ${h.setupTotal}</b> 完了　<a href="/setup">続きを進める</a></p>` : ""}
 </div>`;
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, senders: { id: number; label: string; company: string; person: string }[] = [], home?: HomeSummary) {
-  // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
+type CampaignRow = Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null; is_running?: boolean };
+
+/** キャンペーンの一覧。home を渡すとホーム画面（上にまとめを出す）、渡さなければ一覧だけ */
+export function campaignListView(rows: CampaignRow[], provider: string, senders: { id: number; label: string; company: string; person: string }[] = [], home?: HomeSummary) {
+  // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
     const t = Date.parse(String(ts).replace(" ", "T") + "Z"); // DBは世界標準時
     if (Number.isNaN(t)) return "";
-    // カレンダー日（時刻を切り捨て）で比べる。夕方に送って翌朝見ても「昨日」と出るように
     const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const days = Math.round((startOf(new Date()) - startOf(new Date(t))) / 86400000);
-    if (days <= 0) return "今日";
-    if (days === 1) return "昨日";
-    return `${days}日前`;
+    return days <= 0 ? "今日" : days === 1 ? "昨日" : `${days}日前`;
   };
-  return `<h1>ホーム</h1>
-${home ? homeCard(home) : ""}
-<h2 id="list">キャンペーン</h2>
-<p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
-<p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
-<p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
-${senders.length ? `<details class="card" style="padding:12px 16px;margin:0 0 14px"><summary style="cursor:pointer"><b>キャンペーンの設定を読み込む</b> <span class="muted small">（別のPCのアポハッチくんで書き出したファイル）</span></summary>
-<p class="muted small" style="margin:8px 0">キャンペーン画面の「設定をファイルに書き出す」で作った .json を選ぶと、<b>同じ文面・設定のキャンペーン</b>が作られます（会社リスト・送信履歴・送信者は含まれません）。</p>
+  const list = rows.length ? `<table class="resp">
+<tr><th>キャンペーン</th><th style="width:110px">状態</th><th style="width:220px">進み具合</th><th style="width:90px">待機</th><th style="width:110px">反応</th><th style="width:130px">最後に送った日</th><th style="width:200px"></th></tr>
+${rows.map((c) => {
+    const pct = c.total ? Math.round((c.sent / c.total) * 100) : 0;
+    return `<tr><td><a href="/campaigns/${c.id}"><b>${esc(c.name)}</b></a><div class="muted" data-nohelp>${esc(c.sender_label)}・${esc(MODE_LABEL[c.mode] ?? c.mode)}${c.group_name ? `・グループ: ${esc(c.group_name)}` : ""}</div></td>
+<td>${campaignStatusTag(c.status, c.is_running)}</td>
+<td><div class="bar" style="margin:4px 0"><i style="width:${pct}%"></i></div><span class="small">${n(c.sent)} / ${n(c.total)}社 送信済み</span></td>
+<td>${n(c.queued)}<span class="muted" data-nohelp>社</span></td>
+<td class="small">${c.sent ? `${n(c.reactions)}件<br><span class="muted" data-nohelp>${((c.reactions / c.sent) * 100).toFixed(1)}%</span>` : "—"}</td>
+<td class="small">${c.last_sent ? `${esc(jst(c.last_sent).slice(5))}<br><span class="muted" data-nohelp>${sinceLabel(c.last_sent)}</span>` : "—"}</td>
+<td style="white-space:nowrap"><a class="btn small" href="/campaigns/${c.id}">開く</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn small">複製</button></form></td></tr>`;
+  }).join("")}
+</table>
+<div class="cards">${rows.map((c) => `<div class="c"><h3><a href="/campaigns/${c.id}">${esc(c.name)}</a></h3>${campaignStatusTag(c.status, c.is_running)}
+<div class="small" style="margin-top:6px">送信済み ${n(c.sent)} / ${n(c.total)}社・待機 ${n(c.queued)}社・反応 ${n(c.reactions)}件</div>
+<div class="acts"><a class="btn small" href="/campaigns/${c.id}">開く</a></div></div>`).join("")}</div>`
+    : `<div class="card"><p>まだキャンペーンがありません。</p><p><a class="btn primary" href="/setup">はじめの設定を開く</a> <a class="btn" href="/campaigns/new">キャンペーンを作る</a></p></div>`;
+
+  const importBox = senders.length && !home ? `<details class="card" style="padding:12px 16px;margin:14px 0 0"><summary style="cursor:pointer"><b>別のPCで書き出した設定ファイルから作る</b></summary>
+<p class="muted" style="margin:8px 0">キャンペーン画面の「設定をファイルに書き出す」で作った .json を選ぶと、同じ文面・設定のキャンペーンが作られます（会社リスト・送信履歴・送信者は含まれません）。</p>
 <form method="post" action="/campaigns/import" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
 <input type="file" name="file" accept=".json,application/json" required style="max-width:320px">
 <label class="inline small">送信者: <select name="sender_id" style="width:auto">${senders.map((s) => `<option value="${s.id}">${esc(s.label)}（${esc(s.company)} ${esc(s.person)}）</option>`).join("")}</select></label>
-<button class="btn sub small">読み込む</button></form></details>` : ""}
-${(() => {
-    // 全キャンペーン横断のサマリー。rows から集計するだけなので、この即時関数を消せば丸ごと外せる
-    if (rows.length === 0) return "";
-    const totSent = rows.reduce((a, c) => a + c.sent, 0);
-    const totReact = rows.reduce((a, c) => a + c.reactions, 0);
-    const totQueued = rows.reduce((a, c) => a + c.queued, 0);
-    const inProgress = rows.filter((c) => c.queued > 0).length;
-    const rate = totSent ? ((totReact / totSent) * 100).toFixed(1) : "0.0";
-    return `<div class="stats"><div class="stat">キャンペーン<b>${rows.length}<span style="font-size:12px;font-weight:400">件</span></b>${inProgress ? `<span class="muted small">未送信あり ${inProgress}</span>` : ""}</div><div class="stat">送信済<b style="color:var(--ok)">${totSent}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">待機<b>${totQueued}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">反応<b>${totReact}</b><span class="muted small">全体 ${rate}%</span></div></div>`;
-  })()}
-${rows.length === 0 ? `<div class="card" style="background:var(--honey-50)"><h2 style="margin-top:0">はじめての方へ（3ステップ）</h2>
-<ol style="margin:0;padding-left:1.2em;line-height:1.9">
-<li><b>送信者</b>を登録（会社名・担当者・メール・電話）→ <a href="/senders">送信者ページ</a></li>
-<li><b>新しいキャンペーン</b>を作成（送り方・文面を設定）→ <a href="/campaigns/new">作成する</a></li>
-<li>会社リスト（CSV / Excel / スプレッドシート）を<b>取り込み</b>、テスト送信で確認してから開始</li>
-</ol>
-<p class="muted small">まずは送信者の登録からどうぞ。詳しい手順は <a href="/guide">ご利用ガイド</a> にまとめています。</p></div>` : `
-<table><tr><th>ID</th><th>名前</th><th>送信者</th><th>モード</th><th>状態</th><th>件数</th><th>送信済</th><th>待機</th><th>反応率</th><th>最終送信</th><th></th></tr>
-${rows.map((c) => `<tr><td>${c.id}</td><td><a href="/campaigns/${c.id}">${esc(c.name)}</a>${c.group_name ? `<br><span class="tag">グループ: ${esc(c.group_name)}</span>` : ""}</td><td>${esc(c.sender_label)}</td><td>${c.mode}</td><td>${c.status}</td><td>${c.total}</td><td>${c.sent}</td><td>${c.queued}</td><td class="small">${c.sent ? `${((c.reactions / c.sent) * 100).toFixed(1)}%<br><span class="muted">${c.reactions}/${c.sent}</span>` : "-"}</td><td class="small muted">${c.last_sent ? `${esc(jst(c.last_sent))}<br><span style="opacity:.8">${sinceLabel(c.last_sent)}</span>` : "-"}</td><td><a class="btn sub small" href="/campaigns/${c.id}">開く</a> <a class="btn sub small" href="/campaigns/${c.id}/edit">編集</a> <form method="post" action="/campaigns/${c.id}/duplicate" class="inline"><button class="btn sub small">複製</button></form> <form method="post" action="/campaigns/${c.id}/delete" class="inline" data-n="${esc(c.name)}" onsubmit="return confirm('キャンペーン「' + this.dataset.n + '」を削除します。\\n取り込んだ会社 ${c.total} 件・送信済み ${c.sent} 件の記録もすべて消え、元に戻せません。${c.sent ? "\\n送信済みの会社への再送防止も効かなくなります。" : ""}\\nよろしいですか？')"><button class="btn sub small" style="color:var(--ng)">削除</button></form></td></tr>`).join("")}
-</table>`}`;
+<button class="btn small">読み込む</button></form></details>` : "";
+
+  if (home) {
+    return `<h1>ホーム</h1>
+${homeCard(home)}
+${rows.length ? `<h2 id="list" style="display:flex;justify-content:space-between;align-items:center">キャンペーン <a class="btn small" href="/campaigns/new">＋ 新しいキャンペーン</a></h2>${list}` : ""}`;
+  }
+  return `<h1 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">キャンペーン <a class="btn primary" href="/campaigns/new">＋ 新しいキャンペーン</a></h1>
+<p class="muted">キャンペーン＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。AI: ${esc(provider === "none" ? "未設定（テンプレートのみで動きます）" : provider)}</p>
+${list}
+${importBox}`;
 }
 
 export function senderForm(s?: Partial<SenderProfile>) {
@@ -250,14 +178,43 @@ export function senderForm(s?: Partial<SenderProfile>) {
 <p class="muted small" style="margin:6px 0 0"><b>SMTPホストとは：</b>メールを送り出すサーバーのアドレスです。プロバイダごとに決まっています。<br>
 例）Gmail・Google Workspace＝<code>smtp.gmail.com</code>／Outlook・Microsoft365＝<code>smtp.office365.com</code>／Yahoo!メール＝<code>smtp.mail.yahoo.co.jp</code>／iCloud＝<code>smtp.mail.me.com</code><br>
 <b>確認方法：</b>お使いのメールの設定画面で「送信サーバー（SMTP）」の欄を見るか、「（プロバイダ名） SMTP 設定」で検索してください。分からなければ、送信専用に無料のGmailを1つ作るのが一番かんたんです（その場合はこの欄は変更不要）。</p></details>
-<p><button class="btn">保存</button>${s?.id ? ` <button class="btn sub" formaction="/senders/${s.id}/test" formmethod="post">メール設定を確認</button>` : ""}</p></form>`;
+<p><button class="btn primary">保存</button>${s?.id ? ` <button class="btn sub" formaction="/senders/${s.id}/test" formmethod="post">メール設定を確認</button>` : ""}</p></form>`;
 }
 
-export function sendersView(list: SenderProfile[], usage: Record<number, number> = {}) {
-  return `<h1>送信者プロフィール</h1><p class="muted">フォームに入力される「差出人」です。クライアントの送信はクライアント自身の名義で行います。</p>
-<table><tr><th>ID</th><th>ラベル</th><th>会社</th><th>担当者</th><th>メール</th><th>メール送信</th><th>利用中</th><th></th></tr>
-${list.map((s) => `<tr><td>${s.id}</td><td>${esc(s.label)}</td><td>${esc(s.company)}</td><td>${esc(s.person)}</td><td>${esc(s.email)}</td><td class="small">${s.smtp_user && s.smtp_pass ? `Gmail等（${esc(s.smtp_user)}）` : "未設定（フォームのみ）"}</td><td class="small">${usage[s.id] ? `${usage[s.id]} キャンペーン` : '<span class="muted">未使用</span>'}</td><td><a class="btn sub small" href="/senders/${s.id}">編集</a></td></tr>`).join("")}
-</table><h2>新規追加</h2><div class="card">${senderForm()}</div>`;
+/** 送信者の一覧（#106 #130）。設定の足りないところを赤い札で出し、その場で編集できる。
+ *  以前は「未設定」が薄い文字で、編集は別ページ、新規追加は一覧の下にあった */
+export type SenderExtra = { sentToday: number; limit: number; note: string; paused: string };
+export function sendersView(list: SenderProfile[], usage: Record<number, number> = {}, extra: Record<number, SenderExtra> = {}, openId = 0) {
+  const issues = (s: SenderProfile): string[] => {
+    const out: string[] = [];
+    if (!s.address?.trim()) out.push("住所が未登録（メールを送れません）");
+    if (!s.smtp_user || !s.smtp_pass) out.push("送信用メールが未設定");
+    if (!s.tel?.trim()) out.push("電話が未登録（フォームで弾かれやすい）");
+    return out;
+  };
+  return `<h1 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">送信者 <a class="btn primary" href="#new" onclick="document.getElementById('newsender').open=true">＋ 送信者を追加</a></h1>
+<p class="muted" data-nohelp>相手に表示される「差出人」です。会社名・担当者・住所と、メールで送る場合は送信用メールを登録します。</p>
+${list.length ? list.map((s) => {
+    const iss = issues(s);
+    const ex = extra[s.id];
+    const mailOk = Boolean(s.smtp_user && s.smtp_pass);
+    return `<details class="card" style="padding:0" ${openId === s.id ? "open" : ""}>
+<summary style="cursor:pointer;padding:16px 18px;display:flex;gap:10px 18px;align-items:center;flex-wrap:wrap;list-style:none">
+  <span style="min-width:200px"><b>${esc(s.label || s.company)}</b><br><span class="muted" data-nohelp>${esc(s.company)} ${esc(s.person)}</span></span>
+  <span class="small" style="min-width:210px">${mailOk ? `✉ ${esc(s.smtp_user)}` : "📝 フォーム送信のみ"}</span>
+  <span>${iss.length ? iss.map((i) => `<span class="tag failed" style="margin:2px 4px 2px 0">${esc(i)}</span>`).join("") : `<span class="tag sent">設定OK</span>`}${ex?.paused ? ` <span class="tag failed">メール一時停止中</span>` : ""}</span>
+  ${mailOk && ex ? `<span class="small" style="margin-left:auto;text-align:right">今日のメール <b>${n(ex.sentToday)} / ${n(ex.limit)}通</b>${ex.note ? `<br><span class="muted" data-nohelp>${esc(ex.note)}</span>` : ""}</span>` : `<span style="margin-left:auto"></span>`}
+  <span class="btn small">編集</span>
+</summary>
+<div style="padding:0 18px 18px;border-top:1px solid var(--c-line)">
+${ex?.paused ? `<p class="small" style="color:var(--ng)">⚠ ${esc(ex.paused)}</p>` : ""}
+<p class="muted" data-nohelp>利用中のキャンペーン: ${usage[s.id] ?? 0}件</p>
+${senderForm(s)}
+${mailOk ? `<form method="post" action="/senders/${s.id}/test" class="inline" data-busy data-busytext="接続を確認中…"><button class="btn small">メールの接続をテストする</button></form>` : ""}
+</div></details>`;
+  }).join("") : `<div class="card"><p>まだ送信者がありません。下のフォームから登録してください。</p></div>`}
+<details class="card" id="newsender" ${list.length ? "" : "open"}><summary style="cursor:pointer;font-weight:700" id="new">＋ 新しい送信者を追加する</summary>
+<div style="margin-top:12px">${senderForm()}</div></details>`;
 }
 
 export function campaignForm(senders: SenderProfile[], defaults: Partial<Campaign>, provider: string, editId?: number, groups: string[] = [], others: { id: number; name: string; group_name: string }[] = []) {
@@ -452,7 +409,7 @@ ${list.map((r) => {
 <label>③ または Google スプレッドシートのURL</label>
 <input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…">
 <p class="muted small">URLで取り込むには、スプレッドシートの共有を「リンクを知っている全員（閲覧可）」にしてください。</p>
-<p><button class="btn">取り込む</button> <a class="btn sub small" href="/template.csv">見本のCSVをダウンロード</a> <a class="small" href="/guide#step-list" target="_blank" rel="noopener">フォーム無し・失敗を減らすには？（AIでリストを整えるプロンプト）</a></p></form>
+<p><button class="btn primary">取り込む</button> <a class="btn sub small" href="/template.csv">見本のCSVをダウンロード</a> <a class="small" href="/guide#step-list" target="_blank" rel="noopener">フォーム無し・失敗を減らすには？（AIでリストを整えるプロンプト）</a></p></form>
 ${extra.lastImport ? importReport(extra.lastImport) : ""}
 ${(() => {
     // 取り込み履歴。間違えて取り込んだ分を、取り込み1回ぶん丸ごと消せる（一覧は200件までなので、選択削除では消しきれない）
@@ -639,7 +596,7 @@ export function importPreviewView(c: Campaign & { sender: SenderProfile }, rows:
 <p>読み込んだ行数: <b>${rows.length}</b>件　→　登録予定: <b style="color:var(--ok)">${willSend}</b>件（フォーム${summary.addedForm}・メール${summary.addedEmail}）／ 送らない: <b>${willSkip}</b>件</p>
 <p class="muted small">送らない内訳: 除外/官公庁 ${summary.excluded} ・ 除外リスト ${summary.suppressed} ・ 重複/再送禁止 ${summary.duplicated} ・ 送信先なし ${summary.noUrl}</p>
 ${summary.noEntity && summary.noEntity.length ? `<p class="small" style="color:var(--warn)">⚠ 「株式会社」などの法人格が無い社名 <b>${summary.noEntity.length}</b>社：${esc(summary.noEntity.slice(0, 12).join("、"))}${summary.noEntity.length > 12 ? " ほか" : ""}<br><span class="muted">事前チェックのときに各社のHPの表記（フッター・会社概要）から正式名称を自動で補います（AI不要・無料）。HPで確認できなかった社は、取り込み後に社名をご確認ください。</span></p>` : ""}
-<form method="post" action="/campaigns/${c.id}/import-confirm" class="inline" data-busy><button class="btn" data-busytext="取り込み中…">この内容で取り込む（${rows.length}行）</button></form>
+<form method="post" action="/campaigns/${c.id}/import-confirm" class="inline" data-busy><button class="btn primary" data-busytext="取り込み中…">この内容で取り込む（${rows.length}行）</button></form>
 <form method="post" action="/campaigns/${c.id}/import-cancel" class="inline"><button class="btn sub">やめる</button></form>
 </div>
 <h2>先頭 ${sample.length} 行の読み取り結果（列がずれていないか確認してください）</h2>
@@ -697,7 +654,7 @@ ${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_cap
 <form method="post" action="/jobs/${j.id}/fix" data-busy>
 <div class="row"><div><label>フォームURL</label><input type="url" name="form_url" value="${esc(j.form_url)}"></div><div><label>企業URL</label><input type="url" name="site_url" value="${esc(j.site_url)}"></div></div>
 <div class="row"><div><label>会社名</label><input type="text" name="company_name" value="${esc(j.company_name)}"></div><div><label>メール（メール送信に切り替える場合）</label><input type="email" name="email" value="${esc(j.email)}"></div></div>
-<p><button class="btn">修正して再送信</button> <button class="btn sub" name="via" value="email" formnovalidate>メールで送信</button> <span class="muted small">「メールで送信」は、フォームをあきらめて上のメール宛てに送ります。送信には10〜30秒かかります</span></p></form></div>` : ""}
+<p><button class="btn primary">修正して再送信</button> <button class="btn sub" name="via" value="email" formnovalidate>メールで送信</button> <span class="muted small">「メールで送信」は、フォームをあきらめて上のメール宛てに送ります。送信には10〜30秒かかります</span></p></form></div>` : ""}
 <form method="post" action="/suppressions" class="inline"><input type="hidden" name="domain" value="${esc(j.domain)}"><input type="hidden" name="reason" value="手動（${esc(j.company_name)}）"><button class="btn danger">このドメインを除外</button></form>
 ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jobs/${j.id}/outcome"><p>${[["replied", "返信あり"], ["appointment", "アポ獲得"], ["declined", "断り・不要（今後送らない）"], ["", "取り消し"]].map(([k, l]) => `<button class="btn ${j.outcome === k && k ? "" : "sub"} small" name="outcome" value="${k}">${l}</button>`).join(" ")}</p><input type="text" name="note" value="${esc(j.outcome_note)}" placeholder="メモ（返信内容・次のアクション）"></form>` : ""}
 <h2>送った文面</h2><pre>${esc(j.message_used)}</pre></div>
@@ -796,7 +753,7 @@ ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.
 <textarea name="pasted" style="min-height:120px" placeholder="example.co.jp&#10;https://www.sample.jp/&#10;info@test.co.jp&#10;株式会社○○	https://maru.co.jp"></textarea>
 <div class="row"><div><label>② または Google スプレッドシートのURL</label><input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…"><p class="muted small">共有を「リンクを知っている全員（閲覧可）」にしてください。</p></div><div><label>③ または CSVファイル</label><input type="file" name="csv" accept=".csv,text/csv"></div></div>
 <label>理由（理由の列が無い行に付けます）</label><input type="text" name="reason" placeholder="取引先のため送信対象外">
-<p><button class="btn">取り込む</button></p></form>
+<p><button class="btn primary">取り込む</button></p></form>
 <p class="muted small">除外リストはPCごとに独立しています。別のメンバーと共有したいときは、下のボタンでCSVに書き出し、相手はこの「CSVでまとめて追加」から取り込めます（列はそのまま合います）。</p>
 ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リストをCSVで書き出す</a>' : ""}</div>
 
@@ -805,7 +762,7 @@ ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リス
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true, aiBudget?: { usage: import("./message.js").AiUsage; limit: number }, license?: { status: import("./license.js").LicenseStatus; key: string; enforce: boolean }) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true, aiBudget?: { usage: import("./message.js").AiUsage; limit: number }, license?: { status: import("./license.js").LicenseStatus; key: string; enforce: boolean }, opts?: { effects: boolean; notifyReply: boolean; dailySummary: boolean }) {
   // ライセンス（#90）
   const licenseCard = license ? `<div class="card"><h2 style="margin-top:0">ライセンス</h2>
 <p>${license.status.state === "valid" ? `<span class="tag sent">有効</span>` : license.status.state === "expired" ? `<span class="tag failed">期限切れ</span>` : license.status.state === "invalid" ? `<span class="tag failed">キーが不正</span>` : `<span class="tag queued">未登録</span>`} ${esc(license.status.label)}</p>
@@ -842,10 +799,17 @@ ${overview}${budgetCard}${licenseCard}
 <div class="card"><h2 style="margin-top:0">送信が止まったときの通知</h2>
 <p class="muted small">メール送信が一時停止したとき・送信が全部終わったとき・止まっていた送信を自動再開したときに、<b>パソコンの通知</b>（Macは通知センター、Windowsはトースト）でお知らせします。画面を見ていなくても気づけます。</p>
 <form method="post" action="/settings/notify" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="notify_desktop" style="width:auto"><option value="1" ${notifyOn ? "selected" : ""}>通知する</option><option value="0" ${notifyOn ? "" : "selected"}>通知しない</option></select><button class="btn sub small">保存</button></form>
-<form method="post" action="/settings/notify-test" style="margin-top:8px"><button class="btn sub small">テスト通知を出す</button></form></div>
-<div class="card"><h2 style="margin-top:0">おまけのゲーム</h2>
+<form method="post" action="/settings/notify-test" style="margin-top:8px"><button class="btn sub small">テスト通知を出す</button></form>
+<form method="post" action="/settings/notify-kinds" style="margin-top:14px;border-top:1px solid var(--c-line);padding-top:12px">
+<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:4px 0"><input type="checkbox" name="notify_reply" value="1" ${opts?.notifyReply ? "checked" : ""} style="width:auto">アポ・返信が来たら、すぐに知らせる</label>
+<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:4px 0"><input type="checkbox" name="daily_summary" value="1" ${opts?.dailySummary ? "checked" : ""} style="width:auto">1日の終わり（送信時間帯の終了時）に、その日のまとめを知らせる</label>
+<button class="btn small" style="margin-top:6px">保存</button></form></div>
+<div class="card"><h2 style="margin-top:0">画面の演出</h2>
+<p class="muted">右下で動くキャラクター（ハッチくん・バッタくん）と、おまけのゲームの表示です。他社の方に使っていただく場合は、どちらも「表示しない」がおすすめです。</p>
+<form method="post" action="/settings/effects" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span style="min-width:150px">キャラクター</span><select name="effects_enabled" style="width:auto"><option value="0" ${opts?.effects ? "" : "selected"}>表示しない</option><option value="1" ${opts?.effects ? "selected" : ""}>表示する</option></select><button class="btn small">保存</button></form>
+<div hidden><h2>おまけのゲーム</h2>
 <p class="muted small">送信の待ち時間用のスロットゲームです。上のメニューに「🎰 ゲーム」を出すかどうかを選べます（人に画面を見せるときは共有用URLを使えば、オンでも表示されません）。</p>
-<form method="post" action="/settings/game" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="game_enabled" style="width:auto"><option value="0" ${gameEnabled ? "" : "selected"}>表示しない</option><option value="1" ${gameEnabled ? "selected" : ""}>表示する</option></select><button class="btn sub small">保存</button></form></div>
+</div><form method="post" action="/settings/game" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:150px">おまけのゲーム</span><select name="game_enabled" style="width:auto"><option value="0" ${gameEnabled ? "" : "selected"}>表示しない</option><option value="1" ${gameEnabled ? "selected" : ""}>表示する</option></select><button class="btn sub small">保存</button></form></div>
 <div class="card"><h2 style="margin-top:0">AIモード設定</h2>
 <p>現在: ${configured ? `<span class="tag sent">設定済み</span> <b>${ai.provider === "anthropic" ? "Claude" : "Gemini"} / ${esc(ai.model)}</b>${ai.source === "env" ? ' <span class="muted small">（環境変数から読み込み）</span>' : ""}` : '<span class="tag">未設定（AI: none）</span> <span class="muted">テンプレートのみで動いています。AIを使わなくても送信はできます。</span>'}</p>
 
@@ -891,7 +855,7 @@ if(!cur||cur.dataset.p!==p)sel.value=first.value;}
 foAiModels();
 </script></div>
 
-<div class="card"><h2 style="margin-top:0">NGワード（1行1語）</h2><form method="post" action="/settings"><textarea name="ng_words">${esc(ngWords.join("\n"))}</textarea><p><button class="btn">保存</button></p></form></div>
+<div class="card"><h2 style="margin-top:0">NGワード（1行1語）</h2><form method="post" action="/settings"><textarea name="ng_words">${esc(ngWords.join("\n"))}</textarea><p><button class="btn primary">保存</button></p></form></div>
 
 <div class="card"><h2 style="margin-top:0">データのバックアップ</h2>
 <p class="muted">送信者・キャンペーン・送信履歴を1つのファイル（JSON）に書き出します。PCの買い替え前や、記録の保管にどうぞ。安全のため、SMTPのアプリパスワードとAIのAPIキーは含みません。<b>書き出しのみで、読み込み（復元）機能はありません。</b></p>
@@ -935,7 +899,7 @@ ${mustChange ? `<div class="flash">最初のログインです。ご自身のパ
 ${mustChange ? "" : `<label>いまのパスワード</label><input type="password" name="current" autocomplete="current-password" required>`}
 <label>新しいパスワード（8文字以上）</label><input type="password" name="next1" autocomplete="new-password" required minlength="8">
 <label>新しいパスワード（確認）</label><input type="password" name="next2" autocomplete="new-password" required minlength="8">
-<p><button class="btn">変更する</button></p>
+<p><button class="btn primary">変更する</button></p>
 </form></div>`;
 }
 
@@ -971,7 +935,7 @@ ${shareUrlsCard(shareUrls)}
 <div><label>権限</label><select name="role"><option value="user">一般（自分のデータだけ見える）</option><option value="admin">管理者（全部見える・ユーザー発行可）</option></select></div>
 </div>
 <label>初期パスワード（空欄なら自動生成）</label><input name="password" placeholder="空欄で自動生成">
-<p><button class="btn">発行する</button></p>
+<p><button class="btn primary">発行する</button></p>
 </form></div>
 <h2>アカウント一覧</h2>
 <table><tr><th>ID</th><th>ログインID</th><th>表示名</th><th>権限</th><th>状態</th><th>最終ログイン</th><th></th></tr>
@@ -1637,50 +1601,148 @@ export function lawView(senders: SenderProfile[], acked: string, unsubscribeOk: 
 <form method="post" action="/law/ack" data-busy>
   <label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" name="ack" value="1" required style="width:auto">上の内容を確認しました</label>
   <p class="muted small">確認すると、この画面は次から出ません（${acked ? `前回の確認: ${esc(acked)}` : "まだ未確認"}）。</p>
-  <button class="btn">確認して送信に進む</button>
+  <button class="btn primary">確認して送信に進む</button>
 </form>`;
 }
 
-// ---- 要対応（#50 #10）----
-// 失敗・要確認・CAPTCHA・フォーム無しが送信一覧に混ざっていて後回しになりがちだったので、1画面でさばけるようにする。
-export type TodoRow = Job & { campaign_name: string };
-export function todoView(rows: TodoRow[], kind: string, counts: Record<string, number>): string {
-  const KINDS: [string, string, string][] = [
-    ["", "すべて", "対応が必要な会社"],
-    ["captcha", "画像認証（CAPTCHA）", "自動では送れないので、ブラウザを開いて人が送る"],
-    ["check", "要確認", "回答を決められない質問があり、送っていない"],
-    ["failed", "失敗", "入力エラー・通信エラーなどで送れなかった"],
-    ["noform", "フォーム無し", "問い合わせフォームが見つからなかった"],
-  ];
-  const tab = (k: string, label: string) => `<a class="btn ${kind === k ? "" : "sub"} small" href="/todo${k ? `?kind=${k}` : ""}">${label}（${counts[k || "all"] ?? 0}）</a>`;
-  const now = KINDS.find((x) => x[0] === kind) ?? KINDS[0];
-  const row = (j: TodoRow) => {
-    const why = (j.result_text || "").split("\n")[0].slice(0, 90);
-    const isForm = j.channel === "form";
-    return `<tr>
-      <td><a href="/jobs/${j.id}"><b>${esc(j.company_name)}</b></a><div class="muted small">${esc(j.domain || j.email)}／${esc(j.campaign_name)}</div></td>
-      <td>${statusTag(j.status)}<div class="small">${errKindTag(j)}</div></td>
-      <td class="small">${esc(why)}</td>
-      <td class="small">${esc(jst(j.updated_at))}</td>
-      <td style="white-space:nowrap">
-        ${isForm && (j.form_url || j.site_url) ? `<form method="post" action="/jobs/${j.id}/assist" class="inline" data-busy data-busytext="ブラウザを開いています…"><input type="hidden" name="back" value="todo"><button class="btn small" title="ブラウザを開き、文面を入力した状態にします。画像認証だけ人が入力して送信してください">開いて入力</button></form> ` : ""}
-        <form method="post" action="/jobs/${j.id}/mark-sent" class="inline" onsubmit="return confirm('${esc(j.company_name)} を「送信済み」にします。よろしいですか？')"><input type="hidden" name="back" value="todo"><button class="btn sub small">送信済みにする</button></form>
-        <form method="post" action="/jobs/${j.id}/requeue" class="inline"><input type="hidden" name="back" value="todo"><button class="btn sub small" title="もう一度自動で送る対象に戻します">待機に戻す</button></form>
-        <form method="post" action="/jobs/${j.id}/suppress" class="inline" onsubmit="return confirm('${esc(j.company_name)} を除外リストに入れ、今後すべてのキャンペーンで送らないようにします。よろしいですか？')"><input type="hidden" name="back" value="todo"><button class="btn sub small">除外する</button></form>
-      </td></tr>`;
-  };
+// ---- 要対応（#50 #10 → #113〜#118 #124 で作り直し）----
+// 最初の版は2,000件超が同じ重さで並ぶだけで、開いた瞬間に閉じたくなる画面だった。
+//  ・「今日やる10件」を先頭に出す（送れそう度と新しさで選ぶ）
+//  ・同じ原因はまとめて1行にし、1回の操作で片づける
+//  ・理由によって出すボタンを変える（開けないサイトに「開いて入力」を出さない）
+//  ・古いものは自動で「見送り」に回す
+export type TodoRow = Job & { campaign_name: string; prio?: number };
+export type TodoGroup = { key: string; label: string; n: number; advice: string; action: "requeue" | "dismiss" | "to_email"; actionLabel: string; link?: string; linkLabel?: string };
+export type TodoKind = "" | "captcha" | "check" | "failed" | "noform" | "dismissed";
+
+/** その会社が「何で止まっているか」。出すボタンを決めるのに使う（#116） */
+export function todoReason(j: Pick<Job, "status" | "result_text" | "channel">): "captcha" | "check" | "mailconfig" | "input" | "unreachable" | "noform" | "network" | "unsure" | "other" {
+  const t = j.result_text || "";
+  if (j.status === "skip_captcha") return "captcha";
+  if (j.status === "skip_no_form") return /アクセスできない|接続を拒否|見つかりません（ドメイン|応答がありません/.test(t) ? "unreachable" : "noform";
+  if (/^要確認/.test(t)) return "check";
+  if (/メール送信エラー|ログインを拒否|2段階認証|アプリパスワード|送信用メール/.test(t)) return "mailconfig";
+  if (/送信後の判定不能/.test(t)) return "unsure";
+  if (/入力エラー|必須|送信ボタンが有効になりません|本文欄/.test(t)) return "input";
+  if (/時間切れ|タイムアウト|timeout|net::|通信|接続/i.test(t)) return "network";
+  return "other";
+}
+
+const post = (action: string, label: string, extra = "", cls = "", confirmMsg = "") =>
+  `<form method="post" action="${action}" class="inline"${confirmMsg ? ` onsubmit="return confirm('${confirmMsg}')"` : ""}>${extra}<button class="btn small ${cls}">${label}</button></form>`;
+
+/** 理由ごとに、意味のある操作だけを出す（#116） */
+function todoActions(j: TodoRow, back: string): string {
+  const b = `<input type="hidden" name="back" value="${esc(back)}">`;
+  const open = post(`/jobs/${j.id}/assist`, "開いて入力", b + "", "primary").replace('class="inline"', 'class="inline" data-busy data-busytext="ブラウザを開いています…"');
+  const sent = post(`/jobs/${j.id}/mark-sent`, "送信済みにする", b);
+  const requeue = post(`/jobs/${j.id}/requeue`, "もう一度送る", b);
+  const dismiss = post(`/jobs/${j.id}/dismiss`, "見送る", b);
+  const toEmail = j.email ? post(`/jobs/${j.id}/to-email`, "メールで送る", b) : "";
+  const fix = `<a class="btn small" href="/jobs/${j.id}#fix">URLを直す</a>`;
+  switch (todoReason(j)) {
+    case "captcha": return `${open} ${sent} ${toEmail} ${dismiss}`;
+    case "check": return `<a class="btn small primary" href="/jobs/${j.id}#answer">質問に答える</a> ${dismiss}`;
+    case "mailconfig": return `<a class="btn small primary" href="/senders">送信者の設定を直す</a> ${requeue}`;
+    case "input": return `${open} ${requeue} ${toEmail} ${dismiss}`;
+    case "unsure": return `${sent} ${requeue} ${dismiss}`;
+    case "unreachable": return `${fix} ${toEmail} ${dismiss}`;
+    case "noform": return `${fix} ${toEmail} ${requeue} ${dismiss}`;
+    case "network": return `${requeue} ${dismiss}`;
+    default: return `${requeue} ${sent} ${dismiss}`;
+  }
+}
+
+const REASON_LABEL: Record<string, string> = { captcha: "画像認証", check: "質問への回答待ち", mailconfig: "メールの設定", input: "入力エラー", unreachable: "サイトを開けない", noform: "フォームが無い", network: "通信エラー", unsure: "届いたか不明", other: "その他" };
+
+function thumb(j: Pick<Job, "id" | "screenshot_path">): string {
+  if (!j.screenshot_path) return "";
+  const f = esc(j.screenshot_path.split("/").pop());
+  return `<img src="/screenshots/${f}" alt="" loading="lazy" onclick="foZoom(this.src)" title="クリックで拡大" style="width:92px;height:62px;object-fit:cover;object-position:top;border:1px solid var(--c-line);border-radius:6px;cursor:zoom-in;display:block">`;
+}
+export const ZOOM_SNIPPET = `<div id="fozoom" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out" onclick="this.hidden=true"><img id="fozoomimg" style="max-width:100%;max-height:100%;background:#fff"></div>
+<script>function foZoom(src){const b=document.getElementById("fozoom");document.getElementById("fozoomimg").src=src;b.hidden=false;}
+addEventListener("keydown",(e)=>{if(e.key==="Escape"){const b=document.getElementById("fozoom");if(b)b.hidden=true;}});</script>`;
+
+export function todoView(rows: TodoRow[], kind: TodoKind, counts: Record<string, number>, opts: { today: TodoRow[]; groups: TodoGroup[]; hideDays: number; page: number; pageSize: number; total: number }): string {
+  const KINDS: [TodoKind, string][] = [["", "すべて"], ["captcha", "画像認証"], ["check", "回答待ち"], ["failed", "失敗"], ["noform", "フォーム無し"], ["dismissed", "見送り"]];
+  const back = `/todo${kind ? `?kind=${kind}` : ""}`;
+  const tab = (k: TodoKind, label: string) => `<a class="${kind === k ? "on" : ""}" href="/todo${k ? `?kind=${k}` : ""}">${label}<span class="cnt">${n(counts[k || "all"] ?? 0)}</span></a>`;
+  const row = (j: TodoRow) => `<tr>
+<td><input type="checkbox" name="ids" value="${j.id}" form="todobulk" onchange="foTodoCount()"></td>
+<td>${thumb(j)}</td>
+<td><a href="/jobs/${j.id}"><b>${esc(j.company_name)}</b></a><div class="muted" data-nohelp>${esc(j.domain || j.email)}・${esc(j.campaign_name)}</div></td>
+<td><span class="tag ${j.status === "skip_captcha" ? "queued" : "failed"}">${esc(REASON_LABEL[todoReason(j)])}</span><div class="small" style="margin-top:4px">${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</div></td>
+<td class="small">${esc(jst(j.updated_at).slice(5))}</td>
+<td style="white-space:nowrap">${kind === "dismissed" ? post(`/jobs/${j.id}/undismiss`, "要対応に戻す", `<input type="hidden" name="back" value="${esc(back)}">`) : todoActions(j, back)}</td></tr>`;
+  const card = (j: TodoRow) => `<div class="c"><h3><a href="/jobs/${j.id}">${esc(j.company_name)}</a></h3>
+<span class="tag ${j.status === "skip_captcha" ? "queued" : "failed"}">${esc(REASON_LABEL[todoReason(j)])}</span>
+<div class="small" style="margin-top:6px">${esc((j.result_text || "").split("\n")[0].slice(0, 80))}</div>
+<div class="acts">${kind === "dismissed" ? post(`/jobs/${j.id}/undismiss`, "要対応に戻す", `<input type="hidden" name="back" value="${esc(back)}">`) : todoActions(j, back)}</div></div>`;
+  const pages = Math.max(1, Math.ceil(opts.total / opts.pageSize));
+  const pager = pages > 1 ? `<div class="pager">${opts.page > 1 ? `<a class="btn small" href="${back}${back.includes("?") ? "&" : "?"}page=${opts.page - 1}">← 前へ</a>` : ""}<span>${opts.page} / ${pages} ページ（${n(opts.total)}社）</span>${opts.page < pages ? `<a class="btn small" href="${back}${back.includes("?") ? "&" : "?"}page=${opts.page + 1}">次へ →</a>` : ""}</div>` : "";
+
   return `<h1>要対応</h1>
-<div class="card">
-  <p>自動で送れなかった会社をここにまとめています。上から順に処理すると、取りこぼしが送信に変わります。</p>
-  <p>${KINDS.map(([k, label]) => tab(k, label)).join(" ")}</p>
-  <p class="muted small">${esc(now[2])}${kind === "captcha" ? "／「開いて入力」を押すと、このパソコンのブラウザが開き、文面まで入力済みの状態になります。画像認証だけ入力して送信し、戻って「送信済みにする」を押してください。" : ""}</p>
-</div>
-${rows.length ? `<table>
-  <tr><th>会社</th><th style="width:120px">状態</th><th>理由</th><th style="width:110px">更新</th><th style="width:330px">対応</th></tr>
-  ${rows.map(row).join("")}
+<p class="muted" data-nohelp>自動で送れなかった会社です。${opts.hideDays}日たったものは自動で「見送り」に移します（設定で変更できます）。</p>
+
+${kind === "" && opts.today.length ? `<div class="card" style="border-color:var(--c-brand);border-width:2px">
+<h2 style="margin-top:0">今日やる${opts.today.length}件</h2>
+<p class="muted" data-nohelp>送れる見込みが高く、新しいものから選んでいます。ここだけ片づければ十分です。</p>
+<table class="resp"><tr><th style="width:100px"></th><th>会社</th><th>理由</th><th style="width:360px">対応</th></tr>
+${opts.today.map((j) => `<tr><td>${thumb(j)}</td><td><a href="/jobs/${j.id}"><b>${esc(j.company_name)}</b></a><div class="muted" data-nohelp>${esc(j.domain || j.email)}</div></td><td><span class="tag ${j.status === "skip_captcha" ? "queued" : "failed"}">${esc(REASON_LABEL[todoReason(j)])}</span><div class="small" style="margin-top:4px">${esc((j.result_text || "").split("\n")[0].slice(0, 60))}</div></td><td style="white-space:nowrap">${todoActions(j, "/todo")}</td></tr>`).join("")}
+</table><div class="cards">${opts.today.map(card).join("")}</div>
+${(counts.captcha ?? 0) > 0 ? `<p style="margin:12px 0 0"><a class="btn" href="/todo/run?kind=captcha">画像認証の会社を続けて処理する（${n(counts.captcha)}社）→</a></p>` : ""}
+</div>` : ""}
+
+${kind === "" && opts.groups.length ? `<div class="card"><h2 style="margin-top:0">同じ原因のまとめ</h2>
+<p class="muted" data-nohelp>原因が同じものは、1回の操作でまとめて片づけられます。</p>
+<table><tr><th>原因</th><th style="width:90px">件数</th><th>どうすればよいか</th><th style="width:260px"></th></tr>
+${opts.groups.map((g) => `<tr><td><b>${esc(g.label)}</b></td><td><b>${n(g.n)}</b>社</td><td class="small">${esc(g.advice)}</td>
+<td style="white-space:nowrap">${g.link ? `<a class="btn small primary" href="${g.link}">${esc(g.linkLabel ?? "開く")}</a> ` : ""}<form method="post" action="/todo/group" class="inline" onsubmit="return confirm('${n(g.n)}社をまとめて「${esc(g.actionLabel)}」にします。よろしいですか？')"><input type="hidden" name="key" value="${esc(g.key)}"><input type="hidden" name="action" value="${g.action}"><button class="btn small">${esc(g.actionLabel)}（${n(g.n)}社）</button></form></td></tr>`).join("")}
+</table></div>` : ""}
+
+<div class="tabs">${KINDS.map(([k, label]) => tab(k, label)).join("")}</div>
+${kind === "captcha" && rows.length ? `<p><a class="btn primary" href="/todo/run?kind=captcha">続けて処理する（1社ずつ順番に）→</a></p>` : ""}
+${rows.length ? `
+<form id="todobulk" method="post" action="/todo/bulk" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px" onsubmit="return foTodoConfirm(this)">
+<input type="hidden" name="back" value="${esc(back)}">
+<span class="small" id="todosel">選択 0社</span>
+<select name="action" style="width:auto"><option value="">まとめて操作…</option>${kind === "dismissed" ? `<option value="undismiss">要対応に戻す</option>` : `<option value="requeue">もう一度送る（待機に戻す）</option><option value="to_email">メールで送る（アドレスがある会社）</option><option value="mark_sent">送信済みにする</option><option value="dismiss">見送る</option>`}<option value="suppress">除外リストに入れる（今後送らない）</option></select>
+<button class="btn small">実行</button>
+<label class="small" style="display:inline-flex;gap:6px;align-items:center;font-weight:400;margin:0"><input type="checkbox" name="all" value="1" style="width:auto" onchange="foTodoCount()">このタブの全 ${n(opts.total)}社を対象にする</label>
+<input type="hidden" name="kind" value="${esc(kind)}">
+</form>
+<table class="resp"><tr><th style="width:34px"><input type="checkbox" title="このページを全選択" onchange="document.querySelectorAll('input[name=ids][form=todobulk]').forEach(c=>c.checked=this.checked);foTodoCount()"></th><th style="width:100px"></th><th>会社</th><th>理由</th><th style="width:80px">更新</th><th style="width:380px">対応</th></tr>
+${rows.map(row).join("")}
 </table>
-<p class="muted small">最大300件まで表示しています。</p>`
-  : `<div class="card"><p>対応が必要な会社はありません。</p></div>`}`;
+<div class="cards">${rows.map(card).join("")}</div>
+${pager}
+<script>
+function foTodoCount(){const all=document.querySelector('#todobulk input[name=all]');const k=document.querySelectorAll('input[name=ids][form=todobulk]:checked').length;document.getElementById("todosel").textContent=all&&all.checked?"このタブの全件":"選択 "+k+"社";}
+function foTodoConfirm(f){const a=f.action.value;if(!a){alert("操作を選んでください");return false;}const all=f.all&&f.all.checked;const k=document.querySelectorAll('input[name=ids][form=todobulk]:checked').length;if(!all&&!k){alert("会社を選んでください");return false;}const label=f.action.options[f.action.selectedIndex].text;return confirm((all?"このタブの全件":k+"社")+" を「"+label+"」にします。よろしいですか？");}
+</script>` : `<div class="card"><p>${kind === "dismissed" ? "見送った会社はありません。" : "対応が必要な会社はありません。"}</p></div>`}
+${ZOOM_SNIPPET}`;
+}
+
+/** 画像認証などを1社ずつ続けて処理する画面（#118）。一覧に戻らずに「次へ」で進める */
+export function todoRunView(j: TodoRow | null, kind: string, left: number, skip: string, doneMsg = ""): string {
+  if (!j) return `<h1>続けて処理する</h1><div class="card" style="text-align:center;padding:40px"><h2 style="margin-top:0">${left === 0 ? "すべて終わりました" : "対象がありません"}</h2><p><a class="btn primary" href="/todo">要対応に戻る</a></p></div>`;
+  const hid = `<input type="hidden" name="back" value="/todo/run?kind=${esc(kind)}&skip=${esc(skip)}">`;
+  return `<h1>続けて処理する <span class="tag queued">残り ${n(left)}社</span></h1>
+<p><a href="/todo?kind=${esc(kind)}">← 一覧に戻る</a></p>
+<div class="card">
+<h2 style="margin-top:0">${esc(j.company_name)}</h2>
+<p class="small">${esc(j.domain)}・${esc(j.campaign_name)}<br>${esc((j.result_text || "").split("\n")[0].slice(0, 100))}</p>
+<ol style="line-height:2.1">
+<li><form method="post" action="/jobs/${j.id}/assist" class="inline" data-busy data-busytext="ブラウザを開いています…">${hid}<button class="btn primary">① ブラウザを開いて入力する</button></form> <span class="muted" data-nohelp>文面まで入力した状態で開きます</span></li>
+<li>開いたブラウザで、画像認証を入力して「送信」を押す</li>
+<li><form method="post" action="/jobs/${j.id}/mark-sent" class="inline">${hid}<button class="btn">③ 送信済みにして次へ</button></form>
+ <form method="post" action="/jobs/${j.id}/dismiss" class="inline">${hid}<button class="btn">送れなかったので見送って次へ</button></form>
+ <a class="btn" href="/todo/run?kind=${esc(kind)}&skip=${esc(skip ? `${skip},${j.id}` : String(j.id))}">あとで（とばす）</a></li>
+</ol>
+${j.screenshot_path ? `<p>${thumb(j)}</p>` : ""}
+</div>
+${ZOOM_SNIPPET}`;
 }
 
 // ---- 初回セットアップ（#41）----
@@ -1814,4 +1876,43 @@ ${r.topIndustries.map((c) => `<tr><td>${esc(c.key || "（未設定）")}</td><td
 <p class="muted small">※ 反応（返信・アポ・断り）は、送信用メールの受信箱を読んで自動で記録したものと、手で記録したものの合計です。</p>
 <p><a class="btn sub" href="/stats">送信数の画面に戻る</a></p>
 <style>@media print{header,.btn{display:none!important}main{padding:0}.card{break-inside:avoid}}</style>`;
+}
+
+// ---- 導入チェックリスト（#138）----
+// 渡すときの説明資料を毎回手で作っていたので、画面から1枚で出せるようにする。
+// PDFにしたい場合は、ブラウザの印刷から「PDFとして保存」を選ぶ（追加のソフトは入れない方針）。
+export function checklistView(st: SetupState, version: string): string {
+  const box = (done: boolean) => `<span style="display:inline-block;width:18px;height:18px;border:2px solid var(--c-ink);border-radius:4px;text-align:center;line-height:15px;font-weight:800;margin-right:8px;vertical-align:-3px">${done ? "✓" : ""}</span>`;
+  const item = (done: boolean, title: string, note: string) => `<li style="margin:0 0 12px;list-style:none">${box(done)}<b>${esc(title)}</b><div class="small" style="margin-left:30px;color:var(--c-ink-2)">${esc(note)}</div></li>`;
+  return `<h1>導入チェックリスト</h1>
+<p class="small">アポハッチくん v${esc(version)}　／　このページは印刷できます（ブラウザの印刷 →「PDFとして保存」でPDFにもなります）。 <button class="btn small" onclick="window.print()">印刷する</button></p>
+<div class="card"><h2 style="margin-top:0">はじめる前に用意するもの</h2>
+<ul style="padding:0;margin:0">
+${item(false, "営業用のメールアドレス", "ふだん使いとは分けることをおすすめします（Gmail / Google Workspace）")}
+${item(false, "そのアドレスの2段階認証とアプリパスワード", "Googleアカウント → セキュリティ → 2段階認証プロセス → アプリパスワード（16文字）")}
+${item(false, "自社の住所", "営業メールには住所の表示が法律で必要です。未登録だとメールは送れません")}
+${item(false, "送り先の会社リスト", "企業名と企業URLの2列があれば取り込めます（見本CSVあり）")}
+</ul></div>
+<div class="card"><h2 style="margin-top:0">設定の手順（6ステップ）</h2>
+<ul style="padding:0;margin:0">
+${item(st.senderOk && st.addressOk, "1. 送信者を登録する", "会社名・担当者・住所・電話。設定 → 送信者")}
+${item(st.smtpOk, "2. 送信用メールを設定する", "アプリパスワードを貼り付けて保存すると、接続テストが自動で走ります")}
+${item(st.lawOk, "3. 営業メールの決まりを確認する", "名称・住所・配信停止の連絡先の表示（自動で入ります）")}
+${item(st.campaignOk, "4. キャンペーンを作る", "文面はひな形から選んで【 】の中を書き換えます")}
+${item(st.listCount > 0, "5. 会社リストを取り込む", "CSV / Excel / スプレッドシート")}
+${item(st.sentCount > 0, "6. 事前チェックをして、送信を始める", "開始を押すと、送信時間帯の中で自動で送ります")}
+</ul></div>
+<div class="card"><h2 style="margin-top:0">毎日見るところ</h2>
+<ul style="padding:0;margin:0">
+${item(false, "ホーム", "今日の進み具合・アポ・要対応・次にやること")}
+${item(false, "要対応 →「今日やる10件」", "自動で送れなかった会社のうち、手を打つ価値の高いものから")}
+${item(false, "成果", "業種別・時間帯別の反応率、週次レポート")}
+</ul></div>
+<div class="card"><h2 style="margin-top:0">気をつけること</h2>
+<ul class="small" style="line-height:2;margin:0">
+<li>黒い画面（ターミナル）は閉じない。閉じると送信が止まります（設定 → 動作チェックで「ログイン時に自動で起動」をオンにできます）</li>
+<li>新しいメールアカウントは、最初の2週間は送信数が自動で抑えられます（ウォームアップ）</li>
+<li>「不要」と言われた相手には以後送りません（自動で除外リストに入ります）</li>
+<li>うまく動かないときは、設定 → 動作チェック →「診断ファイル」を配布元に送ってください</li>
+</ul></div>`;
 }
