@@ -127,6 +127,14 @@ function errKindTag(j: Pick<Job, "status" | "result_text">): string {
   return k ? `<span class="errkind">${esc(k)}</span>` : "";
 }
 
+/** 事前チェックで出した「送れそう度」（0〜100）。高いほど送れる見込みが高い。未計測は出さない */
+function scoreTag(j: Job): string {
+  const n = (j as Job & { scan_score?: number }).scan_score ?? -1;
+  if (n < 0 || j.status === "sent") return "";
+  const color = n >= 70 ? "var(--ok)" : n >= 40 ? "var(--warn)" : "var(--hive-600)";
+  return `<br><span class="muted" style="color:${color}" title="事前チェックの結果から出した、送れる見込み（フォームの有無・メールの有無・CAPTCHA）">送れそう度 ${n}</span>`;
+}
+
 /** 一覧の状態セル。リトライで送信済みになった会社は、過去の失敗をグレーアウトし ↓ で「N回目で送信済み」を見せる */
 function statusCell(j: Job): string {
   if (j.status === "sent" && j.prev_status && j.attempts > 1) {
@@ -195,6 +203,9 @@ export function senderForm(s?: Partial<SenderProfile>) {
 <p class="muted">Googleアカウントで<a href="https://myaccount.google.com/signinoptions/twosv" target="_blank" rel="noopener">2段階認証プロセス</a>をオンにし、<a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">アプリパスワード</a>を発行して貼り付けてください（リンクを押すと、いまブラウザでログイン中のGoogleアカウントの設定ページが別タブで開きます。送信に使うアカウントでログインしているか確認してください）。営業専用のアドレスを使うのが安全です（無料Gmailは1日500通、Workspaceは2,000通まで）。</p>
 <div class="row3"><div><label>送信用メールアドレス（Gmail等）</label><input type="text" name="smtp_user" value="${v("smtp_user")}" placeholder="sales@example.co.jp"></div><div><label>アプリパスワード（保存済みなら空のまま）</label><input type="password" name="smtp_pass" value="" placeholder="xxxx xxxx xxxx xxxx" autocomplete="off"></div><div><label>差出人として表示するアドレス（空なら左と同じ）</label><input type="text" name="from_email" value="${v("from_email")}"></div></div>
 <label class="inline small" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0;font-weight:400"><input type="checkbox" name="reply_check" value="1" ${s?.reply_check === 0 ? "" : "checked"} style="width:auto;margin-top:3px"> <span><b>受信箱を読んで、返信（返信あり／アポ／断り）と届かなかったメールを自動で記録する</b><br><span class="muted">オンにすると、アポハッチくんが<b>この送信用メールアドレスの受信箱に届いたメールを15分ごとに読み取ります</b>（このPCの中だけで処理し、外部には送りません）。送った会社からのメール以外は記録しません。個人のメールと兼用していて読まれたくない場合はオフにしてください（反応は手動で記録）。</span></span></label>
+<label>配信停止ページのURL（任意・入れておくと到達率が上がります）</label>
+<input type="url" name="unsubscribe_url" value="${v("unsubscribe_url")}" placeholder="https://docs.google.com/forms/d/e/…/viewform">
+<p class="muted small" style="margin:4px 0 10px">メールの末尾と「配信停止」ボタン（Gmail等が出すもの）に、このURLを使います。受け取った人が<b>1クリックで停止を申し出られる</b>ようになり、迷惑メール報告を押される代わりにこちらに届きます。<br>Googleフォームで「メールアドレス」を聞くだけの簡単なフォームを1つ作って、そのURLを貼ってください。空の場合は、これまでどおり「本メールに『配信停止』と返信」での受付になります。</p>
 <label class="inline small" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0;font-weight:400"><input type="checkbox" name="tls_insecure" value="1" ${s?.tls_insecure ? "checked" : ""} style="width:auto;margin-top:3px"> <span><b>セキュリティソフトの影響で送れない場合にチェック</b>（「self-signed certificate…」「certificate」を含むエラーが出るとき）<br><span class="muted">ESET・カスペルスキー等のメール保護や社内ネットワークが通信に割り込むと、証明書が差し替わって送信できません。チェックすると証明書の確認を省いて送れるようにします。<b>通信の安全性が下がる</b>ため、原因が分かっている場合だけにしてください（まずはセキュリティソフト側の「メール保護／SSLスキャン」をオフにする方が安全です）。</span></span></label>
 <details class="small muted"><summary>Gmail以外のメールサーバー</summary><div class="row"><div><label>SMTPホスト</label><input type="text" name="smtp_host" value="${esc(s?.smtp_host ?? "smtp.gmail.com")}" placeholder="smtp.gmail.com"></div><div><label>ポート（465 or 587）</label><input type="number" name="smtp_port" value="${esc(s?.smtp_port ?? 465)}" placeholder="465"></div></div>
 <p class="muted small" style="margin:6px 0 0"><b>SMTPホストとは：</b>メールを送り出すサーバーのアドレスです。プロバイダごとに決まっています。<br>
@@ -276,6 +287,11 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 ・<b>届かないアドレスが多い</b>：戻ってくるメール（アドレス不明など）が多いと迷惑メール送信者とみなされやすくなります。古いリストは送る前に見直してください<br>
 <span class="muted">目安: Gmail（無料）は1日約500通、Google Workspace は1日約2,000通が Google 側の上限ですが、上の条件次第でそれよりずっと少ない数でも止まります。フォーム送信はメールアカウントを使わないため、この制限はありません。</span>
 </div>
+<label style="display:flex;align-items:center;gap:8px;margin:10px 0 2px"><input type="checkbox" name="email_warmup" value="1" ${Number(defaults.email_warmup ?? 1) ? "checked" : ""} style="width:auto">メールの送信数を少しずつ増やす（ウォームアップ・推奨）</label>
+<p class="muted small" style="margin:0 0 10px">送り始めの数日は1日30〜50通に自動で抑え、問題がなければ2週間かけて上の上限まで引き上げます。新しいアカウントがGoogleに止められるのを防ぎます。途中で止められた場合は自動で1段階下げます。</p>
+${senders.length > 1 ? `<label>メールで使う送信アカウントを増やす（任意）</label>
+<p class="muted small" style="margin:0 0 6px">上限に達したアカウントの代わりに、ここで選んだアカウントから続けて送ります（1日に送れる数が増えます）。署名・住所も、実際に送ったアカウントのものになります。</p>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px">${senders.filter((x) => x.id !== Number(defaults.sender_id ?? 0)).map((x) => `<label class="small" style="display:flex;align-items:center;gap:6px;font-weight:400"><input type="checkbox" name="email_sender_ids" value="${x.id}" ${String(defaults.email_sender_ids ?? "").split(",").includes(String(x.id)) ? "checked" : ""} style="width:auto">${esc(x.label || x.company)}（${esc(x.smtp_user || x.email)}）</label>`).join("")}</div>` : ""}
 <div class="row3"><div><label>同じ会社への再送を止める期間（日・0で制限なし）</label><input type="number" name="resend_days" value="${d("resend_days", 90)}" min="0"></div><div><label>「営業お断り」のサイト</label><select name="ignore_refusal"><option value="0" ${Number(defaults.ignore_refusal ?? 0) ? "" : "selected"}>送らない（推奨）</option><option value="1" ${Number(defaults.ignore_refusal ?? 0) ? "selected" : ""}>送る（クレームの恐れあり）</option></select></div><div></div></div>
 <h2>資料の添付（任意）</h2>
 <p class="muted">メール送信では下のファイルを添付します。フォーム送信ではファイルを添付できないため、代わりに「資料の公開リンク」を本文末尾に自動で載せます（本文に {{資料リンク}} を書けばその位置に入ります）。</p>
@@ -403,7 +419,9 @@ ${list.map((b) => `<tr><td class="small">${when(b.at)}</td><td class="small">${e
 <p class="muted">送らずに各社のサイトを見て、フォームの有無・営業お断り・CAPTCHAを先に判定し、サイトのメールアドレスを拾います。フォームが無い会社はメールに自動で切り替わります（チャネルが「フォーム優先＋メール」のとき）。1社5〜10秒。</p>
 ${extra.emailQueued ? `<p class="small" style="margin:6px 0 10px;padding:8px 10px;background:var(--honey-50);border-radius:8px">✉ <b>メールで送る会社 ${extra.emailQueued}社</b>は事前チェックの対象外です（フォームを探す機能のため、下の件数には含まれません）。メールはそのまま「3. 本送信」の「開始」で送れます。1日に送る数は「1日の上限（メール）」までです。</p>` : ""}
 ${scanTotal > 0 ? `<div class="bar"><i id="scanfill" style="width:${scanPct}%"></i></div><div class="small muted" id="scantext">${extra.scanned} / ${scanTotal} 社チェック済み（${scanPct}%）</div>` : ""}
-${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" class="inline"><button class="btn danger">チェックを止める</button></form>` : `<form method="post" action="/campaigns/${c.id}/scan" class="inline"><button class="btn sub" ${extra.unscanned === 0 || running ? "disabled" : ""}>事前チェックを実行（未チェック ${extra.unscanned}社）</button></form>`}</div>
+${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" class="inline"><button class="btn danger">チェックを止める</button></form>` : `<form method="post" action="/campaigns/${c.id}/scan" class="inline"><button class="btn sub" ${extra.unscanned === 0 || running ? "disabled" : ""}>事前チェックを実行（未チェック ${extra.unscanned}社）</button></form>`}
+${cnt("skip_no_form") > 0 && !extra.scanning && !running ? `<form method="post" action="/campaigns/${c.id}/rescan-noform" class="inline" onsubmit="return confirm('「フォーム無し」の ${cnt("skip_no_form")} 社を、もう一度チェックし直します（サイトマップ・フッター・外部フォームサービスにも対応した探し方で探します）。このあと「事前チェックを実行」を押してください。よろしいですか？')"><button class="btn sub">フォーム無しの ${cnt("skip_no_form")} 社をもう一度チェックする</button></form>
+<p class="muted small" style="margin:6px 0 0">フォームの探し方を強化しています（サイトマップ・フッターのリンク・会社概要ページ経由・外部フォームサービス・URLの言い換え）。以前「フォーム無し」になった会社も、もう一度探すと見つかることがあります。</p>` : ""}</div>
 
 <div class="card"><h2 style="margin-top:0">2. 文面を確認する</h2>
 <form method="post" action="/campaigns/${c.id}/preview" class="inline" data-busy onsubmit="foPreviewProgress(${(c.mode === "ai" || c.mode === "hybrid") && provider !== "none"})"><button class="btn sub" data-busytext="文面を作成中…">先頭の1社で文面をプレビュー</button></form>
@@ -480,7 +498,7 @@ ${(() => {
       if (!g) { const ng = { rep: j, hist: [] as Job[] }; byKey.set(key, ng); groups.push(ng); }
       else g.hist.push(j);
     }
-    const repRow = (j: Job, hist: Job[]) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.is_test ? "" : `<input type="checkbox" name="ids" value="${j.id}" form="bulkdel" onchange="foBulkCount()">`}</td><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}${hist.length ? `<br><button type="button" class="histbtn" data-t="${j.id}" data-n="${hist.length}" onclick="foHist(this)">▽(${hist.length}件)</button>` : ""}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(jst(j.updated_at))}</td><td>${j.status === "queued" ? `<form method="post" action="/jobs/${j.id}/cancel" class="inline"><button class="btn sub small">キャンセル</button></form>` : j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""} ${j.is_test ? "" : `<form method="post" action="/jobs/${j.id}/delete" class="inline" data-n="${esc(j.company_name)}" onsubmit="return confirm(this.dataset.n + ' の記録${hist.length ? `（履歴${hist.length}件を含む）` : ""}をすべて送信一覧から削除します（取り消せません）${j.status === "sent" || hist.some((h) => h.status === "sent") ? "。送信済みの記録も消え、この会社への再送防止が効かなくなります" : ""}。よろしいですか？')"><button class="btn sub small" title="この会社の記録をすべて削除">削除</button></form>`}</td></tr>`;
+    const repRow = (j: Job, hist: Job[]) => `<tr data-u="${esc(j.updated_at ?? "")}"><td>${j.is_test ? "" : `<input type="checkbox" name="ids" value="${j.id}" form="bulkdel" onchange="foBulkCount()">`}</td><td>${j.id}${j.is_test ? " <span class='tag'>test</span>" : ""}</td><td><a href="/jobs/${j.id}">${esc(j.company_name)}</a><br><span class="muted">${esc(j.domain)}</span></td><td class="small">${j.channel === "email" ? "✉ メール" : "📝 フォーム"}${scoreTag(j)}</td><td class="small">${esc(j.sub_industry || j.industry)}</td><td>${statusCell(j)}${hist.length ? `<br><button type="button" class="histbtn" data-t="${j.id}" data-n="${hist.length}" onclick="foHist(this)">▽(${hist.length}件)</button>` : ""}</td><td class="small">${errKindTag(j)}${esc((j.result_text || "").split("\n")[0].slice(0, 70))}</td><td class="small">${j.outcome ? `<b>${esc(OUTCOME_LABEL[j.outcome] ?? j.outcome)}</b>` : ""}</td><td class="small">${esc(jst(j.updated_at))}</td><td>${j.status === "queued" ? `<form method="post" action="/jobs/${j.id}/cancel" class="inline"><button class="btn sub small">キャンセル</button></form>` : j.status === "failed" || j.status === "skip_no_form" ? `<a class="btn sub small" href="/jobs/${j.id}#fix">修正して再送信</a>` : ""} ${j.is_test ? "" : `<form method="post" action="/jobs/${j.id}/delete" class="inline" data-n="${esc(j.company_name)}" onsubmit="return confirm(this.dataset.n + ' の記録${hist.length ? `（履歴${hist.length}件を含む）` : ""}をすべて送信一覧から削除します（取り消せません）${j.status === "sent" || hist.some((h) => h.status === "sent") ? "。送信済みの記録も消え、この会社への再送防止が効かなくなります" : ""}。よろしいですか？')"><button class="btn sub small" title="この会社の記録をすべて削除">削除</button></form>`}</td></tr>`;
     const histRow = (repId: number, h: Job) => `<tr class="histrow hist-${repId}" hidden><td></td><td></td><td colspan="8" class="small muted">└ ${esc(jst(h.updated_at))} ${statusTag(h.status)} ${errKindTag(h)}${esc((h.result_text || "").split("\n")[0].slice(0, 60))} <a href="/jobs/${h.id}">詳細</a></td></tr>`;
     return groups.map((g) => repRow(g.rep, g.hist) + g.hist.map((h) => histRow(g.rep.id, h)).join("")).join("");
   })()}
@@ -613,9 +631,20 @@ export function suppressionsView(
   rows: { id: number; company_name: string; domain: string | null; email: string | null; tel: string; reason: string; created_at: string }[],
   optouts: { email: string; reason: string; created_at: string }[] = [],
   imported?: { added: number; already: number; noKey: number; noKeyNames: string[] },
-  sync?: { url: string; lastAt?: string; lastResult?: string } | null
+  sync?: { url: string; lastAt?: string; lastResult?: string } | null,
+  extra?: { industries: string; replyRules: { id: number; phrase: string; outcome: string; source: string }[] }
 ) {
   return `<h1>除外リスト</h1>
+<div class="card"><h2 style="margin-top:0">送りたくない業種・キーワード</h2>
+<p class="muted small" style="margin:0 0 8px">ここに書いた言葉が<b>会社名・業界・小業界</b>に含まれる会社には送りません（取り込みのときと、送信の直前に確認します）。1行に1つ、または読点区切り。例: 病院／クリニック／法律事務所／税理士／宗教／学校法人</p>
+<form method="post" action="/suppressions/industries" data-busy>
+<textarea name="industries" style="min-height:90px" placeholder="病院&#10;クリニック&#10;法律事務所">${esc(extra?.industries ?? "")}</textarea>
+<p><button class="btn sub">保存する</button> <span class="muted small">官公庁・自治体・学校のドメイン（.go.jp / .lg.jp / .ac.jp / .ed.jp）は、設定に関係なく最初から除外しています。</span></p></form></div>
+${extra?.replyRules?.length ? `<div class="card"><h2 style="margin-top:0">返信の自動判定が覚えた言い回し（${extra.replyRules.length}件）</h2>
+<p class="muted small" style="margin:0 0 8px">自動判定を手で直したとき、その返信の言い回しを覚えています。次から同じ言い回しのメールは、直した側に振り分けます。おかしなものは削除してください。</p>
+<table><tr><th>言い回し</th><th style="width:110px">振り分け</th><th style="width:160px">覚えた相手</th><th style="width:70px"></th></tr>
+${extra.replyRules.map((r) => `<tr><td>${esc(r.phrase)}</td><td>${esc(OUTCOME_LABEL[r.outcome] ?? r.outcome)}</td><td class="small muted">${esc(r.source)}</td><td><form method="post" action="/reply-rules/${r.id}/delete" class="inline"><button class="btn sub small">削除</button></form></td></tr>`).join("")}
+</table></div>` : ""}
 ${(() => {
     // チームで別々のPCに入れている場合、断りの会社を1つのスプレッドシートで共有して、各自が自動で取り込めるようにする
     const last = sync?.lastAt ? new Date(sync.lastAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
@@ -1383,4 +1412,51 @@ ${rows.length ? `<table>
 </table>
 <form method="post" action="/logs/clear" style="margin-top:12px" onsubmit="return confirm('ログを全部消します。よろしいですか？')"><button class="btn sub small">ログを消す</button></form>`
   : `<div class="card"><p>まだ記録はありません。問題なく動いています。</p></div>`}`;
+}
+
+// ---- 特定電子メール法のチェックリスト（#85）----
+// 他社に渡すと、法律上の表示義務を知らないまま送り始めてしまう。最初の1回だけ、実際の登録内容を見せて確認してもらう。
+export function lawView(senders: SenderProfile[], acked: string, unsubscribeOk: boolean): string {
+  const ok = (b: boolean) => (b ? `<span class="tag sent">○</span>` : `<span class="tag failed">×</span>`);
+  const rows = senders.map((s) => `<tr>
+    <td><b>${esc(s.label || s.company)}</b></td>
+    <td>${ok(Boolean(s.company?.trim()))} ${esc(s.company || "未登録")}</td>
+    <td>${ok(Boolean(s.address?.trim()))} ${esc(s.address || "未登録")}</td>
+    <td>${ok(Boolean(s.reply_email || s.email))} ${esc(s.reply_email || s.email || "未登録")}</td>
+    <td>${s.unsubscribe_url ? `<span class="tag sent">○</span> 停止ページあり` : `<span class="tag queued">△</span> 返信で受付`}</td>
+  </tr>`).join("");
+  return `<h1>営業メールを送る前に（特定電子メール法）</h1>
+<div class="card">
+  <p>広告・宣伝を目的とするメールには、法律（特定電子メール法）で次の表示が必要です。アポハッチくんは、下の内容を<b>自動で本文の末尾に入れます</b>。登録が足りないとメールは送れません。</p>
+  <ol style="line-height:2;margin:8px 0 4px">
+    <li><b>送信者の名称</b>（会社名）— 送信者プロフィールの「会社名」</li>
+    <li><b>送信者の住所</b> — 送信者プロフィールの「住所」。<b>未登録だと送信できません</b></li>
+    <li><b>受信拒否（配信停止）の連絡先</b> — 返信で受け付け。停止ページのURLを登録すると1クリックで済みます</li>
+    <li><b>問い合わせを受け付けるメールアドレス</b> — 返信受付メール</li>
+  </ol>
+  <p class="muted">送らない方がよい相手: 配信停止を申し出た相手（自動で除外します）、個人のアドレス（BtoBの業務用アドレスを前提にしてください）、官公庁・学校（既定で除外）。</p>
+</div>
+
+<h2>いまの登録内容</h2>
+<table>
+  <tr><th>送信者</th><th>①名称</th><th>②住所</th><th>③④連絡先</th><th>配信停止</th></tr>
+  ${rows || `<tr><td colspan="5">送信者がまだ登録されていません</td></tr>`}
+</table>
+<p class="muted">× がある送信者は、<a href="/senders">送信者</a>の画面で登録してください。${unsubscribeOk ? "" : "配信停止ページのURL（Googleフォーム等）を登録すると、相手が1クリックで停止でき、迷惑メール報告をされにくくなります。"}</p>
+
+<div class="card" style="background:var(--honey-50);border-color:var(--honey)">
+  <h2 style="margin-top:0">送る内容についての注意</h2>
+  <ul style="line-height:1.9;margin:0">
+    <li>件名に「広告」などの偽りがないこと（送信者を偽らない）</li>
+    <li>相手が「不要」と言ったら、以後送らないこと（返信から自動で除外リストに入りますが、見落としに注意）</li>
+    <li>「営業お断り」と書いてあるサイトには送らないこと（自動で検知してスキップします）</li>
+    <li>送信記録は残しておくこと（アポハッチくんが保存しています）</li>
+  </ul>
+</div>
+
+<form method="post" action="/law/ack" data-busy>
+  <label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" name="ack" value="1" required style="width:auto">上の内容を確認しました</label>
+  <p class="muted small">確認すると、この画面は次から出ません（${acked ? `前回の確認: ${esc(acked)}` : "まだ未確認"}）。</p>
+  <button class="btn">確認して送信に進む</button>
+</form>`;
 }

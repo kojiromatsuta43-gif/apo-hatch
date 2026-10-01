@@ -1,9 +1,51 @@
 // 問い合わせフォームのページを見つける。DBのフォームURL → 企業URL内のリンク → よくあるパス の順。
 import type { Page } from "playwright";
 
-const CONTACT_LINK_RE = /(お問い?合わ?せ|問合せ|ご相談|ご依頼|資料請求|contact|inquiry|inquire|toiawase|otoiawase|form)/i;
-const NEGATIVE_LINK_RE = /(採用|recruit|entry|求人|faq|privacy|sitemap|login|mypage|cart)/i;
-const COMMON_PATHS = ["/contact/", "/contact", "/contact.html", "/contact.php", "/inquiry/", "/inquiry", "/inquiry.html", "/otoiawase/", "/toiawase/", "/form/", "/contact-us/", "/contactus/", "/contact/index.html", "/inquiry/index.html", "/company/contact/", "/info/contact/", "/support/contact/"];
+// 表記ゆれ対応（#3）: 送り仮名違い・英語・ローマ字・「メールフォーム」等も拾う
+const CONTACT_LINK_RE = /(お問い?合わ?せ|お問合せ|お問い合せ|問合せ|問い合せ|ご相談|ご依頼|ご意見|ご質問|お見積|見積り?依頼|資料請求|メールフォーム|申し?込み?フォーム|contact|inquiry|inquire|enquiry|toiawase|otoiawase|soudan|mail-?form|mailform|form)/i;
+const NEGATIVE_LINK_RE = /(採用|recruit|entry|求人|新卒|中途|faq|よくある|privacy|プライバシー|sitemap|login|ログイン|mypage|cart|カート|会員|member|ir\/|press|取材)/i;
+const COMMON_PATHS = [
+  "/contact/", "/contact", "/contact.html", "/contact.php", "/contact.cgi", "/contact/index.html", "/contact/index.php",
+  "/inquiry/", "/inquiry", "/inquiry.html", "/inquiry.php", "/inquiry/index.html", "/enquiry/",
+  "/otoiawase/", "/toiawase/", "/toiawase.html", "/otoiawase.html",
+  "/form/", "/form", "/mailform/", "/mail-form/", "/mailform.html", "/mail/", "/form/contact/", "/contact/form/", "/contact/mail/",
+  "/contact-us/", "/contactus/", "/contact_us/", "/contact-us", "/ja/contact/", "/jp/contact/", "/en/contact/",
+  "/company/contact/", "/info/contact/", "/support/contact/", "/support/", "/soudan/", "/request/", "/estimate/",
+];
+
+// よく使われる外部フォームサービス（#4）。iframe や埋め込みスクリプトで入ることが多く、
+// 本体のHTMLだけを見ると「フォーム無し」に見える
+const FORM_SERVICE_RE: [string, RegExp][] = [
+  ["Googleフォーム", /docs\.google\.com\/forms|forms\.gle/i],
+  ["formrun", /formrun\.(app|io)/i],
+  ["HubSpot", /(hsforms\.(net|com)|js\.hs-scripts\.com|hubspot)/i],
+  ["Typeform", /typeform\.com/i],
+  ["formzu", /formzu\.(com|net|jp)/i],
+  ["フォームメーラー", /form-mailer\.jp|ssl\.form-mailer\.jp/i],
+  ["Tayori", /tayori\.com/i],
+  ["SATORI", /satori\.marketing|satoriapp\.com/i],
+  ["Zoho", /zohopublic|forms\.zohopublic/i],
+  ["SurveyMonkey", /surveymonkey/i],
+  ["kintone", /kintoneapp\.com|form\.kintone/i],
+  ["Shopify/Wix等のフォーム", /wix\.com\/form|shopify.*contact/i],
+];
+
+/** 外部フォームサービスが埋め込まれていれば、その名前と（あれば）フレームのURLを返す */
+export async function detectFormService(page: Page): Promise<{ name: string; frameUrl: string } | null> {
+  for (const fr of page.frames()) {
+    const u = fr.url() || "";
+    const hit = FORM_SERVICE_RE.find(([, re]) => re.test(u));
+    if (hit) return { name: hit[0], frameUrl: u };
+  }
+  const html = await page.evaluate(() => {
+    const srcs = Array.from(document.querySelectorAll("script[src], iframe[src], form[action]"))
+      .map((e) => e.getAttribute("src") || e.getAttribute("action") || "")
+      .join(" ");
+    return srcs.slice(0, 4000);
+  }).catch(() => "");
+  const hit2 = FORM_SERVICE_RE.find(([, re]) => re.test(html));
+  return hit2 ? { name: hit2[0], frameUrl: "" } : null;
+}
 
 export const HAS_FORM_SCRIPT = `
 (() => {
@@ -66,6 +108,9 @@ async function scanFrames(page: Page): Promise<boolean> {
 
 export async function pageHasContactForm(page: Page): Promise<boolean> {
   if (await scanFrames(page)) return true;
+  // 外部フォームサービスを iframe で埋め込んでいるページ（#4）。
+  // 中身を読み取れないことがあるが、このURLが入っている時点で入力フォームとみなしてよい
+  if (page.frames().some((fr) => FORM_SERVICE_RE.some(([, re]) => re.test(fr.url() || "")))) return true;
   // JSで後から描画されるフォーム: 少し待って再スキャン
   for (let i = 0; i < 2; i++) {
     await page.waitForTimeout(1000);
@@ -85,6 +130,11 @@ export async function pageHasContactForm(page: Page): Promise<boolean> {
       if (await scanFrames(page)) return true;
     }
     await page.evaluate(() => window.scrollTo(0, 0));
+    // 画面に入ってから読み込む埋め込みフォーム（#5）: 通信が落ち着くのを待って、もう一度だけ見る
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    if (await scanFrames(page)) return true;
+    if (page.frames().some((fr) => FORM_SERVICE_RE.some(([, re]) => re.test(fr.url() || "")))) return true;
   } catch {
     /* 遷移中・閉じたページ等は無視 */
   }
@@ -152,6 +202,60 @@ function normalize(url: string): string {
   return url.startsWith("http") ? url : `https://${url}`;
 }
 
+/** 開けなかったURLの言い換え（#2）。https↔http・www有無を試す。
+ *  「サイトにアクセスできない」で送れなかった会社が多く（実測163件）、1回の失敗で諦めていた */
+export function urlVariants(url: string): string[] {
+  const out: string[] = [];
+  try {
+    const u = new URL(normalize(url));
+    const hosts = u.hostname.startsWith("www.") ? [u.hostname, u.hostname.slice(4)] : [u.hostname, `www.${u.hostname}`];
+    for (const proto of [u.protocol, u.protocol === "https:" ? "http:" : "https:"]) {
+      for (const h of hosts) {
+        const v = new URL(u.toString());
+        v.protocol = proto; v.hostname = h;
+        const s = v.toString();
+        if (!out.includes(s)) out.push(s);
+      }
+    }
+  } catch {
+    return [normalize(url)].filter(Boolean);
+  }
+  return out;
+}
+
+/** sitemap.xml から問い合わせページらしいURLを拾う（#1）。
+ *  トップページにリンクが無い・JSメニューでリンクを読めないサイトでも、サイトマップには載っていることが多い */
+async function urlsFromSitemap(page: Page, origin: string): Promise<string[]> {
+  const read = async (u: string): Promise<string> => {
+    try {
+      const res = await page.request.get(u, { timeout: 10000, failOnStatusCode: false });
+      if (!res.ok()) return "";
+      const body = await res.text();
+      return body.length > 3_000_000 ? body.slice(0, 3_000_000) : body;
+    } catch { return ""; }
+  };
+  const locsOf = (xml: string) => Array.from(xml.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/gi)).map((m) => m[1]);
+  const candidates: string[] = [];
+  // robots.txt に書かれたサイトマップも見る
+  const robots = await read(`${origin}/robots.txt`);
+  const fromRobots = Array.from(robots.matchAll(/^\s*sitemap:\s*(\S+)/gim)).map((m) => m[1]);
+  const sitemaps = [...new Set([...fromRobots, `${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`, `${origin}/sitemap-index.xml`])].slice(0, 4);
+  for (const sm of sitemaps) {
+    const xml = await read(sm);
+    if (!xml) continue;
+    const locs = locsOf(xml);
+    // サイトマップ索引なら、問い合わせが載っていそうな子サイトマップを1つだけ辿る
+    if (/<sitemapindex/i.test(xml)) {
+      const child = locs.find((l) => /(page|post|main|top|1)/i.test(l)) ?? locs[0];
+      if (child) candidates.push(...locsOf(await read(child)));
+    } else candidates.push(...locs);
+    if (candidates.length > 3000) break;
+  }
+  return candidates
+    .filter((u) => u.startsWith(origin) && CONTACT_LINK_RE.test(u) && !NEGATIVE_LINK_RE.test(u))
+    .slice(0, 5);
+}
+
 /** フォームのあるページへ遷移する。見つかれば最終URL、無ければ null */
 export async function findContactForm(page: Page, formUrl: string, siteUrl: string): Promise<string | null> {
   const tried = new Set<string>();
@@ -163,6 +267,10 @@ export async function findContactForm(page: Page, formUrl: string, siteUrl: stri
   };
 
   if (formUrl && (await tryUrl(normalize(formUrl)))) return page.url();
+  // フォームURLが開けなかった場合、https/http・www有無を言い換えて試す（#2）
+  if (formUrl) {
+    for (const v of urlVariants(formUrl).slice(1, 4)) if (await tryUrl(v)) return page.url();
+  }
 
   const site = normalize(siteUrl || formUrl);
   if (!site) return null;
@@ -173,20 +281,32 @@ export async function findContactForm(page: Page, formUrl: string, siteUrl: stri
     return null;
   }
 
-  // トップページ内のリンクから探す
-  if (await safeGoto(page, site)) {
+  // トップページを開く。開けなければ https/http・www有無を言い換えて試す（#2）
+  let opened = await safeGoto(page, site);
+  if (!opened) {
+    for (const v of urlVariants(site).slice(1, 4)) {
+      if (await safeGoto(page, v)) { opened = true; origin = new URL(v).origin; break; }
+    }
+  }
+  // トップページ内のリンクから探す（フッターのリンクを優先: #1）
+  if (opened) {
     if (await pageHasContactForm(page)) return page.url();
-    const links: { href: string; text: string }[] = await page.evaluate(() =>
-      Array.from(document.querySelectorAll("a[href]")).map((a) => ({
-        href: (a as HTMLAnchorElement).href,
-        text: ((a as HTMLAnchorElement).innerText || a.getAttribute("title") || a.getAttribute("aria-label") || "").trim(),
-      }))
+    const links: { href: string; text: string; footer: boolean }[] = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a[href]")).map((a) => {
+        const el = a as HTMLAnchorElement;
+        return {
+          href: el.href,
+          text: (el.innerText || a.getAttribute("title") || a.getAttribute("aria-label") || "").trim(),
+          // フッター（またはページ下部）のリンクは、問い合わせページである確率が高い
+          footer: Boolean(el.closest("footer, [class*='footer'], [id*='footer']")),
+        };
+      })
     );
     const candidates = links
       .filter((l) => l.href.startsWith("http") && !NEGATIVE_LINK_RE.test(l.href + " " + l.text))
       .filter((l) => CONTACT_LINK_RE.test(l.text) || CONTACT_LINK_RE.test(l.href))
       .sort((a, b) => score(b) - score(a))
-      .slice(0, 4);
+      .slice(0, 5);
     for (const c of candidates) {
       if (await tryUrl(c.href.split("#")[0])) return page.url();
     }
@@ -196,18 +316,47 @@ export async function findContactForm(page: Page, formUrl: string, siteUrl: stri
   for (const p of COMMON_PATHS) {
     if (await tryUrl(origin + p)) return page.url();
   }
+
+  // sitemap.xml / robots.txt のサイトマップから探す（#1）。
+  // JSで作られたメニューなどでトップのリンクを読めないサイトでも、ここに載っていることが多い
+  for (const u of await urlsFromSitemap(page, origin)) {
+    if (await tryUrl(u)) return page.url();
+  }
+
+  // 「会社概要」ページ経由（問い合わせリンクが会社概要の中にだけあるサイト向け: #1）
+  if (await safeGoto(page, origin + "/company/") || (await safeGoto(page, site))) {
+    const sub: string[] = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => (a as HTMLAnchorElement).href)
+        .filter((h) => /(company|about|corporate|profile|outline|会社)/i.test(h))
+        .slice(0, 6)
+    ).catch(() => []);
+    for (const u of sub.slice(0, 2)) {
+      if (!(await safeGoto(page, u))) continue;
+      if (await pageHasContactForm(page)) return page.url();
+      const link: string | null = await page.evaluate((reSrc) => {
+        const re = new RegExp(reSrc, "i");
+        const a = Array.from(document.querySelectorAll("a[href]")).find((x) => re.test(((x as HTMLAnchorElement).innerText || "") + " " + (x as HTMLAnchorElement).href));
+        return a ? (a as HTMLAnchorElement).href : null;
+      }, CONTACT_LINK_RE.source).catch(() => null);
+      if (link && (await tryUrl(link.split("#")[0]))) return page.url();
+    }
+  }
+
   // 最後の手段: トップに戻り「お問い合わせはこちら」等を押してモーダル/パネルを開く
   if (await safeGoto(page, site)) {
     if (await tryClickTrigger(page)) return page.url();
   }
   return null;
 
-  function score(l: { href: string; text: string }) {
+  function score(l: { href: string; text: string; footer: boolean }) {
     let s = 0;
-    if (/お問い?合わ?せ|contact/i.test(l.text)) s += 3;
+    if (/お問い?合わ?せ|お問合せ|contact/i.test(l.text)) s += 3;
     if (/contact|inquiry|toiawase/i.test(l.href)) s += 2;
     if (l.href.startsWith(origin)) s += 2;
+    if (l.footer) s += 2;
     if (/form/i.test(l.href)) s += 1;
+    if (/資料請求|見積/i.test(l.text)) s -= 1; // 問い合わせフォームの方が本命
     return s;
   }
 }

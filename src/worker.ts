@@ -2,13 +2,14 @@
 // 本体組み込み時は Railway の別サービス（form-worker）としてこのファイルを動かし、DBだけ共有／APIで取りに行く。
 import fs from "node:fs";
 import type { Browser } from "playwright";
-import { getDb, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
+import { getDb, getSetting, setSetting, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { notify } from "./notify.js";
 import { keepAwake } from "./awake.js";
 import { logError, logWarn, logInfo } from "./applog.js";
 import { jpError } from "./jp.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
+import { matchExcludedKeyword } from "./csv.js";
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
 
@@ -67,6 +68,61 @@ export function inSendWindow(c: Campaign): boolean {
   if (c.weekdays_only && (wd === 0 || wd === 6)) return false;
   return h >= c.send_window_start && h < c.send_window_end;
 }
+/** 送信用アカウント（送信者）ごとの、今日のメール送信数。アカウントを切り替えて送るときの上限管理に使う */
+export function sentTodayBySender(senderId: number): number {
+  const d = nowJst().toISOString().slice(0, 10);
+  const r = getDb()
+    .prepare(`SELECT COUNT(*) n FROM form_jobs WHERE status='sent' AND is_test=0 AND channel='email' AND sent_by_sender=? AND substr(datetime(sent_at,'+9 hours'),1,10)=?`)
+    .get(senderId, d) as { n: number };
+  return r.n;
+}
+
+/** ウォームアップ（#18）。新しい送信用アカウントでいきなり大量に送るとGmailに止められるため、
+ *  送り始めてからの日数に応じて1日の上限を少しずつ引き上げる。
+ *  途中で「上限に達した／ログインを拒否された」が起きたら、1段階下げて様子を見る。 */
+const WARMUP_STEPS = [30, 30, 50, 50, 80, 80, 80, 120, 120, 120, 180, 180, 180, 180]; // 1日目から14日目まで
+export function warmupLimit(senderId: number, configured: number): { limit: number; note: string } {
+  const db = getDb();
+  const first = db.prepare(`SELECT MIN(sent_at) t FROM form_jobs WHERE status='sent' AND is_test=0 AND channel='email' AND (sent_by_sender=? OR sent_by_sender IS NULL)`).get(senderId) as { t: string | null };
+  if (!first?.t) return { limit: Math.min(configured, WARMUP_STEPS[0]), note: "ウォームアップ中（初日）" };
+  const days = Math.floor((Date.now() - Date.parse(String(first.t).replace(" ", "T") + "Z")) / 86400_000);
+  if (days >= WARMUP_STEPS.length) return { limit: configured, note: "" };
+  // 直近で停止（上限・ログイン拒否）があった場合は1段下げる
+  const penalty = getSetting(`warmup_penalty:${senderId}`, "");
+  const back = penalty && Date.now() - Number(penalty) < 3 * 86400_000 ? 1 : 0;
+  const step = WARMUP_STEPS[Math.max(0, days - back)] ?? WARMUP_STEPS[0];
+  const limit = Math.min(configured, step);
+  return { limit, note: `ウォームアップ中（送り始めて${days + 1}日目・今日は最大${limit}通）${back ? "／直近に送信が止まったため1段階下げています" : ""}` };
+}
+
+/** このキャンペーンで今日メールに使える上限（ウォームアップ設定を加味した実際の値） */
+export function effectiveEmailLimit(campaign: Campaign, senderId: number): { limit: number; note: string } {
+  if (!campaign.email_warmup) return { limit: campaign.email_daily_limit, note: "" };
+  return warmupLimit(senderId, campaign.email_daily_limit);
+}
+
+/** メールに使える送信者アカウントを選ぶ（#24）。
+ *  本来の送信者が「1日の上限に達した／一時停止中」なら、キャンペーンに登録した別のアカウントへ切り替える。
+ *  使えるアカウントが無ければ null（＝今日のメール送信は終わり）。 */
+export function emailSenderIds(campaign: Campaign): number[] {
+  const extra = String(campaign.email_sender_ids ?? "").split(",").map((n) => Number(n.trim())).filter((n) => n > 0);
+  return [...new Set([campaign.sender_id, ...extra])];
+}
+export function pickEmailSender(campaign: Campaign, primary?: SenderProfile): { sender: SenderProfile; limit: number; note: string } | null {
+  const db = getDb();
+  for (const id of emailSenderIds(campaign)) {
+    const sender = id === primary?.id ? primary : (db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(id) as SenderProfile | undefined);
+    if (!sender) continue;
+    if (emailPause(sender)) continue;
+    const { limit, note } = effectiveEmailLimit(campaign, sender.id);
+    if (sentTodayBySender(sender.id) >= limit) continue;
+    // 従来どおり、キャンペーン単位の上限も超えない（アカウントを増やしても1キャンペーンの合計は守る）
+    if (sentToday(campaign.id, "email") >= campaign.email_daily_limit * emailSenderIds(campaign).length) continue;
+    return { sender, limit, note };
+  }
+  return null;
+}
+
 export function sentToday(campaignId: number, channel?: "form" | "email"): number {
   const d = nowJst().toISOString().slice(0, 10);
   const r = getDb()
@@ -98,7 +154,12 @@ async function getSiteInfo(browser: Browser, job: Job, needed: boolean): Promise
 export async function processJob(browser: Browser, jobId: number, opts: { dryRun?: boolean } = {}): Promise<Job> {
   const db = getDb();
   const job = db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
-  const { campaign, sender } = loadCampaign(job.campaign_id);
+  const { campaign, sender: primarySender } = loadCampaign(job.campaign_id);
+  // メールは、使えるアカウント（上限に達していない・停止中でない）を選ぶ（#24）。
+  // 文面の署名・住所も、実際に送るアカウントのものを使う（法律上の表示を送信元と一致させるため）
+  const picked = job.channel === "email" && !job.is_test ? pickEmailSender(campaign, primarySender) : null;
+  const sender = picked?.sender ?? primarySender;
+  if (picked && picked.sender.id !== primarySender.id) logInfo("worker", `送信アカウントを切り替え: ${primarySender.label} → ${picked.sender.label}`, job.company_name);
   // 社名に法人格（株式会社など）が無ければ、会社のホームページの表記から正式名称を補う（AI不要・0円）。
   // 事前チェックはフォームの会社だけが対象なので、メール送信の会社はここで補う（以前は補われていなかった）。
   // まずキャッシュ済みのHP本文、無ければブラウザを使わずにHPの文字だけを読む。URLが無ければメールのドメイン（フリーメールは除く）
@@ -135,6 +196,11 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 
   // 除外リスト（送信直前にも確認）
   if (!job.is_test && db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?").get(job.domain)) return finish("skip_suppressed", "除外リストに登録済み");
+  // 設定で指定した「送りたくない業種・キーワード」（#87）。取り込み後に設定を変えた場合もここで止まる
+  if (!job.is_test) {
+    const ng = matchExcludedKeyword({ company_name: job.company_name, industry: job.industry, sub_industry: job.sub_industry });
+    if (ng) return finish("skip_suppressed", `除外キーワード「${ng}」に一致（設定で変更できます）`);
+  }
   // 同じグループの別キャンペーンですでに送信済み／送信中なら送らない（取り込み後にグループを付けた場合などの保険）
   if (!job.is_test) {
     const dup = findGroupDuplicate(db, { groupName: campaign.group_name, campaignId: campaign.id, domain: job.domain, email: job.email, statuses: ["sending", "sent"], excludeJobId: job.id });
@@ -178,12 +244,15 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
         ? [{ path: campaign.attach_path, filename: campaign.attach_name || "資料.pdf" }]
         : undefined;
       await sendEmail(sender, { from: chk.from, to: job.email, subject, ...body, attachments });
-      return finish("sent", `メール送信（${job.email}）`, { message_used: message });
+      db.prepare("UPDATE form_jobs SET sent_by_sender=? WHERE id=?").run(sender.id, jobId);
+      return finish("sent", `メール送信（${job.email}${sender.id !== primarySender.id ? `／送信アカウント: ${sender.label}` : ""}）`, { message_used: message });
     } catch (e) {
       const why = explainSmtpError(e, sender);
       const minutes = smtpPauseMinutes(e);
       if (minutes) {
         setEmailPause(sender, minutes, why);
+        // 上限・ログイン拒否で止まったら、ウォームアップを1段階下げて様子を見る（#18）
+        if (minutes >= 60) setSetting(`warmup_penalty:${sender.id}`, String(Date.now()));
         notify("メール送信を一時停止しました", `${why}（${minutes >= 60 ? `${Math.round(minutes / 60)}時間` : `${minutes}分`}後に自動で再開。フォーム送信は続きます）`, `pause:${sender.id}`);
         return finish("queued", `メール送信を一時停止しました（${minutes >= 60 ? `${Math.round(minutes / 60)}時間` : `${minutes}分`}後に自動で再開）: ${why}`, { message_used: message });
       }
@@ -193,6 +262,14 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 
   const r = await submitToCompany(browser, { jobId, formUrl: job.form_url, siteUrl: job.site_url, sender, subject, message, dryRun: opts.dryRun, ignoreRefusal: Boolean(campaign.ignore_refusal), aiMode: (campaign.mode === "ai" || campaign.mode === "tpl_ai") && activeProvider() !== "none", company: job.company_name, manualAnswers: parseManualAnswers(job.manual_answers) });
   const detail = [r.detail, ...r.log].join("\n");
+  // フォームが見つからなかった会社に、メールアドレスがあればメール送信へ自動で振り替える（#16）。
+  // これまでは「フォーム無し」で止まり、人が手で振り分け直していた（取りこぼしが最も多かったところ）
+  if (!opts.dryRun && !job.is_test && r.status === "skip_no_form" && job.email && allowsEmailFallback(campaign.channel) && !isOptedOut(job.email)) {
+    db.prepare("UPDATE form_jobs SET channel='email', status='queued', result_text=?, scan_note=?, updated_at=datetime('now') WHERE id=?")
+      .run(`フォームが見つからなかったため、メール送信に切り替えました（${job.email}）`, `フォーム無し → メールに切替（${job.email}）`, jobId);
+    logInfo("worker", `フォーム無しのためメールに切替: ${job.email}`, job.company_name);
+    return db.prepare("SELECT * FROM form_jobs WHERE id=?").get(jobId) as Job;
+  }
   if (r.status === "skip_refused" && job.domain && !campaign.ignore_refusal) {
     db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, "営業お断り文言を検知（自動）");
   }
@@ -235,8 +312,9 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         // 「メールだけ／フォームだけ」を選んで開始した場合は、その種類だけを送る
         const only = String((campaign as { send_only?: string }).send_only ?? "");
         const formOk = only !== "email" && sentToday(campaignId, "form") < campaign.daily_limit;
-        // メール送信が一時停止中（ログイン拒否・上限・通信障害）ならメールの会社には手を付けない
-        const emailOk = only !== "form" && sentToday(campaignId, "email") < campaign.email_daily_limit && !emailPause(sender);
+        // メールは「ウォームアップ中の上限」と「使えるアカウントがあるか」で判断する（#18 #24）
+        const mail = pickEmailSender(campaign, sender);
+        const emailOk = only !== "form" && Boolean(mail);
         if (!formOk && !emailOk) {
           reason = only ? `${only === "email" ? "メール" : "フォーム"}の送信が上限または一時停止` : "本日の上限に到達";
           // 「上限に達して止まった」ことに気づけるように通知する（1時間に1回まで）
@@ -337,8 +415,16 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
       else if (allowsEmailFallback(campaign.channel) && email && !isOptedOut(email)) { channel = "email"; note = `フォーム無し → メールに切替（${email}）`; }
       else { status = "skip_no_form"; note = r.note || "フォームが見つからない"; }
       if (nameNote) note += nameNote;
-      db.prepare("UPDATE form_jobs SET status=?, channel=?, email=?, form_url=?, scan_note=?, result_text=?, updated_at=datetime('now') WHERE id=?")
-        .run(status, channel, email, r.formUrl ?? job.form_url, note, status === "queued" ? `事前チェック: ${note}` : note, job.id);
+      // 「送れそう度」を点数にして残す（#9）。送れる会社から先に回したいときの並び替えに使う
+      let score = 0;
+      if (!/サイトにアクセスできない/.test(r.note)) score += 20;
+      if (r.formUrl) score += 50;
+      if (email) score += 25;
+      if (r.captcha) score -= 45;
+      if (r.refused) score = 0;
+      score = Math.max(0, Math.min(100, score));
+      db.prepare("UPDATE form_jobs SET status=?, channel=?, email=?, form_url=?, scan_note=?, scan_score=?, result_text=?, updated_at=datetime('now') WHERE id=?")
+        .run(status, channel, email, r.formUrl ?? job.form_url, note, score, status === "queued" ? `事前チェック: ${note}` : note, job.id);
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));
     }
     if (scanned && !state.stop) {

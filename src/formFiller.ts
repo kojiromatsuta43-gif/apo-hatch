@@ -409,8 +409,12 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
       if (pick) ok = await ensureChecked(target, pick.f);
     } else if (f.type === "checkbox") {
       const shouldCheck = cat === "agree" || f.required || (cat === "type" && nth === 1);
-      if (shouldCheck && !f.checked) ok = await ensureChecked(target, f);
-      else ok = f.checked;
+      if (shouldCheck && !f.checked) {
+        ok = await ensureChecked(target, f);
+        // 同意（プライバシーポリシー等）に自動でチェックを入れたことは記録に残す。
+        // 「勝手に同意した」と言われたときに、何に同意したのかを説明できるようにしておく
+        if (ok && cat === "agree") report.log.push(`同意チェックを自動でチェック: 「${(f.sig.split(" || ")[0] || "同意").slice(0, 40)}」`);
+      } else ok = f.checked;
     } else if (f.tag === "select") {
       let value: string | undefined;
       if (cat === "prefecture") {
@@ -445,13 +449,20 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
           // 「電話番号が必須の欄にだけ入力する」設定なら任意の欄は空のまま。
           // 必須表示を読み取れずサイトに弾かれた場合に備え、埋め直し（normalize）のときは入力する
           if (s.tel_required_only && !f.required && !opts.normalize) { report.log.push(`電話は任意の欄なので未入力 idx=${f.idx}`); continue; }
-          const split = tels.length > 1 && countOf(scoped, "tel") >= 3;
-          const val = split ? tels[nth - 1] ?? "" : wantsDigitsOnly(f, s.tel.length) ? s.tel.replace(/[^\d]/g, "") : s.tel;
+          // 分割入力（3分割が多いが、2分割＝市外局番とそれ以降、のフォームもある）
+          const telBoxes = countOf(scoped, "tel");
+          const val = telBoxes >= 3 && tels.length > 1 ? (tels[nth - 1] ?? "")
+            : telBoxes === 2 && tels.length > 1 ? (nth === 1 ? tels[0] : tels.slice(1).join(""))
+            : wantsDigitsOnly(f, s.tel.length) ? s.tel.replace(/[^\d]/g, "") : s.tel;
           ok = await setText(f, val); break;
         }
         case "postal": {
-          const split = countOf(scoped, "postal") >= 2;
-          const val = split ? postals[nth - 1] ?? "" : wantsDigitsOnly(f, s.postal.length) ? s.postal.replace(/[^\d]/g, "") : s.postal;
+          const boxes = countOf(scoped, "postal");
+          const digits = s.postal.replace(/[^\d]/g, "");
+          // 3分割（まれ）にも対応: 1つ目3桁・残りを分ける
+          const val = boxes >= 3 && digits.length === 7 ? [digits.slice(0, 3), digits.slice(3, 5), digits.slice(5)][nth - 1] ?? ""
+            : boxes === 2 ? (postals[nth - 1] ?? "")
+            : wantsDigitsOnly(f, s.postal.length) ? digits : s.postal;
           ok = await setText(f, val); break;
         }
         case "prefecture": ok = await setText(f, prefectureOf(s.address)); break;
@@ -476,6 +487,56 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
   function countOf(list: FieldInfo[], cat: Category) {
     return list.filter((x) => x.tag === "input" && classify(x) === cat).length;
   }
+}
+
+/** 送信でバリデーションに弾かれたあと、まだ空のまま残っている「必須」項目を安全な値で埋める（#6）。
+ *  判定できなかった質問（例: 「ご予算」「どこで知りましたか」）が必須だと、何度やっても送れずに失敗していた。
+ *  ここで埋めるのは「必須」かつ「空」の項目だけで、FAX・パスワード・認証コードには触らない。
+ *  自由記述は「特になし」、選択肢は当たり障りのないものを選ぶ。 */
+export async function fillRequiredLeftovers(target: Page | Frame, log: string[]): Promise<number> {
+  const fields = await collectFields(target);
+  let filled = 0;
+  const doneGroups = new Set<string>();
+  const label = (f: FieldInfo) => (f.sig.split(" || ")[0] || f.name || `項目${f.idx}`).slice(0, 30);
+  for (const f of fields) {
+    if (!f.required) continue;
+    if (NEVER_AI_RE.test(f.sig)) continue;
+    const cat = classify(f);
+    if (cat === "ignore") continue;
+    try {
+      if (f.type === "radio") {
+        const key = f.name || `r${f.idx}`;
+        if (doneGroups.has(key)) continue;
+        const group = fields.filter((x) => x.type === "radio" && (x.name || `r${x.idx}`) === key);
+        doneGroups.add(key);
+        if (group.some((x) => x.checked)) continue;
+        const pick = pickOption(group.map((g) => ({ f: g, text: g.sig.split(" || ")[0] })), cat);
+        if (pick && (await ensureChecked(target, pick.f))) { filled++; log.push(`必須の選択を補完: 「${label(f)}」→「${pick.text.slice(0, 20)}」`); }
+        continue;
+      }
+      if (f.type === "checkbox") {
+        if (f.checked) continue;
+        if (await ensureChecked(target, f)) { filled++; log.push(`必須のチェックを補完: 「${label(f)}」`); }
+        continue;
+      }
+      const el = target.locator(`[data-fo-idx="${f.idx}"]`).first();
+      const current = await el.inputValue().catch(() => "");
+      if (String(current).trim()) continue;
+      if (f.tag === "select") {
+        const pick = pickOption(f.options.map((o) => ({ f: o, text: `${o.text} ${o.value}` })), cat);
+        if (pick) { await el.selectOption(pick.f.value, { timeout: 3000 }).catch(() => {}); filled++; log.push(`必須の選択を補完: 「${label(f)}」→「${pick.f.text.slice(0, 20)}」`); }
+        continue;
+      }
+      // 値があるはずの欄（メール・電話など）が空なのは別の原因なので、ここでは触らない
+      if (["email", "email_confirm", "tel", "postal", "url", "message"].includes(cat)) continue;
+      await el.fill("特になし", { timeout: 3000 });
+      filled++;
+      log.push(`必須の自由記述を補完: 「${label(f)}」→「特になし」`);
+    } catch {
+      /* 1項目入れられなくても、他の項目は続ける */
+    }
+  }
+  return filled;
 }
 
 /** チェックボックス／ラジオを確実にONにする（カスタムデザインで本体が隠れている場合はラベルクリック→JS） */
@@ -514,14 +575,23 @@ function pickOption<T>(opts: { f: T; text: string }[], cat: Category): { f: T; t
   if (!valid.length) return undefined;
   if (cat === "agree") return valid.find((o) => /(同意する|同意します|agree|はい|yes)/i.test(o.text)) ?? valid[0];
   if (cat === "prefecture") return valid[0];
-  const prefer = [/その他/, /(サービス|商品|製品).{0,6}(について|に関する|案内)/, /(ご提案|提案|協業|パートナー|取引|business)/i, /(お問い?合わ?せ|general|other)/i];
+  // 明らかに場違いな選択肢（採用・クレーム・取材・個人のお客様 など）は先に除く。
+  // 先頭の選択肢をそのまま選ぶと「採用について」等になり、相手に不自然に見える（返信も来ない）
+  const AVOID = /(採用|求人|エントリー|新卒|中途|アルバイト|resume|recruit|苦情|クレーム|返品|交換|修理|故障|不具合|解約|退会|キャンセル|取材|報道|プレス|press|寄付|見学|individual|個人のお客様|一般のお客様|お客様専用|会員|ログイン|パスワード)/i;
+  const preferred = valid.filter((o) => !AVOID.test(o.text));
+  const pool = preferred.length ? preferred : valid;
+  const prefer = [
+    /その他/,
+    /(ご提案|提案|協業|業務提携|パートナー|取引|仕入|business|アライアンス)/i,
+    /(サービス|商品|製品|導入).{0,8}(について|に関する|案内|のご相談|検討)/,
+    /(法人|企業|ビジネス|会社)(の)?(お客様|様|向け)?/,
+    /(お問い?合わ?せ|ご相談|general|other|inquiry)/i,
+  ];
   for (const re of prefer) {
-    const hit = valid.find((o) => re.test(o.text));
+    const hit = pool.find((o) => re.test(o.text));
     if (hit) return hit;
   }
-  // 明らかに違うもの（採用・資料請求・クレーム等）は避ける
-  const neutral = valid.filter((o) => !/(採用|求人|エントリー|resume|苦情|クレーム|返品|修理|不具合|解約|退会)/.test(o.text));
-  return neutral[0] ?? valid[0];
+  return pool[0] ?? valid[0];
 }
 
 // ---- 想定外の項目へのAI回答（全文AI生成モード用）----
@@ -777,7 +847,7 @@ export async function clickNextButton(target: Page | Frame, page: Page, log: str
 // ---- 結果判定 ----
 // 「お問い合わせいただきありがとうございます。担当者より、追ってご連絡いたします。」（aidas.co.jp の実例）のように
 // 「〜いただき／頂きありがとう」「担当者より追ってご連絡」の形を知らず判定不能→失敗扱いになっていたため追加
-const SUCCESS_RE = /((お問い?合わ?せ|ご連絡|ご送信|送信|ご応募|ご依頼|ご相談|ご登録|お申し?込み)(を)?(いただき|頂き)(まして)?[、,]?(誠に|大変|本当に)?(ありがとう|有難う|有り難う)|(担当(者)?|スタッフ|係)(より|から)[、,]?(追って|改めて|折り返し|後ほど|のちほど)?[、,]?(ご?連絡|ご?返信|ご?回答)(いた|致|させていただ|を差し上げ)|追って(ご?連絡|ご?返信)(いた|致|させていただ)|送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|(ご|お)?回答(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent)/i;
+const SUCCESS_RE = /((お問い?合わ?せ|ご連絡|ご送信|送信|ご応募|ご依頼|ご相談|ご登録|お申し?込み)(を)?(いただき|頂き)(まして)?[、,]?(誠に|大変|本当に)?(ありがとう|有難う|有り難う)|(担当(者)?|スタッフ|係)(より|から)[、,]?(追って|改めて|折り返し|後ほど|のちほど)?[、,]?(ご?連絡|ご?返信|ご?回答)(いた|致|させていただ|を差し上げ)|追って(ご?連絡|ご?返信)(いた|致|させていただ)|送信(が|は)?(完了|されました|いたしました|しました|致しました)|送信ありがとう|(ご|お)?回答(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|お問い?合わ?せ(を)?(ありがとう|受け付け|承り|受付)|ありがとうございま(す|した)。?(お問い?合わ?せ|送信|受付)|受け付けました|受付(が)?完了|承りました|thank you for (contacting|your (message|inquiry|submission))|(message|inquiry|form)( has been| was)? (sent|submitted|received)|submitted successfully|successfully sent|自動返信(の)?メール(を)?(お送り|送付|送信|送らせて)|確認(の)?メール(を)?(お送り|送付|送信)|正常に(送信|受け付け|受付|完了)|(送信|受付|受け付け|お申し?込み|申込)(が|を)?(完了|終了)(いたし|致)?(ました)?|ご入力(いただき)?(誠に)?ありがとう|受付番号|お問い?合わ?せ番号)/i;
 const SUCCESS_URL_RE = /(thanks|thank-?you|complete|completed|done|sent|success|finish|kanryo|kanryou|touroku_kanryo)/i;
 const ERROR_RE = /(入力してください|必須項目|未入力|正しく入力|形式が|不正|エラーが|error(s)? (occurred|found)|is required|invalid|入力内容に誤り|確認してください)/i;
 
@@ -808,7 +878,7 @@ export async function pageText(page: Page): Promise<string> {
   return texts.join("\n");
 }
 
-export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSubmit = true, beforeText = ""): Promise<Outcome> {
+export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSubmit = true, beforeText = "", beforeUrl = ""): Promise<Outcome> {
   // 本体＋埋め込みフレームの文章をまとめて見る（完了文言が iframe の中に出ることがある）
   const text = await pageText(page);
   const compact = text.replace(/\s+/g, "");
@@ -872,6 +942,13 @@ export async function judgeOutcome(page: Page, hadFieldsBefore: number, afterSub
     return { status: "unsure", detail: "確認画面で止まっている" };
   }
   if (afterSubmit && hadFieldsBefore > 0 && fieldsNow === 0) return { status: "sent", detail: "フォームが消えた（完了文言なし・要確認）" };
+  // 送信ボタンを押したあと別のページに移り、入力欄がほとんど無くなっていれば送信できたとみなす（#7）。
+  // 完了文言が画像だったり、独自の言い回し（「受け付けいたしました」以外）だったりするサイトで、
+  // これまでは「送信後の判定不能」になり、人が手で送り直して二重送信になっていた
+  if (afterSubmit && beforeUrl && hadFieldsBefore > 0 && fieldsNow > 0 && fieldsNow <= Math.max(1, Math.floor(hadFieldsBefore / 3))) {
+    const changed = (() => { try { const a = new URL(beforeUrl), b = new URL(url); return a.pathname !== b.pathname || a.search !== b.search; } catch { return beforeUrl !== url; } })();
+    if (changed && !CONFIRM_PAGE_RE.test(compact)) return { status: "sent", detail: `別のページに切り替わり入力欄が無くなった（完了文言なし・要確認）: ${url}` };
+  }
   // 同じページのまま入力内容が全部消えて「ありがとうございました。」だけが出るフォーム（ページ遷移も完了文言の定型もない）。
   // 以前は「判定不能→失敗」になり、利用者が手動で送り直して二重送信になっていた。
   // 送信前より「ありがとうございま」が増えた（ヘッダーの「ご興味をお持ちいただき、ありがとうございます」等は送信前から在るので数に入らない）

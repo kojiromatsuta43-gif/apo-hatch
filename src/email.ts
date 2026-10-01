@@ -104,8 +104,18 @@ export function unsubscribeMailto(replyTo: string, to = ""): string {
   return `mailto:${replyTo}?subject=${encodeURIComponent("配信停止")}&body=${encodeURIComponent(body)}`;
 }
 
+/** 配信停止のページURL（Googleフォーム等）。設定されていれば、受け取った人はクリック1回で停止を申し出られる（#23）。
+ *  どのアドレス宛てかを引き継げるよう、URLに ?email= を足す（Googleフォームの事前入力リンクにも使える） */
+export function unsubscribeLink(sender: SenderProfile, to = ""): string {
+  const base = (sender.unsubscribe_url ?? "").trim();
+  if (!base || !/^https?:\/\//i.test(base)) return "";
+  if (!to) return base;
+  return base + (base.includes("?") ? "&" : "?") + `email=${encodeURIComponent(to)}`;
+}
+
 export function buildEmailBody(message: string, sender: SenderProfile, to = ""): { text: string; html: string } {
   const replyTo = sender.reply_email || sender.email;
+  const stopUrl = unsubscribeLink(sender, to);
   const footer = [
     "──────────",
     `${sender.company}${sender.person ? ` ${sender.person}` : ""}`,
@@ -114,11 +124,13 @@ export function buildEmailBody(message: string, sender: SenderProfile, to = ""):
     `メール: ${replyTo}`,
     sender.url || "",
     "",
-    `今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください（${replyTo}）。以後お送りしません。`,
+    stopUrl
+      ? `今後このご案内が不要な場合は、こちらから1クリックでお手続きいただけます: ${stopUrl}\n（本メールに「配信停止」とご返信いただいても構いません）`
+      : `今後このご案内が不要な場合は、お手数ですが本メールに「配信停止」とご返信ください（${replyTo}）。以後お送りしません。`,
   ].filter((l) => l !== "");
   const text = `${message.trim()}\n\n${footer.join("\n")}`;
   const paras = message.trim().split(/\n{2,}/).map((p) => `<p style="margin:0 0 1em;line-height:1.7">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
-  const html = `<div style="font-family:-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;font-size:14px;color:#1C1710;max-width:640px">${paras}<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="font-size:12px;color:#555;line-height:1.7;margin:0">${footer.slice(1, -1).map(esc).join("<br>")}</p><p style="font-size:12px;color:#555;line-height:1.7;margin:12px 0 0">今後このご案内が不要な場合は、以下のリンクからお手続きください。以後お送りしません。<br><a href="${esc(unsubscribeMailto(replyTo, to))}" style="color:#1a0dab">メール配信停止</a></p></div>`;
+  const html = `<div style="font-family:-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;font-size:14px;color:#1C1710;max-width:640px">${paras}<hr style="border:0;border-top:1px solid #ddd;margin:20px 0"><p style="font-size:12px;color:#555;line-height:1.7;margin:0">${footer.slice(1, -1).map(esc).join("<br>")}</p><p style="font-size:12px;color:#555;line-height:1.7;margin:12px 0 0">今後このご案内が不要な場合は、以下のリンクからお手続きください。以後お送りしません。<br><a href="${esc(stopUrl || unsubscribeMailto(replyTo, to))}" style="color:#1a0dab">メール配信停止</a>${stopUrl ? `<br><span style="color:#888">（メールでのご連絡をご希望の場合は <a href="${esc(unsubscribeMailto(replyTo, to))}" style="color:#1a0dab">こちら</a>）</span>` : ""}</p></div>`;
   return { text, html };
 }
 
@@ -132,7 +144,11 @@ export async function sendEmail(sender: SenderProfile, input: { from: string; to
     text: input.text,
     html: input.html,
     attachments: input.attachments,
-    headers: { "List-Unsubscribe": `<${unsubscribeMailto(replyTo, input.to)}>` },
+    headers: {
+      // 受信側（Gmail等）が「配信停止」ボタンを出すためのヘッダー。
+      // 停止ページのURLがあれば、メールでの受付と両方を載せる（クリック1回で済むようになる: #23）
+      "List-Unsubscribe": [unsubscribeLink(sender, input.to), unsubscribeMailto(replyTo, input.to)].filter(Boolean).map((u) => `<${u}>`).join(", "),
+    },
   });
   return r.messageId ?? "";
 }

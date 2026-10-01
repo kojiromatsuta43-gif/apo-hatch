@@ -250,6 +250,28 @@ function migrate(db: Database.Database) {
     db.prepare("INSERT INTO settings(key,value) VALUES('game_enabled',?)").run(used ? "1" : "0");
   }
 
+  // メールの送信数を少しずつ増やす（ウォームアップ）。新しいアカウントでいきなり大量に送ると止められるため既定でオン
+  addCol("form_campaigns", "email_warmup", "INTEGER NOT NULL DEFAULT 1");
+  // メールで使う送信者を増やす（カンマ区切りの sender_profiles.id）。1日の上限に達したら次のアカウントへ切り替える
+  addCol("form_campaigns", "email_sender_ids", "TEXT NOT NULL DEFAULT ''");
+  // どの送信者アカウントから送ったか（アカウントごとの1日の送信数を数えるため）
+  addCol("form_jobs", "sent_by_sender", "INTEGER");
+  // 配信停止ページのURL（Googleフォーム等）。設定すると、メールの配信停止がクリック1回で済む
+  addCol("sender_profiles", "unsubscribe_url", "TEXT NOT NULL DEFAULT ''");
+
+  // 返信の自動判定を、人の直しから学ぶための言い回し集（#25）
+  db.exec(`CREATE TABLE IF NOT EXISTS reply_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phrase TEXT NOT NULL,
+    outcome TEXT NOT NULL,          -- replied | appointment | declined
+    source TEXT NOT NULL DEFAULT '',-- どの会社の返信から覚えたか
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_rules_phrase ON reply_rules(phrase, outcome)`);
+
+  // 事前チェックで出す「送れそう度」0〜100（-1=未計測）。送れる会社から先に回せるようにする
+  addCol("form_jobs", "scan_score", "INTEGER NOT NULL DEFAULT -1");
+
   // 画面で見られるエラーログ。これまでは黒い画面（ターミナル）を見るしかなく、閉じると何も分からなかった。
   // 直近500件だけ残す（applog.ts 側で間引く）
   db.exec(`CREATE TABLE IF NOT EXISTS app_logs (
@@ -297,6 +319,7 @@ export type SenderProfile = {
   tel_required_only: number;
   reply_check: number;
   tls_insecure: number;
+  unsubscribe_url: string;
 };
 
 export type User = {
@@ -335,6 +358,8 @@ export type Campaign = {
   group_name: string;     // 同じグループ内では同じ会社に重ねて送らない。空=グループなし
   material_url_in_email: number;
   send_only: string;
+  email_warmup: number;
+  email_sender_ids: string;
 };
 
 // フリーメールはドメインが同じでも別の会社。グループ内の重複判定ではドメインではなくメールアドレスで比べる
@@ -383,6 +408,7 @@ export type Job = {
   email: string;
   scanned_at: string | null;
   scan_note: string;
+  scan_score: number;
   outcome: string;
   outcome_note: string;
   status: JobStatus;

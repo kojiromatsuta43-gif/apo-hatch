@@ -1,7 +1,7 @@
 import { hasEntity } from "./company.js";
 // 企業DB（COMPANY_DB.md の列名）や任意のCSVを取り込む。列名の別名に対応。
 import { parse } from "csv-parse/sync";
-import { domainOf, getDb, isExcludedDomain, channelMode, findGroupDuplicate } from "./db.js";
+import { domainOf, getDb, getSetting, isExcludedDomain, channelMode, findGroupDuplicate } from "./db.js";
 
 export type CompanyRow = {
   company_name: string;
@@ -112,6 +112,19 @@ export async function parseCompanyXlsx(buf: Buffer): Promise<CompanyRow[]> {
 }
 
 export type ExcludedRow = { company: string; reason: string; where: string };
+/** 設定で指定した「送りたくない業種・キーワード」（#87）。会社名・業種・小業種に含まれていたら取り込み時に除外する。
+ *  病院・士業など、自社の方針で当てたくない相手を会社ごとに決められるようにするためのもの。 */
+export function excludedKeywords(): string[] {
+  return getSetting("excluded_industries", "")
+    .split(/[\n,、，]/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2);
+}
+export function matchExcludedKeyword(r: { company_name: string; industry: string; sub_industry: string }): string {
+  const hay = `${r.company_name} ${r.industry} ${r.sub_industry}`;
+  return excludedKeywords().find((w) => hay.includes(w)) ?? "";
+}
+
 export type ImportSummary = { added: number; addedForm: number; addedEmail: number; excluded: number; suppressed: number; duplicated: number; noUrl: number; excludedRows: ExcludedRow[]; noEntity: string[] };
 
 /** 企業行をキャンペーンのジョブとして登録。チャネル（フォーム／メール）を振り分け、除外・重複は理由を残す */
@@ -147,7 +160,9 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opt
       let status = "queued";
       let reason = "";
       let groupHit: string | null = null;
+      const ngWord = matchExcludedKeyword(r);
       if (isExcludedDomain(domain)) { status = "skip_suppressed"; reason = "官公庁・学校等のドメインは既定で除外"; summary.excluded++; note(reason); }
+      else if (ngWord) { status = "skip_suppressed"; reason = `除外キーワード「${ngWord}」に一致（設定で変更できます）`; summary.excluded++; note(reason); }
       else if (isSuppressed.get(domain)) { status = "skip_suppressed"; reason = "除外リストに登録済み"; summary.suppressed++; note(reason); }
       else if (hasEmail && isOptedOut.get(r.email)) { status = "skip_optout"; reason = "配信停止・除外済みのアドレス"; summary.suppressed++; note(reason); }
       else if (resendDays > 0 && recentlySent.get(`-${resendDays} days`, domain)) { status = "skip_duplicate"; reason = `${resendDays}日以内に送信済み`; summary.duplicated++; note(reason); }

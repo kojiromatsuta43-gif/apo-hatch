@@ -18,10 +18,10 @@ import { autostartEnabled, autostartSupported, enableAutostart, disableAutostart
 import { releaseAwakeAll, AWAKE_NOTE } from "./awake.js";
 import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
-import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
+import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "./replies.js";
 import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { esc, layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
+import { esc, layout, lawView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -288,14 +288,21 @@ app.post("/campaigns", upload.single("material_file"), (req, res) => {
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, "/campaigns/new", "送信者を選び直してください");
   const materialUrl = String(b.material_url ?? "").trim();
-  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name, material_url_in_email)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0);
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name, material_url_in_email, email_warmup, email_sender_ids)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b));
   const cid = Number(r.lastInsertRowid);
   // 資料ファイル（メール添付用）を保存する
   const warn = req.file ? saveMaterial(cid, req.file) : "";
   applyGroupMembers(req, cid, "", b);
   redirectWith(res, `/campaigns/${cid}`, `キャンペーンを作成しました。CSVを取り込んでください。${warn ? `／⚠ ${warn}` : ""}`);
 });
+
+/** メールで使う追加の送信アカウント（#24）。自分が使えるアカウントだけを受け付ける */
+function extraSenderIds(req: express.Request, b: Record<string, unknown>): string {
+  const raw = b.email_sender_ids;
+  const ids = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw]).map((x) => Number(x)).filter((n) => n > 0);
+  return ids.filter((id) => ownedSender(req, id)).join(",");
+}
 
 // ---- キャンペーン編集 ----
 app.get("/campaigns/:id/edit", (req, res) => {
@@ -314,8 +321,8 @@ app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   const b = req.body;
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, `/campaigns/${id}/edit`, "送信者を選び直してください");
-  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=?, material_url_in_email=? WHERE id=?`)
-    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, id);
+  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=?, material_url_in_email=?, email_warmup=?, email_sender_ids=? WHERE id=?`)
+    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b), id);
   const attachWarn = req.file ? saveMaterial(id, req.file) : "";
   if (req.file) { /* 保存済み。注意文は下の完了メッセージに付ける */ }
   else if (b.remove_attach === "1" && before.attach_path) {
@@ -560,6 +567,11 @@ app.post("/campaigns/:id/start", async (req, res) => {
   // 以前は設定不備のまま走り出し、メールの会社を次々と失敗にしていた（実例: 「2段階認証が必要」で180件が失敗）。
   // フォームだけ送る場合は確認しない（メールを使わないので）
   const willSendEmail = only !== "form" && channelMode(camp.channel) !== "form_only";
+  // 営業メールの表示義務の確認を、最初の1回だけ見てもらう（#85）
+  if (willSendEmail && !getSetting(lawKey(me(req).id), "")) {
+    flashes.set("/law", "営業メールを送る前に、法律で必要な表示（名称・住所・配信停止の連絡先）をご確認ください。確認は最初の1回だけです");
+    return res.redirect("/law");
+  }
   if (willSendEmail) {
     const sender = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(camp.sender_id) as SenderProfile | undefined;
     if (!sender) return redirectWith(res, `/campaigns/${id}`, "送信者が見つかりません");
@@ -596,6 +608,20 @@ app.post("/campaigns/:id/scan", (req, res) => {
   scanCampaign(id).then((r) => console.log(`[scan ${id}] ${r.scanned}件 (${r.reason})`)).catch((e) => { console.error(e); logError("scan", `事前チェックを開始できませんでした: ${jpError(e)}`); });
   redirectWith(res, `/campaigns/${id}`, "事前チェックを始めました（1社5〜10秒）");
 });
+// 「フォーム無し」になった会社を、もう一度 事前チェックの対象に戻す（#8）。
+// フォームの探し方（サイトマップ・フッター・会社概要経由・外部フォームサービス・URLの言い換え）を強化したので、
+// 以前の判定をやり直せるようにする
+app.post("/campaigns/:id/rescan-noform", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "実行中です。先に止めてください");
+  const n = db.prepare(`UPDATE form_jobs SET status='queued', channel='form', scanned_at=NULL, scan_score=-1,
+      result_text='フォームをもう一度探します（探し方を強化した版で再チェック）'
+    WHERE campaign_id=? AND is_test=0 AND status='skip_no_form'`).run(id).changes;
+  logInfo("scan", `フォーム無しの ${n}件を再チェック対象に戻しました`);
+  redirectWith(res, `/campaigns/${id}`, `${n}社を再チェックの対象に戻しました。「事前チェックを実行」を押してください`);
+});
+
 app.post("/campaigns/:id/stop-scan", (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
@@ -639,12 +665,18 @@ app.post("/jobs/:id/outcome", (req, res) => {
   const j = ownedJob(req, id);
   if (!j) return res.status(404).send("not found");
   const outcome = ["", "replied", "appointment", "declined"].includes(req.body.outcome) ? req.body.outcome : j.outcome;
+  // 自動判定を人が直したときは、その返信に出てきた言い回しを覚えて次から同じように振り分ける（#25）
+  let learned = 0;
+  if (outcome && outcome !== j.outcome && j.outcome_note.startsWith("自動判定")) {
+    const body = (j.outcome_note.match(/本文「…([\s\S]*?)…」/)?.[1] ?? "").trim();
+    if (body) learned = learnFromCorrection(body, outcome as "replied" | "appointment" | "declined", j.company_name);
+  }
   db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, updated_at=datetime('now') WHERE id=?").run(outcome, String(req.body.note ?? "").slice(0, 300), id);
   if (outcome === "declined") {
     if (j.domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(j.domain, `断り（${j.company_name}）`);
     if (j.email) optOut(j.email, `断り（${j.company_name}）`, me(req).id);
   }
-  redirectWith(res, `/jobs/${id}`, "反応を記録しました");
+  redirectWith(res, `/jobs/${id}`, `反応を記録しました${learned ? `／この返信の言い回し ${learned}件を覚えました（次から同じ言い回しは「${OUTCOME_LABEL[outcome] ?? outcome}」に振り分けます。設定画面で確認・削除できます）` : ""}`);
 });
 
 app.post("/senders/:id/test", async (req, res) => {
@@ -1046,7 +1078,7 @@ app.get("/senders/:id", (req, res) => {
   if (!s) return res.status(404).send("not found");
   res.send(layout("送信者を編集", `<h1>送信者を編集</h1><div class="card">${senderForm(s)}</div>`, takeFlash(req), navUser(req), updateReady));
 });
-const SENDER_COLS = ["label", "company", "industry", "person", "person_kana", "email", "reply_email", "tel", "postal", "address", "url", "from_email", "smtp_user", "smtp_host", "smtp_port"];
+const SENDER_COLS = ["label", "company", "industry", "person", "person_kana", "email", "reply_email", "tel", "postal", "address", "url", "from_email", "smtp_user", "smtp_host", "smtp_port", "unsubscribe_url"];
 // 送信者フォームの簡易チェック。問題があれば日本語メッセージ、無ければ null
 const PREF_RE = /^(北海道|青森県|岩手県|宮城県|秋田県|山形県|福島県|茨城県|栃木県|群馬県|埼玉県|千葉県|東京都|神奈川県|新潟県|富山県|石川県|福井県|山梨県|長野県|岐阜県|静岡県|愛知県|三重県|滋賀県|京都府|大阪府|兵庫県|奈良県|和歌山県|鳥取県|島根県|岡山県|広島県|山口県|徳島県|香川県|愛媛県|高知県|福岡県|佐賀県|長崎県|熊本県|大分県|宮崎県|鹿児島県|沖縄県)/;
 /** 住所が都道府県から始まっていないと、フォームの「都道府県」の選択肢を選べない（先頭の北海道のまま送られる事故があった） */
@@ -1099,7 +1131,10 @@ app.get("/suppressions", (req, res) => {
   const optouts = db.prepare(`SELECT * FROM email_optouts WHERE ${sc.sql} ORDER BY created_at DESC LIMIT 500`).all(...sc.args) as any[];
   const imported = suppImports.get(me(req).id);
   suppImports.delete(me(req).id);
-  res.send(layout("除外リスト", suppressionsView(rows, optouts, imported, loadSuppSync(me(req).id)), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("除外リスト", suppressionsView(rows, optouts, imported, loadSuppSync(me(req).id), {
+    industries: getSetting("excluded_industries", ""),
+    replyRules: loadReplyRules(),
+  }), takeFlash(req), navUser(req), updateReady));
 });
 
 /** 除外リストをCSVで書き出す。列は取り込みと同じなので、別PCの「CSVでまとめて追加」にそのまま読み込める
@@ -1161,6 +1196,20 @@ app.post("/suppressions/sync-url", (req, res) => {
   if (!/spreadsheets\/d\//.test(url)) return redirectWith(res, "/suppressions", "GoogleスプレッドシートのURL（/spreadsheets/d/… を含む）を貼ってください");
   saveSuppSync(uid, { url, userId: uid, ...(loadSuppSync(uid) ?? {}) , lastAt: loadSuppSync(uid)?.lastAt, lastResult: loadSuppSync(uid)?.lastResult });
   redirectWith(res, "/suppressions", "共有リストを登録しました。1日1回、自動で取り込みます（今すぐ取り込むこともできます）");
+});
+
+// 送りたくない業種・キーワード（#87）
+app.post("/suppressions/industries", (req, res) => {
+  const words = String(req.body.industries ?? "").split(/[\n,、，]/).map((w) => w.trim()).filter((w) => w.length >= 2);
+  saveSetting("excluded_industries", words.join("\n"));
+  redirectWith(res, "/suppressions", words.length ? `${words.length}件のキーワードを除外に設定しました（取り込み時と送信直前に確認します）` : "除外キーワードを解除しました");
+});
+
+// 返信の自動判定が覚えた言い回しを消す（#25）
+app.post("/reply-rules/:id/delete", (req, res) => {
+  db.prepare("DELETE FROM reply_rules WHERE id=?").run(Number(req.params.id));
+  clearReplyRulesCache();
+  redirectWith(res, "/suppressions", "覚えた言い回しを削除しました");
 });
 
 // 今すぐ取り込む
@@ -1242,7 +1291,22 @@ app.post("/settings/game", requireAdmin, (req, res) => {
   redirectWith(res, "/settings", on ? "おまけのゲームを表示します（共有用URLでは表示されません）" : "おまけのゲームを非表示にしました");
 });
 
-// ---- 動作チェック・エラーログ・診断ファイル・バックアップ ----
+// ---- 営業メールの法律チェック（#85）----
+// 他社に渡すと、表示義務（名称・住所・配信停止の連絡先）を知らないまま送り始めてしまうため、最初の1回だけ確認してもらう
+const lawKey = (userId: number) => `law_ack:${userId}`;
+app.get("/law", (req, res) => {
+  const sc = scope(req);
+  const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
+  const acked = getSetting(lawKey(me(req).id), "");
+  res.send(layout("営業メールの決まり", lawView(senders, acked ? jst(acked) : "", senders.some((s) => s.unsubscribe_url)), takeFlash(req), navUser(req), updateReady));
+});
+app.post("/law/ack", (req, res) => {
+  if (!req.body.ack) return redirectWith(res, "/law", "チェックを入れてから進んでください");
+  saveSetting(lawKey(me(req).id), new Date().toISOString().replace("T", " ").slice(0, 19));
+  redirectWith(res, "/", "確認ありがとうございます。キャンペーンから送信を開始できます");
+});
+
+// ---- 動作チェック・エラーログ・診断ファイル・バックアップ ----// ---- 動作チェック・エラーログ・診断ファイル・バックアップ ----
 // 「動かない」の原因を、聞き出すやり取りなしで利用者自身が切り分けられるようにするための画面。
 app.get("/health", (req, res) => {
   const checks = healthChecks();

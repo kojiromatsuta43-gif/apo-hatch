@@ -5,8 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
-import { findContactForm } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, type PendingQuestion, type FieldInfo } from "./formFiller.js";
+import { findContactForm, detectFormService } from "./formFinder.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, fillRequiredLeftovers, type PendingQuestion, type FieldInfo } from "./formFiller.js";
 import { extractLegalName } from "./company.js";
 import { llm } from "./message.js";
 
@@ -151,17 +151,24 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     const captcha = await page.evaluate(CAPTCHA_CHECK_SCRIPT).catch(() => null);
     if (captcha) return done("skip_captcha", `CAPTCHAあり (${captcha})`);
 
-    // フォーム本体があるフレームを選ぶ（埋め込みフォーム対応）
+    // フォーム本体があるフレームを選ぶ（埋め込みフォーム対応）。
+    // Googleフォーム・formrun・HubSpot 等の外部サービスは、そのフレームを先に見る（#4）
+    const service = await detectFormService(page);
+    if (service) log.push(`フォームサービス: ${service.name}${service.frameUrl ? ` (${service.frameUrl})` : ""}`);
     let target: Page | Frame = page;
     let fields = await collectFields(page);
     if (!fields.some((f) => classify(f) === "message")) {
-      for (const fr of page.frames()) {
-        if (fr === page.mainFrame()) continue;
+      const frames = page.frames().filter((fr) => fr !== page.mainFrame());
+      // サービスのフレームを先頭に持ってくる
+      frames.sort((a, b) => (service?.frameUrl && b.url() === service.frameUrl ? 1 : 0) - (service?.frameUrl && a.url() === service.frameUrl ? 1 : 0));
+      for (const fr of frames) {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           // 返ってこないフレーム（about:blank の隠しフレーム等）で止まらないよう5秒で見切る
           const ff = await Promise.race([collectFields(fr), new Promise<FieldInfo[]>((res) => { timer = setTimeout(() => res([]), 5000); })]);
           if (ff.some((f) => classify(f) === "message")) { target = fr; fields = ff; log.push(`iframe: ${fr.url()}`); break; }
+          // 本文欄が無くても、外部フォームサービスのフレームに入力欄が3つ以上あればそれを使う
+          if (service?.frameUrl && fr.url() === service.frameUrl && ff.length >= 3) { target = fr; fields = ff; log.push(`iframe(${service.name}): ${fr.url()}`); }
         } catch {} finally { if (timer) clearTimeout(timer); }
       }
     }
@@ -174,13 +181,13 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       if (k === "none") break;
       fields = await collectFields(target);
     }
-    if (!fields.some((f) => classify(f) === "message")) return done("skip_no_form", "本文（textarea）欄が無い");
+    if (!fields.some((f) => classify(f) === "message") && !(service && fields.length >= 3)) return done("skip_no_form", "本文（textarea）欄が無い");
 
     const report = await fillFields(target, fields, { sender: input.sender, subject: input.subject, message: input.message });
     log.push(`filled: ${report.filled.join(",")}`);
     if (report.unfilled.length) log.push(`unfilled: ${report.unfilled.join(",")}`);
     log.push(...report.log);
-    if (!report.hasMessage) return done("failed", "本文欄への入力に失敗");
+    if (!report.hasMessage && !(service && report.filled.length >= 3)) return done("failed", "本文欄への入力に失敗");
 
     // 想定外の質問（判定できないテキスト欄・未チェックの選択肢グループ）への対応。
     // 優先順位は「要確認画面で利用者が選んだ回答」→「AI（全文AIモードのとき）」。
@@ -223,6 +230,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (input.dryRun) return done("queued", "テスト入力のみ（送信していない）");
 
     const fieldCountBefore = fields.length;
+    const urlBefore = page.url(); // 送信ボタンを押す前のURL（ページが切り替わったかの判定に使う）
     let refilled = false; // 入力エラー後の埋め直しは1回だけ
     for (let round = 0; round < 3; round++) {
       const kind = await clickNextButton(target, page, log);
@@ -234,7 +242,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
         if (/bframe/.test(String(cap2))) return done("skip_captcha", `送信時に画像認証（reCAPTCHA）が表示され未送信 (${cap2})`);
         return done("skip_captcha", `確認画面にCAPTCHA (${cap2})`);
       }
-      const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit", textBefore);
+      const outcome = await judgeOutcome(page, fieldCountBefore, kind === "submit", textBefore, urlBefore);
       log.push(`judge[${round}]: ${outcome.status} ${outcome.detail}`);
       if (outcome.status === "sent") return done("sent", outcome.detail);
       if (outcome.status === "unsure" && outcome.detail.startsWith("確認画面")) {
@@ -252,7 +260,9 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
           if (again.length) {
             const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message }, { normalize: true });
             log.push(`エラー後の自動修正・埋め直し: ${r3.filled.join(",") || "なし"}`);
-            if (r3.filled.length) continue;
+            // それでも空のまま残っている必須項目（判定できなかった質問など）を安全な値で埋める（#6）
+            const extra = await fillRequiredLeftovers(target, log);
+            if (r3.filled.length || extra) continue;
           }
           if (emptyRequired.length) {
             const names = emptyRequired.map((f) => (f.sig.split(" || ")[0] || f.name || "項目").slice(0, 16)).slice(0, 4);
@@ -273,7 +283,7 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       }
       // submit を押したのに判定不能 → もう一度だけ待って判定
       await page.waitForTimeout(3000);
-      const again = await judgeOutcome(page, fieldCountBefore, true, textBefore);
+      const again = await judgeOutcome(page, fieldCountBefore, true, textBefore, urlBefore);
       if (again.status === "sent") return done("sent", again.detail);
       // 届いたかどうかは会社によって違う（完了画面が出ている／確認画面で止まっている／画像認証で止まっている 等）ので、
       // 一律に送信済みにはしない（v0.3.51で一律送信済みにしたが取り消し）。自動再試行はしない（worker 側で除外）

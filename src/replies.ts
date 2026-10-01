@@ -65,6 +65,59 @@ export function isAutoMail(m: IncomingMail): boolean {
   return AUTO_BODY_RE.test(m.text.replace(/[ \t　]+/g, ""));
 }
 
+// ---- 人の直しから覚える（#25）----
+// 自動判定を人が直したとき、その返信に出てきた言い回しを覚えておき、次から同じ言い回しは同じ振り分けにする。
+// AIは使わない（費用ゼロ）。覚えた言い回しは設定画面で一覧・削除できる。
+type ReplyRule = { id: number; phrase: string; outcome: ReplyVerdict["outcome"]; source: string };
+let rulesCache: { at: number; rules: ReplyRule[] } | null = null;
+
+export function loadReplyRules(): ReplyRule[] {
+  if (rulesCache && Date.now() - rulesCache.at < 60_000) return rulesCache.rules;
+  try {
+    const rules = getDb().prepare("SELECT id, phrase, outcome, source FROM reply_rules ORDER BY id DESC").all() as ReplyRule[];
+    rulesCache = { at: Date.now(), rules };
+    return rules;
+  } catch { return []; }
+}
+export function clearReplyRulesCache() { rulesCache = null; }
+
+/** 文章から「覚える価値のある言い回し」を取り出す。あいさつ文や短すぎる断片は覚えない */
+export function phrasesFor(text: string): string[] {
+  const GENERIC = /^(お世話になります|お世話になっております|ご連絡ありがとうございます|ありがとうございます|よろしくお願いいたします|よろしくお願いします|はじめまして|株式会社|担当|拝啓|敬具)/;
+  return text
+    .split(/[。\n、．.]/)
+    .map((x) => x.replace(/\s+/g, "").trim())
+    .filter((x) => x.length >= 6 && x.length <= 28)
+    .filter((x) => /[ぁ-んァ-ン一-龥]/.test(x) && !GENERIC.test(x))
+    .slice(0, 2);
+}
+
+/** 人が直した反応から言い回しを覚える。覚えた件数を返す */
+export function learnFromCorrection(text: string, outcome: ReplyVerdict["outcome"], source = ""): number {
+  if (!outcome || !text) return 0;
+  const db = getDb();
+  let n = 0;
+  for (const p of phrasesFor(text)) {
+    try {
+      const r = db.prepare("INSERT OR IGNORE INTO reply_rules(phrase, outcome, source) VALUES(?,?,?)").run(p, outcome, source.slice(0, 80));
+      n += r.changes;
+    } catch { /* 同じ言い回しは1つだけ */ }
+  }
+  if (n) clearReplyRulesCache();
+  return n;
+}
+
+/** 覚えた言い回しでの判定。断り＞アポ＞返信ありの順に強く見る */
+export function learnedVerdict(body: string): (ReplyVerdict & { excerpt: string }) | null {
+  const s = body.replace(/[\s　]+/g, "");
+  const rules = loadReplyRules();
+  for (const want of ["declined", "appointment", "replied"] as const) {
+    const hit = rules.find((r) => r.outcome === want && r.phrase && s.includes(r.phrase));
+    if (hit) return { outcome: hit.outcome, reason: `覚えた言い回し「${hit.phrase}」`, excerpt: hit.phrase };
+  }
+  return null;
+}
+
 /** 返信をキーワードで振り分ける。断りとアポの両方の言葉がある場合は決めつけず「返信あり」にして人に任せる */
 export function classifyReply(subject: string, body: string): ReplyVerdict & { excerpt: string } {
   // 件名は「Re: こちらの件名（商談機会について 等）」なので、キーワード判定には本文だけを使う（件名の「商談」でアポにしないため）
@@ -74,6 +127,9 @@ export function classifyReply(subject: string, body: string): ReplyVerdict & { e
   const app = APPO_RE.exec(s);
   // 配信停止の返信（本メールの案内どおり件名や本文の先頭に「配信停止」とだけ書いたもの）
   if (/^\s*(re:|RE:|Re:|fw:|Fwd:)?\s*配信停止/.test(subject) || /^配信停止/.test(s)) return { outcome: "declined", reason: "「配信停止」の返信", excerpt: around(0, 20) || subject.slice(0, 60) };
+  // 人が直した結果から覚えた言い回しを先に見る（#25）
+  const learned = learnedVerdict(s);
+  if (learned) return learned;
   if (dec && !app) return { outcome: "declined", reason: `「${dec[0]}」`, excerpt: around(dec.index, dec[0].length) };
   if (app && !dec) return { outcome: "appointment", reason: `「${app[0]}」`, excerpt: around(app.index, app[0].length) };
   if (app && dec) return { outcome: "replied", reason: `「${dec[0]}」「${app[0]}」の両方があり判断できず`, excerpt: around(dec.index, dec[0].length) };
