@@ -269,6 +269,17 @@ function migrate(db: Database.Database) {
   )`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_rules_phrase ON reply_rules(phrase, outcome)`);
 
+  // 削除の取り消し（#60）。消した会社の行をそのまま控えておき、30分以内なら元に戻せるようにする
+  db.exec(`CREATE TABLE IF NOT EXISTS deleted_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    user_id INTEGER,
+    label TEXT NOT NULL DEFAULT '',
+    rows_count INTEGER NOT NULL DEFAULT 0,
+    payload TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+
   // 事前チェックで出す「送れそう度」0〜100（-1=未計測）。送れる会社から先に回せるようにする
   addCol("form_jobs", "scan_score", "INTEGER NOT NULL DEFAULT -1");
 

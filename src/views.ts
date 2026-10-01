@@ -4,7 +4,7 @@ import { AI_MODELS, type Lint } from "./message.js";
 
 export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
-export type NavUser = { username: string; display_name: string; role: string; gameOn?: boolean } | null;
+export type NavUser = { username: string; display_name: string; role: string; gameOn?: boolean; todo?: number } | null;
 
 export function layout(title: string, body: string, flash = "", user: NavUser = null, updateReady = false): string {
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/health">動作チェック</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a>${user.todo ? `<a href="/todo" style="background:#C62828;color:#fff;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px" title="自動で送れなかった会社。1画面で対応できます">要対応 ${user.todo}</a>` : `<a href="/todo">要対応</a>`}<a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/health">動作チェック</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -145,7 +145,43 @@ function statusCell(j: Job): string {
   return statusTag(j.status);
 }
 
-export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, senders: { id: number; label: string; company: string; person: string }[] = []) {
+/** ホーム上部の「今日やることが分かる1画面」（#49）。数字が複数の画面に散っていたのをまとめる */
+export type HomeSummary = {
+  todayForm: number; todayEmail: number; monthForm: number; monthEmail: number;
+  appointments: number; replies: number; declines: number;
+  queued: number; runningNames: string[]; windowOk: boolean; windowText: string;
+  todo: number; todoCaptcha: number;
+  emailPaused: { label: string; until: number; reason: string }[];
+  senders: number; campaigns: number;
+};
+
+function homeCard(h: HomeSummary): string {
+  const stat = (label: string, value: string, sub = "", href = "") => {
+    const inner = `<div class="stat" style="min-width:132px"><span class="muted small">${label}</span><b>${value}</b>${sub ? `<span class="muted small">${sub}</span>` : ""}</div>`;
+    return href ? `<a href="${href}" style="text-decoration:none;color:inherit">${inner}</a>` : inner;
+  };
+  // いま一番やるべきことを1つだけ出す（最初の人が迷わないように）
+  const next = !h.senders ? { t: "はじめの設定（6ステップ）から始めましょう。送信者の登録 → メール設定 → リスト取り込み の順に案内します", b: "はじめの設定を開く", href: "/setup" }
+    : !h.campaigns ? { t: "キャンペーンを作って、会社リストを取り込みましょう", b: "はじめの設定を開く", href: "/setup" }
+    : h.todo > 0 ? { t: `自動で送れなかった会社が ${h.todo}件あります。1画面で対応できます`, b: "要対応を見る", href: "/todo" }
+    : h.queued > 0 && !h.runningNames.length ? { t: `送信待ちが ${h.queued}件あります。開始すると送信時間帯に自動で送ります`, b: "キャンペーンを開く", href: "#list" }
+    : h.runningNames.length ? { t: `送信中: ${h.runningNames.join("、")}`, b: "", href: "" }
+    : { t: "いまやることはありません。お疲れさまでした", b: "", href: "" };
+  return `<div class="card" style="background:linear-gradient(180deg,var(--honey-50),#fff)">
+  <div class="stats">
+    ${stat("今日の送信", String(h.todayForm + h.todayEmail), `フォーム${h.todayForm}・メール${h.todayEmail}`, "/stats")}
+    ${stat("今月の送信", String(h.monthForm + h.monthEmail), `フォーム${h.monthForm}・メール${h.monthEmail}`, "/stats?mode=month")}
+    ${stat("アポ", String(h.appointments), `断り${h.declines}・返信${h.replies}`)}
+    ${stat("送信待ち", String(h.queued), h.runningNames.length ? "送信中" : h.windowOk ? "送信できる時間帯" : "時間帯外", "#list")}
+    ${h.todo ? stat("要対応", String(h.todo), h.todoCaptcha ? `うち画像認証 ${h.todoCaptcha}` : "", "/todo") : ""}
+  </div>
+  <p style="margin:12px 0 0"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn small" href="${next.href}">${esc(next.b)}</a>` : ""}</p>
+  ${h.emailPaused.length ? `<p class="small" style="margin:8px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${h.emailPaused.map((p) => `${esc(p.label)}（${esc(p.reason.slice(0, 60))}／${new Date(p.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}に再開）`).join("、")}</p>` : ""}
+  ${h.windowOk ? "" : `<p class="small muted" style="margin:6px 0 0">いまは送信時間帯の外です（${esc(h.windowText)}）。時間になると自動で送り始めます。</p>`}
+</div>`;
+}
+
+export function campaignListView(rows: (Campaign & { sender_label: string; total: number; sent: number; queued: number; reactions: number; last_sent: string | null })[], provider: string, senders: { id: number; label: string; company: string; person: string }[] = [], home?: HomeSummary) {
   // 最終送信からの経過を「今日／昨日／N日前」で表す（放置ぎみのキャンペーンに気づける）。消しても一覧は成立する
   const sinceLabel = (ts: string | null): string => {
     if (!ts) return "";
@@ -158,7 +194,9 @@ export function campaignListView(rows: (Campaign & { sender_label: string; total
     if (days === 1) return "昨日";
     return `${days}日前`;
   };
-  return `<h1>キャンペーン</h1>
+  return `<h1>ホーム</h1>
+${home ? homeCard(home) : ""}
+<h2 id="list">キャンペーン</h2>
 <p class="muted"><b>キャンペーン</b>＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。</p>
 <p class="muted">AIプロバイダ: <b>${esc(provider)}</b>${provider === "none" ? "（APIキー未設定。テンプレートのみで動きます）" : ""}</p>
 <p><a class="btn" href="/campaigns/new">＋ 新しいキャンペーン</a></p>
@@ -312,7 +350,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[] } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[]; emailHtml?: string } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; sortKey?: string; eta?: string; undo?: { id: number; label: string; rows_count: number } | null; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -329,7 +367,10 @@ export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[
   const scanPct = scanTotal ? Math.round((extra.scanned / scanTotal) * 100) : 0;
   const processed = total - cnt("queued");
   const sendPct = total ? Math.round((processed / total) * 100) : 0;
-  return `<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""} <a class="btn sub small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">✏️ 編集</a></h1>
+  return `${extra.undo ? `<div class="card" style="background:#FFF3E0;border-color:var(--warn)"><b>直前の削除: ${esc(extra.undo.label)}（${extra.undo.rows_count}件）</b>
+<form method="post" action="/undo/${extra.undo.id}" class="inline" style="margin-left:10px" data-busy><button class="btn">削除を元に戻す</button></form>
+<p class="muted small" style="margin:6px 0 0">まちがえて消した場合は30分以内にここから戻せます（スクリーンショットの画像は戻りません）。</p></div>` : ""}
+<h1>${esc(c.name)} <span class="tag">${c.status}</span> ${running ? '<span class="tag sending">実行中</span>' : ""} <a class="btn sub small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">✏️ 編集</a></h1>
 <p class="muted">${c.group_name ? `グループ: <b>${esc(c.group_name)}</b>（同じグループの別キャンペーンと送り先が重ならないようにしています） / ` : ""}送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / モード: ${({ template: "テンプレのみ", ai: "全文AI", hybrid: "ハイブリッド", tpl_ai: "テンプレ＋質問AI" } as Record<string, string>)[c.mode] ?? c.mode} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
 ${(() => {
     const att = extra.attempts ?? {};
@@ -436,13 +477,23 @@ function foPreviewProgress(useAi){
   addEventListener("pagehide",()=>clearInterval(t),{once:true});
 }
 </script>
-${extra.preview ? `<p class="muted">${esc(extra.preview.job.company_name)}（${esc(extra.preview.job.industry)}）向け ${extra.preview.aiUsed ? "・AI生成あり" : "・テンプレのみ"}</p><p><b>件名:</b> ${esc(extra.preview.subject)}</p>${(extra.preview.lint ?? []).map((l) => `<div class="small" style="color:${l.level === "error" ? "var(--ng)" : "var(--warn)"}">${l.level === "error" ? "✕" : "△"} ${esc(l.text)}</div>`).join("")}<pre>${esc(extra.preview.message)}</pre>` : ""}
+${extra.preview ? `<p class="muted">${esc(extra.preview.job.company_name)}（${esc(extra.preview.job.industry)}）向け ${extra.preview.aiUsed ? "・AI生成あり" : "・テンプレのみ"}</p><p><b>件名:</b> ${esc(extra.preview.subject)}</p>${(extra.preview.lint ?? []).map((l) => `<div class="small" style="color:${l.level === "error" ? "var(--ng)" : "var(--warn)"}">${l.level === "error" ? "✕" : "△"} ${esc(l.text)}</div>`).join("")}<pre>${esc(extra.preview.message)}</pre>
+${extra.preview.emailHtml ? `<h2 style="font-size:14px;margin-top:16px">相手のメールソフトでの見え方（#70）</h2>
+<div style="border:1px solid var(--hive-200);border-radius:10px;overflow:hidden;max-width:660px">
+  <div style="background:#F5F2EA;padding:10px 12px;border-bottom:1px solid var(--hive-200);font-size:12px;line-height:1.8">
+    <div><b>差出人:</b> ${esc(c.sender.company)} &lt;${esc(c.sender.from_email || c.sender.smtp_user || c.sender.email)}&gt;</div>
+    <div><b>宛先:</b> ${esc(extra.preview.job.email || "（この会社のメールアドレス）")}</div>
+    <div><b>件名:</b> ${esc(extra.preview.subject)}</div>
+  </div>
+  <div style="padding:14px;background:#fff">${extra.preview.emailHtml}</div>
+</div>
+<p class="muted small">署名・住所・配信停止の案内は、法律で必要なため自動で入ります。フォーム送信では本文だけが送られます。</p>` : ""}` : ""}
 </div>
 
 <div class="card"><h2 style="margin-top:0">3. 本送信${c.send_only ? ` <span class="tag">対象: ${c.send_only === "email" ? "メールの会社だけ" : "フォームの会社だけ"}</span>` : ""}</h2>
 ${extra.emailPaused ? `<div class="flash" style="border-color:var(--ng);margin:0 0 12px"><b>⏸ メール送信を一時停止中</b>（${esc(new Date(extra.emailPaused.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))} に自動で再開）<br><span class="small">${esc(extra.emailPaused.reason)}</span><br><span class="small muted">この送信者のメールの会社は「待機」のまま残しています（失敗にはしていません）。フォームの送信は続きます。原因を直したら「今すぐ再開」を押してください。Gmailが一時停止されている場合は、解除されるまで待ってから再開してください。</span>
 <form method="post" action="/campaigns/${c.id}/email-resume" style="margin-top:6px"><button class="btn sub small">今すぐ再開</button></form></div>` : ""}
-${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}
+${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>${extra.eta ? `<div class="small muted">${esc(extra.eta)}</div>` : ""}` : ""}
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline" data-busy><button class="btn" data-busytext="送信を開始しています…">開始する（${cnt("queued")}件）</button> <label class="inline small">対象: <select name="only" style="width:auto;padding:4px 8px"><option value="" ${c.send_only ? "" : "selected"}>すべて（フォーム＋メール）</option><option value="email" ${c.send_only === "email" ? "selected" : ""}>メールの会社だけ</option><option value="form" ${c.send_only === "form" ? "selected" : ""}>フォームの会社だけ</option></select></label> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>
 <p class="muted small" style="margin:6px 0 0">フォームは「1-b. 事前チェック」を済ませてから送ると、フォーム無しの会社に無駄な時間を使いません。<b>メールだけ先に送りたいときは「対象: メールの会社だけ」</b>を選んでください（この設定は次に開始し直すまで続きます）。</p>`}
 ${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${nRetry}社）</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/export.json" title="別のPCのアポハッチくんで、同じ文面・設定のキャンペーンを作れます">設定をファイルに書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
@@ -484,7 +535,12 @@ ${extra.matched && extra.matched.n > 0 ? (() => {
 <button class="btn danger small" ${busy ? "disabled" : ""}>${label}</button>${busy ? ' <span class="muted small">送信中・事前チェック中は削除できません</span>' : ""}</form>`;
   })() : ""}
 <p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
-<table><tr><th><input type="checkbox" title="全選択" onchange="foSelAll(this)"></th><th>ID</th><th>会社</th><th>送り方</th><th>業種</th><th>状態</th><th>結果</th><th>反応</th><th>更新</th><th></th></tr>
+${(() => {
+    // 列の見出しから並び替え（#51）。いまの絞り込みは保ったまま sort だけ付け替える
+    const base = `/campaigns/${c.id}?status=${encodeURIComponent(extra.statusFilter ?? "")}&outcome=${encodeURIComponent(extra.outcomeFilter ?? "")}&q=${encodeURIComponent(extra.qFilter ?? "")}&imp=${encodeURIComponent(extra.impFilter ?? "")}`;
+    const link = (key: string, label: string) => `<a href="${base}&sort=${key}#list" style="color:inherit;text-decoration:${(extra.sortKey ?? "") === key ? "underline" : "none"}">${label}${(extra.sortKey ?? "") === key ? " ▾" : ""}</a>`;
+    return `<table><tr><th><input type="checkbox" title="全選択" onchange="foSelAll(this)"></th><th>${link("id", "ID")}</th><th>${link("company", "会社")}</th><th>${link("score", "送り方")}</th><th>業種</th><th>${link("status", "状態")}</th><th>結果</th><th>反応</th><th>${link("updated", "更新")}</th><th></th></tr>`;
+  })()}
 ${(() => {
     // 同じ「会社名＋送信先」への複数回の送信は、最新の1行だけを代表として表示し、
     // 古い履歴は ▽(N件) の折りたたみに集約する（一覧は updated_at 降順なので先頭が最新）
@@ -590,9 +646,25 @@ ${tests.map((j) => `<tr><td><a href="/jobs/${j.id}">${j.id}</a></td><td>${esc(j.
 </table>` : '<p class="muted">まだテストしていません。</p>'}`;
 }
 
-export function jobView(j: Job, c: Campaign) {
+/** この会社とのやり取りの履歴（#56）。同じ会社に別のキャンペーンから送った分も時系列で見せる。
+ *  対応漏れや二重送信に気づけるようにするためのもの */
+export type JobHistory = { id: number; campaign_name: string; channel: string; status: string; result_text: string; sent_at: string | null; updated_at: string; outcome: string; outcome_note: string };
+
+export function jobView(j: Job, c: Campaign, history: JobHistory[] = []) {
+  const timeline = history.length <= 1 ? "" : `<div class="card"><h2 style="margin-top:0">この会社とのやり取り（${history.length}件）</h2>
+<p class="muted small" style="margin:0 0 10px">同じ会社に、別のキャンペーンから送ったぶんも含めて、新しい順に並べています。</p>
+<ul style="list-style:none;padding:0;margin:0;border-left:2px solid var(--hive-200)">
+${history.map((h) => `<li style="padding:6px 0 10px 14px;position:relative">
+  <span style="position:absolute;left:-7px;top:12px;width:10px;height:10px;border-radius:50%;background:${h.status === "sent" ? "var(--ok)" : h.status === "failed" ? "var(--ng)" : "var(--honey)"}"></span>
+  <span class="small muted">${esc(jst(h.sent_at || h.updated_at))}</span> ${statusTag(h.status as JobStatus)} <span class="small">${h.channel === "email" ? "✉ メール" : "📝 フォーム"}／${esc(h.campaign_name)}</span>
+  ${h.id === j.id ? '<span class="tag">いま見ている記録</span>' : `<a class="small" href="/jobs/${h.id}">詳細</a>`}
+  <div class="small muted">${esc((h.result_text || "").split("\n")[0].slice(0, 90))}</div>
+  ${h.outcome ? `<div class="small"><b>反応: ${esc(OUTCOME_LABEL[h.outcome] ?? h.outcome)}</b> ${esc((h.outcome_note || "").slice(0, 80))}</div>` : ""}
+</li>`).join("")}
+</ul></div>`;
   return `<h1>${esc(j.company_name)} ${statusTag(j.status)}</h1>
 <p><a href="/campaigns/${c.id}">← ${esc(c.name)}</a></p>
+${timeline}
 <div class="row"><div class="card"><b>フォームURL:</b> <a href="${esc(j.form_url)}" target="_blank">${esc(j.form_url)}</a><br><b>企業URL:</b> ${esc(j.site_url)}<br><b>業種:</b> ${esc(j.industry)} / ${esc(j.sub_industry)}<br><b>試行:</b> ${j.attempts}回 <b>送信:</b> ${esc(jst(j.sent_at) || "-")}
 <h2>結果・ログ ${errKind(j) ? `<span class="errkind">${esc(errKind(j))}</span>` : ""}</h2><pre>${esc(j.result_text)}</pre>
 <form method="post" action="/jobs/${j.id}/retry" class="inline" data-busy><button class="btn sub" data-busytext="再試行中…">再試行</button></form>
@@ -608,7 +680,11 @@ ${j.status === "failed" || j.status === "skip_no_form" || j.status === "skip_cap
 <form method="post" action="/suppressions" class="inline"><input type="hidden" name="domain" value="${esc(j.domain)}"><input type="hidden" name="reason" value="手動（${esc(j.company_name)}）"><button class="btn danger">このドメインを除外</button></form>
 ${j.status === "sent" ? `<h2>反応を記録</h2><form method="post" action="/jobs/${j.id}/outcome"><p>${[["replied", "返信あり"], ["appointment", "アポ獲得"], ["declined", "断り・不要（今後送らない）"], ["", "取り消し"]].map(([k, l]) => `<button class="btn ${j.outcome === k && k ? "" : "sub"} small" name="outcome" value="${k}">${l}</button>`).join(" ")}</p><input type="text" name="note" value="${esc(j.outcome_note)}" placeholder="メモ（返信内容・次のアクション）"></form>` : ""}
 <h2>送った文面</h2><pre>${esc(j.message_used)}</pre></div>
-<div class="card"><h2 style="margin-top:0">スクリーンショット</h2>${j.screenshot_path ? `<img src="/screenshots/${esc(j.screenshot_path.split("/").pop())}" style="max-width:100%;border:1px solid #ddd">` : '<p class="muted">なし</p>'}
+<div class="card"><h2 style="margin-top:0">スクリーンショット</h2>${j.screenshot_path ? `<img src="/screenshots/${esc(j.screenshot_path.split("/").pop())}" style="max-width:100%;border:1px solid #ddd;cursor:zoom-in" onclick="foZoom(this.src)" title="クリックで拡大">
+<p class="muted small">画像をクリックすると大きく表示します。</p>
+<div id="fozoom" hidden style="position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out" onclick="this.hidden=true"><img id="fozoomimg" style="max-width:100%;max-height:100%;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#fff"></div>
+<script>function foZoom(src){const b=document.getElementById("fozoom");document.getElementById("fozoomimg").src=src;b.hidden=false;}
+addEventListener("keydown",(e)=>{if(e.key==="Escape"){const b=document.getElementById("fozoom");if(b)b.hidden=true;}});</script>` : '<p class="muted">なし</p>'}
 ${(() => {
     if (j.status === "sent") return "";
     let qs: { label: string; kind: string; multiple?: boolean; options?: string[] }[] = [];
@@ -883,6 +959,10 @@ export function guideView(isAdmin: boolean): string {
   // ガイドを見ながら操作できるよう、ガイド内のリンクは別タブで開く
   const go = (href: string, label: string) => `<p style="margin:10px 0 0"><a class="btn sub small" href="${href}" target="_blank" rel="noopener">${label} ↗</a></p>`;
   return `<h1>ご利用ガイド</h1>
+<div class="card" style="background:var(--honey-50);border-color:var(--honey)">
+<b>初めての方へ</b>：<a href="/setup" target="_blank" rel="noopener">はじめの設定（6ステップ）↗</a> を上から順に進めれば、送信を開始できます。
+うまく動かないときは <a href="/health" target="_blank" rel="noopener">動作チェック ↗</a>、送れなかった会社は <a href="/todo" target="_blank" rel="noopener">要対応 ↗</a> にまとまっています。
+</div>
 <p class="muted">アポハッチくんは、問い合わせフォームとメールへの営業送信を自動で行うツールです。初めての方は、<b>上から順番に</b>進めてください。各画面にも説明が書いてあります。</p>
 <div class="card" style="background:var(--honey-50)"><b>全体の流れ</b>
 <ol style="margin:6px 0 0;padding-left:1.3em;line-height:1.9"><li>送信者を登録</li><li>（任意）除外リストを登録</li><li>キャンペーンを作る</li><li>営業リストを取り込む</li><li>本送信を開始</li><li>結果と反応を確認</li></ol></div>
@@ -958,7 +1038,27 @@ ${step("6", "結果と反応を確認する", `<ul style="line-height:1.8;margin
 <p><b>Q. 料金はかかりますか？</b><br>テンプレートでの送信・社名の自動補完・返信の自動確認は無料です。AIを使う送り方を選んだ場合だけ、AIの料金がかかります。</p>
 <p><b>Q. 他の人のPCから画面を開けますか？</b><br>同じWi-Fi・社内ネットワークなら開けます。アドレス欄の localhost のリンクは他のPCでは開けないので、${isAdmin ? `<a href="/users" target="_blank" rel="noopener">ユーザー管理</a>に表示されるURLを伝えてください` : "管理者に共有用のURLを聞いてください"}。</p>
 <p><b>Q. Gmailが「一時的に停止」されました</b><br>短時間に大量に送ったことが原因です。通常1時間〜24時間で戻ります。戻るまで送信を止め、1日の上限を下げ、日中に少しずつ送るようにしてください。</p>
-<p style="margin-bottom:0"><b>Q. 同じ会社に二重に送ってしまいませんか？</b><br>90日以内に送った会社（期間はキャンペーンで変更可）と、同じグループで登録済みの会社には送りません。送ったか判断できなかった会社は「失敗（要確認）」になるので、スクリーンショットで確認してから再送信してください。</p></div>`;
+<p style="margin-bottom:0"><b>Q. 同じ会社に二重に送ってしまいませんか？</b><br>90日以内に送った会社（期間はキャンペーンで変更可）と、同じグループで登録済みの会社には送りません。送ったか判断できなかった会社は「失敗（要確認）」になるので、スクリーンショットで確認してから再送信してください。</p></div>
+<h2 id="words">言葉の意味（用語集）</h2>
+<div class="card">
+<table>
+<tr><th style="width:170px">画面の言葉</th><th>意味</th></tr>
+<tr><td><b>キャンペーン</b></td><td>「誰に・どんな文面で送るか」のひとまとまり（送信プロジェクト）。リストと文面と設定がセットになっています。</td></tr>
+<tr><td><b>送信者</b></td><td>相手に表示される差出人。会社名・担当者名・住所・送信用メールを登録します。複数登録して使い分けられます。</td></tr>
+<tr><td><b>事前チェック</b></td><td>送らずに各社のサイトを見て、問い合わせフォームの有無・営業お断り・画像認証・メールアドレスを調べる下見のことです。</td></tr>
+<tr><td><b>本送信</b></td><td>実際に送ること。「開始」を押すと、送信時間帯の中で1社ずつ送っていきます。</td></tr>
+<tr><td><b>待機中</b></td><td>これから送る順番待ちの会社です。</td></tr>
+<tr><td><b>要対応</b></td><td>自動では送れなかった会社（画像認証・失敗・フォーム無し）。専用の画面で1件ずつ対応できます。</td></tr>
+<tr><td><b>フォーム無し</b></td><td>問い合わせフォームを見つけられなかった会社。メールアドレスがあれば自動でメール送信に切り替えます。</td></tr>
+<tr><td><b>CAPTCHA（キャプチャ）</b></td><td>「私はロボットではありません」の画像認証。自動では突破しない方針なので、人が送る形になります。</td></tr>
+<tr><td><b>除外リスト</b></td><td>今後いっさい送らない会社の一覧。営業お断りの検知や、断りの返信で自動的に追加されます。</td></tr>
+<tr><td><b>配信停止</b></td><td>相手から「もう送らないで」と言われた状態。以後そのアドレスには送りません。</td></tr>
+<tr><td><b>反応</b></td><td>送ったあとの相手の反応（返信あり／アポ獲得／断り）。受信箱を読んで自動で記録します。</td></tr>
+<tr><td><b>ウォームアップ</b></td><td>新しいメールアカウントで、1日に送る数を少しずつ増やすこと。Googleに止められるのを防ぎます。</td></tr>
+<tr><td><b>送れそう度</b></td><td>事前チェックの結果から出した、その会社に送れる見込み（0〜100）。</td></tr>
+</table>
+</div>
+`;
 }
 
 /** 送信数（日別・月別）。棒グラフはCSSだけで描く（ライブラリは増やさない） */
@@ -1459,4 +1559,88 @@ export function lawView(senders: SenderProfile[], acked: string, unsubscribeOk: 
   <p class="muted small">確認すると、この画面は次から出ません（${acked ? `前回の確認: ${esc(acked)}` : "まだ未確認"}）。</p>
   <button class="btn">確認して送信に進む</button>
 </form>`;
+}
+
+// ---- 要対応（#50 #10）----
+// 失敗・要確認・CAPTCHA・フォーム無しが送信一覧に混ざっていて後回しになりがちだったので、1画面でさばけるようにする。
+export type TodoRow = Job & { campaign_name: string };
+export function todoView(rows: TodoRow[], kind: string, counts: Record<string, number>): string {
+  const KINDS: [string, string, string][] = [
+    ["", "すべて", "対応が必要な会社"],
+    ["captcha", "画像認証（CAPTCHA）", "自動では送れないので、ブラウザを開いて人が送る"],
+    ["check", "要確認", "回答を決められない質問があり、送っていない"],
+    ["failed", "失敗", "入力エラー・通信エラーなどで送れなかった"],
+    ["noform", "フォーム無し", "問い合わせフォームが見つからなかった"],
+  ];
+  const tab = (k: string, label: string) => `<a class="btn ${kind === k ? "" : "sub"} small" href="/todo${k ? `?kind=${k}` : ""}">${label}（${counts[k || "all"] ?? 0}）</a>`;
+  const now = KINDS.find((x) => x[0] === kind) ?? KINDS[0];
+  const row = (j: TodoRow) => {
+    const why = (j.result_text || "").split("\n")[0].slice(0, 90);
+    const isForm = j.channel === "form";
+    return `<tr>
+      <td><a href="/jobs/${j.id}"><b>${esc(j.company_name)}</b></a><div class="muted small">${esc(j.domain || j.email)}／${esc(j.campaign_name)}</div></td>
+      <td>${statusTag(j.status)}<div class="small">${errKindTag(j)}</div></td>
+      <td class="small">${esc(why)}</td>
+      <td class="small">${esc(jst(j.updated_at))}</td>
+      <td style="white-space:nowrap">
+        ${isForm && (j.form_url || j.site_url) ? `<form method="post" action="/jobs/${j.id}/assist" class="inline" data-busy data-busytext="ブラウザを開いています…"><input type="hidden" name="back" value="todo"><button class="btn small" title="ブラウザを開き、文面を入力した状態にします。画像認証だけ人が入力して送信してください">開いて入力</button></form> ` : ""}
+        <form method="post" action="/jobs/${j.id}/mark-sent" class="inline" onsubmit="return confirm('${esc(j.company_name)} を「送信済み」にします。よろしいですか？')"><input type="hidden" name="back" value="todo"><button class="btn sub small">送信済みにする</button></form>
+        <form method="post" action="/jobs/${j.id}/requeue" class="inline"><input type="hidden" name="back" value="todo"><button class="btn sub small" title="もう一度自動で送る対象に戻します">待機に戻す</button></form>
+        <form method="post" action="/jobs/${j.id}/suppress" class="inline" onsubmit="return confirm('${esc(j.company_name)} を除外リストに入れ、今後すべてのキャンペーンで送らないようにします。よろしいですか？')"><input type="hidden" name="back" value="todo"><button class="btn sub small">除外する</button></form>
+      </td></tr>`;
+  };
+  return `<h1>要対応</h1>
+<div class="card">
+  <p>自動で送れなかった会社をここにまとめています。上から順に処理すると、取りこぼしが送信に変わります。</p>
+  <p>${KINDS.map(([k, label]) => tab(k, label)).join(" ")}</p>
+  <p class="muted small">${esc(now[2])}${kind === "captcha" ? "／「開いて入力」を押すと、このパソコンのブラウザが開き、文面まで入力済みの状態になります。画像認証だけ入力して送信し、戻って「送信済みにする」を押してください。" : ""}</p>
+</div>
+${rows.length ? `<table>
+  <tr><th>会社</th><th style="width:120px">状態</th><th>理由</th><th style="width:110px">更新</th><th style="width:330px">対応</th></tr>
+  ${rows.map(row).join("")}
+</table>
+<p class="muted small">最大300件まで表示しています。</p>`
+  : `<div class="card"><p>対応が必要な会社はありません。</p></div>`}`;
+}
+
+// ---- 初回セットアップ（#41）----
+// 送信者 → メール設定 → 法令確認 → キャンペーン → リスト → 開始 の順に、1画面ずつ案内する。
+// 「どこから手を付ければいいか分からない」で止まるのを防ぐ。
+export type SetupState = {
+  senderOk: boolean; senderLabel: string; addressOk: boolean; smtpOk: boolean; smtpTested: boolean;
+  lawOk: boolean; campaignOk: boolean; campaignId: number; listCount: number; scannedOk: boolean; sentCount: number;
+};
+export function setupView(st: SetupState): string {
+  const step = (n: number, done: boolean, title: string, body: string) => `<div class="card" style="${done ? "opacity:.75" : "border-color:var(--honey);border-width:2px"}">
+  <h2 style="margin-top:0">${done ? "✅" : `${n}.`} ${esc(title)}</h2>${body}</div>`;
+  const next = !st.senderOk ? 1 : !st.smtpOk ? 2 : !st.lawOk ? 3 : !st.campaignOk ? 4 : !st.listCount ? 5 : 6;
+  return `<h1>はじめの設定</h1>
+<div class="card" style="background:var(--honey-50)">
+  <p>この6つを上から順に済ませれば、送信を始められます。<b>いまは ${next} 番</b>です。途中でやめても、ここに戻れば続きから進められます。</p>
+  <p class="muted small">用意するもの: ①営業用のメールアドレス ②そのアドレスの2段階認証（アプリパスワード） ③自社の住所（営業メールには法律で必要です）</p>
+</div>
+${step(1, st.senderOk, "送信者を登録する（会社名・担当者・住所）", `
+  <p class="muted">相手に表示される差出人です。住所が無いとメールは送れません。</p>
+  ${st.senderOk ? `<p>登録済み: <b>${esc(st.senderLabel)}</b>${st.addressOk ? "" : ` <span style="color:var(--ng)">住所が未登録です</span>`}</p>` : ""}
+  <a class="btn ${st.senderOk ? "sub" : ""}" href="/senders">${st.senderOk ? "送信者を見る・直す" : "送信者を登録する"}</a>`)}
+${step(2, st.smtpOk, "送信用メールを設定する（Gmailのアプリパスワード）", `
+  <p class="muted">Googleアカウント → セキュリティ → 2段階認証プロセス → アプリパスワード で16文字のパスワードを作り、送信者の画面に貼り付けてください。フォームだけ送る場合は飛ばせます。</p>
+  ${st.smtpOk ? `<p>設定済み${st.smtpTested ? "（接続テストに成功しています）" : ""}</p>` : ""}
+  <a class="btn ${st.smtpOk ? "sub" : ""}" href="/senders">${st.smtpOk ? "設定を見る" : "メールを設定する"}</a>`)}
+${step(3, st.lawOk, "営業メールの決まりを確認する", `
+  <p class="muted">名称・住所・配信停止の連絡先の表示が法律で必要です。アポハッチくんが自動で入れますが、1回だけ内容をご確認ください。</p>
+  <a class="btn ${st.lawOk ? "sub" : ""}" href="/law">${st.lawOk ? "もう一度見る" : "確認する"}</a>`)}
+${step(4, st.campaignOk, "キャンペーン（送信プロジェクト）を作る", `
+  <p class="muted">「誰に・どんな文面で送るか」のひとまとまりです。文面のひな形から選べます。</p>
+  <a class="btn ${st.campaignOk ? "sub" : ""}" href="${st.campaignOk ? `/campaigns/${st.campaignId}` : "/campaigns/new"}">${st.campaignOk ? "キャンペーンを開く" : "キャンペーンを作る"}</a>`)}
+${step(5, st.listCount > 0, "会社リストを取り込む", `
+  <p class="muted">企業名と企業URL（ホームページ）の2列があれば取り込めます。見本のCSVも用意しています。</p>
+  ${st.listCount ? `<p>取り込み済み: <b>${st.listCount}社</b></p>` : ""}
+  <a class="btn ${st.listCount ? "sub" : ""}" href="${st.campaignId ? `/campaigns/${st.campaignId}` : "/campaigns/new"}">リストを取り込む</a>
+  <a class="btn sub" href="/template.csv">見本のCSV</a>`)}
+${step(6, st.sentCount > 0, "事前チェックして、送信を始める", `
+  <p class="muted">事前チェックでフォームの有無・営業お断り・画像認証を先に判定します（任意）。そのあと「開始」で送信が始まります。</p>
+  ${st.sentCount ? `<p>送信済み: <b>${st.sentCount}件</b>。おつかれさまでした。あとは<a href="/todo">要対応</a>と<a href="/stats">送信数</a>を見ていけば大丈夫です。</p>` : ""}
+  <a class="btn ${st.sentCount ? "sub" : ""}" href="${st.campaignId ? `/campaigns/${st.campaignId}` : "/"}">キャンペーンを開く</a>`)}
+<p><a href="/guide">くわしい使い方（ご利用ガイド）</a> ／ <a href="/health">動作チェック</a></p>`;
 }

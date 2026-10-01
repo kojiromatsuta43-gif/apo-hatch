@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { getDb, getSetting, setSetting as saveSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, channelMode, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
-import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause, senderEmailOk } from "./email.js";
+import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause, senderEmailOk, buildEmailBody } from "./email.js";
 import { logError, logInfo, recentLogs, clearLogs, logCounts } from "./applog.js";
 import { jpError } from "./jp.js";
 import { healthChecks, diagnosticsText } from "./health.js";
@@ -21,7 +21,7 @@ import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "./replies.js";
 import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { esc, layout, lawView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
+import { esc, layout, lawView, todoView, setupView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -66,7 +66,15 @@ function gameOnFor(req: express.Request): boolean {
 }
 function navUser(req: express.Request): NavUser {
   const u = (req as AuthedRequest).user;
-  return u ? { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req) } : null;
+  if (!u) return null;
+  // 上の帯に「要対応 N」を出す（対応が必要な会社があることに気づけるように）
+  let todo = 0;
+  try {
+    const sc = scope(req);
+    todo = (db.prepare(`SELECT COUNT(*) n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
+      WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")} AND ${TODO_ALL}`).get(...sc.args) as { n: number }).n;
+  } catch { /* 起動直後など */ }
+  return { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req), todo };
 }
 /** 管理者は全部、一般ユーザーは自分のものだけ */
 function scope(req: express.Request): { sql: string; args: number[] } {
@@ -87,6 +95,14 @@ function ownedJob(req: express.Request, id: number): Job | undefined {
   if (!j) return undefined;
   return ownedCampaign(req, j.campaign_id) ? j : undefined;
 }
+const TODO_WHERE: Record<string, string> = {
+  captcha: "j.status='skip_captcha'",
+  check: "j.status='failed' AND j.result_text LIKE '要確認%'",
+  failed: "j.status='failed' AND j.result_text NOT LIKE '要確認%'",
+  noform: "j.status='skip_no_form'",
+};
+const TODO_ALL = `(${Object.values(TODO_WHERE).join(" OR ")})`;
+
 const DENIED = "この画面を見る権限がありません";
 /** グループの選択肢に出すキャンペーン（昔のキャンペーンも含む全件） */
 function groupCandidates(req: express.Request): { id: number; name: string; group_name: string }[] {
@@ -274,7 +290,33 @@ app.get("/", (req, res) => {
       (SELECT MAX(sent_at) FROM form_jobs j WHERE j.campaign_id=c.id AND j.is_test=0 AND j.status='sent') last_sent
     FROM form_campaigns c JOIN sender_profiles s ON s.id=c.sender_id WHERE ${scope(req).sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY c.group_name='' , c.group_name, c.id DESC`).all(...scope(req).args) as any[];
   const sc2 = scope(req);
-  res.send(layout("キャンペーン", campaignListView(rows, aiStatusLabel(), db.prepare(`SELECT id, label, company, person FROM sender_profiles WHERE ${sc2.sql} ORDER BY id`).all(...sc2.args) as { id: number; label: string; company: string; person: string }[]), takeFlash(req), navUser(req), updateReady));
+  const senderRows = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc2.sql} ORDER BY id`).all(...sc2.args) as SenderProfile[];
+  // ホーム上部のまとめ（#49）。今日・今月の送信、反応、要対応、止まっている理由を1画面に
+  const jobsWhere = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.is_test=0 AND ${sc2.sql.replace("owner_user_id", "c.owner_user_id")}`;
+  const num = (sql: string, ...more: (string | number)[]) => (db.prepare(sql).get(...sc2.args, ...more) as { n: number }).n;
+  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const month = today.slice(0, 7);
+  const counts = todoCounts(req);
+  const openCampaigns = rows.filter((r) => r.status === "running");
+  const home = {
+    todayForm: num(`SELECT COUNT(*) n ${jobsWhere} AND j.status='sent' AND j.channel='form' AND date(j.sent_at,'+9 hours')=?`, today),
+    todayEmail: num(`SELECT COUNT(*) n ${jobsWhere} AND j.status='sent' AND j.channel='email' AND date(j.sent_at,'+9 hours')=?`, today),
+    monthForm: num(`SELECT COUNT(*) n ${jobsWhere} AND j.status='sent' AND j.channel='form' AND strftime('%Y-%m', j.sent_at,'+9 hours')=?`, month),
+    monthEmail: num(`SELECT COUNT(*) n ${jobsWhere} AND j.status='sent' AND j.channel='email' AND strftime('%Y-%m', j.sent_at,'+9 hours')=?`, month),
+    appointments: num(`SELECT COUNT(*) n ${jobsWhere} AND j.outcome='appointment'`),
+    replies: num(`SELECT COUNT(*) n ${jobsWhere} AND j.outcome='replied'`),
+    declines: num(`SELECT COUNT(*) n ${jobsWhere} AND j.outcome='declined'`),
+    queued: num(`SELECT COUNT(*) n ${jobsWhere} AND j.status='queued'`),
+    runningNames: openCampaigns.filter((r) => isRunning(r.id)).map((r) => r.name),
+    windowOk: openCampaigns.length ? openCampaigns.some((r) => inSendWindow(r)) : rows.length ? inSendWindow(rows[0]) : true,
+    windowText: rows.length ? `${rows[0].send_window_start}〜${rows[0].send_window_end}時${rows[0].weekdays_only ? "・平日" : ""}` : "",
+    todo: counts.all ?? 0,
+    todoCaptcha: counts.captcha ?? 0,
+    emailPaused: senderRows.map((sd) => { const p = emailPause(sd); return p ? { label: sd.label || sd.company, until: p.until, reason: p.reason } : null; }).filter(Boolean) as { label: string; until: number; reason: string }[],
+    senders: senderRows.length,
+    campaigns: rows.length,
+  };
+  res.send(layout("ホーム", campaignListView(rows, aiStatusLabel(), senderRows.map((x) => ({ id: x.id, label: x.label, company: x.company, person: x.person })), home), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/campaigns/new", (req, res) => {
@@ -373,14 +415,14 @@ function loadCampaignFull(req: express.Request, id: number) {
 
 const lastImports = new Map<number, ImportSummary>();
 const pendingImports = new Map<number, { rows: CompanyRow[]; srcLabel: string }>();
-const previews = new Map<number, { job: Job; subject: string; message: string; aiUsed: boolean; lint?: import("./message.js").Lint[] }>();
+const previews = new Map<number, { job: Job; subject: string; message: string; aiUsed: boolean; lint?: import("./message.js").Lint[]; emailHtml?: string }>();
 
 app.get("/campaigns/:id", (req, res) => {
   const id = Number(req.params.id);
   const c = loadCampaignFull(req, id);
   if (!c) return res.status(404).send("not found");
-  const { statusFilter, qFilter, outcomeFilter, impFilter, sql: fSql, args: fArgs } = jobFilter(req.query as Record<string, unknown>);
-  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND ${fSql} ORDER BY updated_at DESC, id DESC LIMIT 200`).all(id, ...fArgs) as Job[];
+  const { statusFilter, qFilter, outcomeFilter, impFilter, sortKey, orderBy, sql: fSql, args: fArgs } = jobFilter(req.query as Record<string, unknown>);
+  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND ${fSql} ORDER BY ${orderBy} LIMIT 200`).all(id, ...fArgs) as Job[];
   // 絞り込み条件に一致する件数（一覧は200件までしか出ないので、全件の数と送信済みの数を別に数える）
   const matched = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(status='sent'),0) sent FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${fSql}`).get(id, ...fArgs) as { n: number; sent: number };
   const counts: Record<string, number> = {};
@@ -406,7 +448,22 @@ app.get("/campaigns/:id", (req, res) => {
     FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='sent' AND sent_at IS NOT NULL`).get(id) as { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number };
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  // 残り時間の目安（#55）。直近の送信ペースから、いつ終わりそうかを出す
+  const pace = db.prepare(`SELECT (julianday(MAX(sent_at)) - julianday(MIN(sent_at))) * 86400 secs, COUNT(*) n
+    FROM (SELECT sent_at FROM form_jobs WHERE campaign_id=? AND status='sent' AND is_test=0 AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 50)`).get(id) as { secs: number | null; n: number };
+  const perJob = pace && pace.n >= 5 && pace.secs ? Math.max(1, pace.secs / (pace.n - 1)) : 10; // 実績が少ないうちは1社10秒とみなす
+  const queuedNow = counts.queued ?? 0;
+  let eta = "";
+  if (queuedNow > 0) {
+    const leftToday = Math.max(0, (c.daily_limit + c.email_daily_limit) - (sentToday(id, "form") + sentToday(id, "email")));
+    const doable = Math.min(queuedNow, leftToday);
+    const minutes = Math.round((doable * perJob) / 60);
+    const end = new Date(Date.now() + minutes * 60_000 + 9 * 3600_000).toISOString();
+    eta = doable === 0
+      ? `本日の上限に達しています。残り ${queuedNow}社は翌営業日の送信時間帯に続きます（1社あたり約${Math.round(perJob)}秒）`
+      : `残り ${queuedNow}社 ／ このペース（1社あたり約${Math.round(perJob)}秒）だと、きょう送れる ${doable}社で約${minutes}分（${end.slice(11, 16)}ごろ）${doable < queuedNow ? `。残りの ${queuedNow - doable}社は翌営業日に続きます` : ""}`;
+  }
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -527,10 +584,12 @@ app.post("/campaigns/:id/preview", async (req, res) => {
       }
     }
     const composed = await composeMessage(job, c.sender, c, site);
-    previews.set(id, { job, ...composed, lint: lintMessage(composed.message, composed.subject, c.channel) });
+    // メールでの見え方（#70）も作っておく（実際に送る本文と同じ関数で組み立てる）
+    const emailHtml = channelMode(c.channel) !== "form_only" ? buildEmailBody(composed.message, c.sender, job.email).html : "";
+    previews.set(id, { job, ...composed, lint: lintMessage(composed.message, composed.subject, c.channel), emailHtml });
     res.redirect(`/campaigns/${id}`);
   } catch (e) {
-    redirectWith(res, `/campaigns/${id}`, `プレビュー生成エラー: ${String((e as Error).message)}`);
+    redirectWith(res, `/campaigns/${id}`, `プレビュー生成エラー: ${jpError(e, 160)}`);
   }
 });
 
@@ -737,7 +796,13 @@ app.get("/jobs/:id", (req, res) => {
   const j = ownedJob(req, Number(req.params.id));
   if (!j) return res.status(404).send("not found");
   const c = db.prepare("SELECT * FROM form_campaigns WHERE id=?").get(j.campaign_id) as Campaign;
-  res.send(layout(j.company_name, jobView(j, c), takeFlash(req), navUser(req), updateReady));
+  // この会社とのやり取りの履歴（#56）。ドメインが無い会社は社名で突き合わせる
+  const sc = scope(req);
+  const history = db.prepare(`SELECT j.id, c.name campaign_name, j.channel, j.status, j.result_text, j.sent_at, j.updated_at, j.outcome, j.outcome_note
+    FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
+    WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")} AND ${j.domain ? "j.domain=?" : "j.company_name=?"}
+    ORDER BY COALESCE(j.sent_at, j.updated_at) DESC LIMIT 30`).all(...sc.args, j.domain || j.company_name) as import("./views.js").JobHistory[];
+  res.send(layout(j.company_name, jobView(j, c, history), takeFlash(req), navUser(req), updateReady));
 });
 // 待機中の1社をキャンセル（本送信の対象から外す）
 app.post("/jobs/:id/cancel", (req, res) => {
@@ -806,7 +871,19 @@ function jobFilter(q: Record<string, unknown>) {
   let m: RegExpMatchArray | null;
   if ((m = impFilter.match(/^i(\d+)$/))) { where.push("import_id=?"); args.push(Number(m[1])); }
   else if ((m = impFilter.match(/^r(\d+)-(\d+)$/))) { where.push("import_id IS NULL AND id BETWEEN ? AND ?"); args.push(Number(m[1]), Number(m[2])); }
-  return { statusFilter, qFilter, outcomeFilter, impFilter, sql: where.join(" AND "), args };
+  // 並び替え（#51）。件数が増えると目的の会社を探しにくいので、列の見出しから切り替えられるようにする
+  const SORTS: Record<string, string> = {
+    "": "updated_at DESC, id DESC",
+    updated: "updated_at DESC, id DESC",
+    updated_asc: "updated_at ASC, id ASC",
+    company: "company_name COLLATE NOCASE ASC, id DESC",
+    company_desc: "company_name COLLATE NOCASE DESC, id DESC",
+    status: "status ASC, updated_at DESC",
+    score: "scan_score DESC, updated_at DESC",
+    id: "id ASC",
+  };
+  const sortKey = typeof q.sort === "string" && q.sort in SORTS ? q.sort : "";
+  return { statusFilter, qFilter, outcomeFilter, impFilter, sortKey, orderBy: SORTS[sortKey], sql: where.join(" AND "), args };
 }
 
 // ---- キャンペーンの設定をファイルで渡す ----
@@ -875,13 +952,50 @@ function importHistory(campaignId: number): ImportBatch[] {
   return out.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 }
 
-function deleteJobsWhere(campaignId: number, sql: string, args: (string | number)[]): number {
-  const ids = (db.prepare(`SELECT id FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${sql}`).all(campaignId, ...args) as { id: number }[]).map((r) => r.id);
+/** 削除する前に、消す行をそのまま控えておく（#60）。30分以内なら「元に戻す」で戻せる。
+ *  誤って取り込み分や全件を消した事故があったため、取り返しがつくようにする（スクリーンショットは戻らない） */
+function snapshotJobs(campaignId: number, userId: number, label: string, rows: Record<string, unknown>[]): number {
+  if (!rows.length) return 0;
+  // 控えは直近5件だけ残す（古いものと、30分より前のものは消す）
+  db.prepare("DELETE FROM deleted_jobs WHERE created_at < datetime('now','-1 day')").run();
+  const r = db.prepare("INSERT INTO deleted_jobs(campaign_id, user_id, label, rows_count, payload) VALUES(?,?,?,?,?)")
+    .run(campaignId, userId, label.slice(0, 80), rows.length, JSON.stringify(rows));
+  return Number(r.lastInsertRowid);
+}
+
+/** いま「元に戻す」ボタンを出すべき削除（30分以内・このキャンペーン） */
+function recentUndo(campaignId: number, userId: number): { id: number; label: string; rows_count: number } | null {
+  return (db.prepare(`SELECT id, label, rows_count FROM deleted_jobs
+    WHERE campaign_id=? AND user_id=? AND created_at > datetime('now','-30 minutes') ORDER BY id DESC LIMIT 1`).get(campaignId, userId) as { id: number; label: string; rows_count: number } | undefined) ?? null;
+}
+
+function deleteJobsWhere(campaignId: number, sql: string, args: (string | number)[], undo?: { userId: number; label: string }): number {
+  const rows = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${sql}`).all(campaignId, ...args) as Record<string, unknown>[];
+  const ids = rows.map((r) => Number(r.id));
   if (!ids.length) return 0;
+  if (undo) snapshotJobs(campaignId, undo.userId, undo.label, rows);
   db.transaction(() => { for (let i = 0; i < ids.length; i += 500) { const part = ids.slice(i, i + 500); db.prepare(`DELETE FROM form_jobs WHERE id IN (${part.map(() => "?").join(",")})`).run(...part); } })();
   for (const jid of ids) fs.rmSync(path.join(SCREENSHOT_DIR, `job-${jid}.png`), { force: true });
   return ids.length;
 }
+
+// 削除を元に戻す（#60）
+app.post("/undo/:id", (req, res) => {
+  const row = db.prepare("SELECT * FROM deleted_jobs WHERE id=? AND user_id=?").get(Number(req.params.id), me(req).id) as { id: number; campaign_id: number; payload: string; rows_count: number; label: string } | undefined;
+  if (!row) return redirectWith(res, "/", "元に戻せる削除が見つかりませんでした（30分を過ぎたか、すでに戻しています）");
+  let restored = 0;
+  try {
+    const rows = JSON.parse(row.payload) as Record<string, unknown>[];
+    const cols = rows.length ? Object.keys(rows[0]) : [];
+    const stmt = db.prepare(`INSERT OR IGNORE INTO form_jobs(${cols.join(",")}) VALUES(${cols.map((c) => `@${c}`).join(",")})`);
+    db.transaction(() => { for (const r of rows) restored += stmt.run(r).changes; })();
+  } catch (e) {
+    logError("undo", `削除の取り消しに失敗: ${jpError(e)}`);
+    return redirectWith(res, `/campaigns/${row.campaign_id}`, `元に戻せませんでした: ${jpError(e, 120)}`);
+  }
+  db.prepare("DELETE FROM deleted_jobs WHERE id=?").run(row.id);
+  redirectWith(res, `/campaigns/${row.campaign_id}`, `${restored}件を元に戻しました（${row.label}）。スクリーンショットの画像は戻りません`);
+});
 
 // 取り込み1回ぶんを全件削除
 app.post("/campaigns/:id/imports/delete", (req, res) => {
@@ -892,10 +1006,10 @@ app.post("/campaigns/:id/imports/delete", (req, res) => {
   let n = 0;
   let m: RegExpMatchArray | null;
   if ((m = key.match(/^i(\d+)$/))) {
-    n = deleteJobsWhere(id, "import_id=?", [Number(m[1])]);
+    n = deleteJobsWhere(id, "import_id=?", [Number(m[1])], { userId: me(req).id, label: "取り込み1回ぶんの削除" });
     db.prepare("DELETE FROM form_imports WHERE id=? AND campaign_id=?").run(Number(m[1]), id);
   } else if ((m = key.match(/^r(\d+)-(\d+)$/))) {
-    n = deleteJobsWhere(id, "import_id IS NULL AND id BETWEEN ? AND ?", [Number(m[1]), Number(m[2])]);
+    n = deleteJobsWhere(id, "import_id IS NULL AND id BETWEEN ? AND ?", [Number(m[1]), Number(m[2])], { userId: me(req).id, label: "取り込み1回ぶんの削除" });
   } else return redirectWith(res, `/campaigns/${id}`, "削除する取り込みが分かりませんでした");
   lastImports.delete(id);
   redirectWith(res, `/campaigns/${id}`, `取り込んだ会社 ${n} 件を削除しました`);
@@ -915,7 +1029,7 @@ app.post("/campaigns/:id/delete-filtered", (req, res) => {
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中は削除できません。先に止めてから削除してください");
   const f = jobFilter(req.body as Record<string, unknown>);
-  const n = deleteJobsWhere(id, f.sql, f.args);
+  const n = deleteJobsWhere(id, f.sql, f.args, { userId: me(req).id, label: "絞り込みに一致する会社の削除" });
   // 中身が空になった取り込み記録は履歴から消す
   db.prepare("DELETE FROM form_imports WHERE campaign_id=? AND NOT EXISTS (SELECT 1 FROM form_jobs j WHERE j.import_id=form_imports.id)").run(id);
   lastImports.delete(id);
@@ -927,7 +1041,7 @@ app.post("/campaigns/:id/jobs/delete-all", (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "送信中・事前チェック中は削除できません。先に止めてから削除してください");
-  const n = deleteJobsWhere(id, "1=1", []);
+  const n = deleteJobsWhere(id, "1=1", [], { userId: me(req).id, label: "送信一覧の全件削除" });
   db.prepare("DELETE FROM form_imports WHERE campaign_id=?").run(id);
   lastImports.delete(id);
   redirectWith(res, `/campaigns/${id}`, `このキャンペーンの会社 ${n} 件をすべて削除しました（キャンペーンの設定・文面は残っています）`);
@@ -944,9 +1058,10 @@ app.post("/campaigns/:id/bulk-delete", (req, res) => {
   // 選んだ行の会社（ドメイン）ごと、履歴も含めてまとめて消す
   const doms = (db.prepare(`SELECT DISTINCT domain FROM form_jobs WHERE campaign_id=? AND is_test=0 AND id IN (${ph}) AND domain<>''`).all(id, ...ids) as { domain: string }[]).map((r) => r.domain);
   let changes = 0;
-  if (doms.length) changes += db.prepare(`DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND domain IN (${doms.map(() => "?").join(",")})`).run(id, ...doms).changes;
-  changes += db.prepare(`DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND id IN (${ph})`).run(id, ...ids).changes; // ドメインが無い行
-  redirectWith(res, `/campaigns/${id}`, `${changes} 件を送信一覧から削除しました`);
+  const undo = { userId: me(req).id, label: `選択した ${ids.length}社の削除` };
+  if (doms.length) changes += deleteJobsWhere(id, `domain IN (${doms.map(() => "?").join(",")})`, doms, undo);
+  changes += deleteJobsWhere(id, `id IN (${ph})`, ids, undo); // ドメインが無い行
+  redirectWith(res, `/campaigns/${id}`, `${changes} 件を送信一覧から削除しました（30分以内なら画面上部から元に戻せます）`);
 });
 
 app.post("/jobs/:id/delete", (req, res) => {
@@ -954,10 +1069,10 @@ app.post("/jobs/:id/delete", (req, res) => {
   const j = ownedJob(req, id);
   if (!j) return res.status(404).send("not found");
   // 一覧では同じ会社（ドメイン）を1行にまとめているので、履歴もまとめて消す
-  const r = j.domain
-    ? db.prepare("DELETE FROM form_jobs WHERE campaign_id=? AND is_test=0 AND domain=?").run(j.campaign_id, j.domain)
-    : db.prepare("DELETE FROM form_jobs WHERE id=?").run(id);
-  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} の記録 ${r.changes} 件を送信一覧から削除しました`);
+  const n = j.domain
+    ? deleteJobsWhere(j.campaign_id, "domain=?", [j.domain], { userId: me(req).id, label: `${j.company_name} の削除` })
+    : deleteJobsWhere(j.campaign_id, "id=?", [id], { userId: me(req).id, label: `${j.company_name} の削除` });
+  redirectWith(res, `/campaigns/${j.campaign_id}`, `${j.company_name} の記録 ${n} 件を送信一覧から削除しました（30分以内なら画面上部から元に戻せます）`);
 });
 
 app.post("/jobs/:id/mark-sent", (req, res) => {
@@ -965,7 +1080,7 @@ app.post("/jobs/:id/mark-sent", (req, res) => {
   const j = ownedJob(req, id);
   if (!j) return res.status(404).send("not found");
   db.prepare("UPDATE form_jobs SET status='sent', result_text='手動で送信済みにしました', sent_at=datetime('now'), updated_at=datetime('now') WHERE id=?").run(id);
-  redirectWith(res, `/jobs/${id}`, `${j.company_name} を「送信済み（手動）」にしました`);
+  redirectWith(res, String(req.body.back ?? "") === "todo" ? "/todo" : `/jobs/${id}`, `${j.company_name} を「送信済み（手動）」にしました`);
 });
 
 // 待機中の全社を一括キャンセル
@@ -1044,11 +1159,12 @@ app.post("/jobs/:id/assist", async (req, res) => {
     const comp = await composeMessage(j, c.sender, c, site);
     const message = j.message_used || comp.message;
     const r = await openAndFill({ formUrl: j.form_url, siteUrl: j.site_url, sender: c.sender, subject: comp.subject, message });
-    redirectWith(res, `/jobs/${id}`, r.ok
-      ? `ブラウザを開いて${r.detail}。送信したら「手動で送信済みにする」を押してください`
+    const back = String(req.body.back ?? "") === "todo" ? "/todo" : `/jobs/${id}`;
+    redirectWith(res, back, r.ok
+      ? `ブラウザを開いて${r.detail}。送信したら「送信済みにする」を押してください`
       : `ブラウザを開きました：${r.detail}`);
   } catch (e) {
-    redirectWith(res, `/jobs/${id}`, `ブラウザを開けませんでした: ${String((e as Error).message ?? e).slice(0, 150)}`);
+    redirectWith(res, String(req.body.back ?? "") === "todo" ? "/todo" : `/jobs/${id}`, `ブラウザを開けませんでした: ${jpError(e, 150)}`);
   }
 });
 
@@ -1291,7 +1407,74 @@ app.post("/settings/game", requireAdmin, (req, res) => {
   redirectWith(res, "/settings", on ? "おまけのゲームを表示します（共有用URLでは表示されません）" : "おまけのゲームを非表示にしました");
 });
 
-// ---- 営業メールの法律チェック（#85）----
+// ---- はじめの設定（#41）----
+// 「どこから手を付ければいいか分からない」で止まるのを防ぐ、順番どおりの案内
+app.get("/setup", (req, res) => {
+  const sc = scope(req);
+  const senders = db.prepare(`SELECT * FROM sender_profiles WHERE ${sc.sql} ORDER BY id`).all(...sc.args) as SenderProfile[];
+  const sender = senders[0];
+  const camp = db.prepare(`SELECT * FROM form_campaigns c WHERE ${sc.sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY id DESC LIMIT 1`).get(...sc.args) as Campaign | undefined;
+  const jobsWhere = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`;
+  const n = (sql: string) => (db.prepare(sql).get(...sc.args) as { n: number }).n;
+  res.send(layout("はじめの設定", setupView({
+    senderOk: Boolean(sender?.company?.trim()),
+    senderLabel: sender ? `${sender.label || sender.company}` : "",
+    addressOk: Boolean(sender?.address?.trim()),
+    smtpOk: Boolean(sender?.smtp_user && sender?.smtp_pass),
+    smtpTested: Boolean(sender && !emailPause(sender)),
+    lawOk: Boolean(getSetting(lawKey(me(req).id), "")),
+    campaignOk: Boolean(camp),
+    campaignId: camp?.id ?? 0,
+    listCount: n(`SELECT COUNT(*) n ${jobsWhere}`),
+    scannedOk: n(`SELECT COUNT(*) n ${jobsWhere} AND j.scanned_at IS NOT NULL`) > 0,
+    sentCount: n(`SELECT COUNT(*) n ${jobsWhere} AND j.status='sent'`),
+  }), takeFlash(req), navUser(req), updateReady));
+});
+
+// ---- 要対応（#50 #10）----// ---- 要対応（#50 #10）----
+// 失敗・要確認・CAPTCHA・フォーム無しを1画面でさばけるようにする。取りこぼしが実際の送信に変わるところ
+function todoCounts(req: express.Request): Record<string, number> {
+  const sc = scope(req);
+  const base = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`;
+  const out: Record<string, number> = {};
+  out.all = (db.prepare(`SELECT COUNT(*) n ${base} AND ${TODO_ALL}`).get(...sc.args) as { n: number }).n;
+  for (const [k, w] of Object.entries(TODO_WHERE)) out[k] = (db.prepare(`SELECT COUNT(*) n ${base} AND ${w}`).get(...sc.args) as { n: number }).n;
+  return out;
+}
+
+app.get("/todo", (req, res) => {
+  const kind = String(req.query.kind ?? "");
+  const sc = scope(req);
+  const where = TODO_WHERE[kind] ?? TODO_ALL;
+  const rows = db.prepare(`SELECT j.*, c.name campaign_name FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
+    WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")} AND ${where}
+    ORDER BY j.updated_at DESC LIMIT 300`).all(...sc.args) as (Job & { campaign_name: string })[];
+  res.send(layout("要対応", todoView(rows, kind, todoCounts(req)), takeFlash(req), navUser(req), updateReady));
+});
+
+// 1社だけ待機に戻す（もう一度自動で送る）
+app.post("/jobs/:id/requeue", (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  db.prepare("UPDATE form_jobs SET status='queued', result_text='待機に戻しました（手動）', updated_at=datetime('now') WHERE id=?").run(id);
+  const back = String(req.body.back ?? "") === "todo" ? "/todo" : `/jobs/${id}`;
+  redirectWith(res, back, `${j.company_name} を待機中に戻しました（キャンペーンを開始すると送信します）`);
+});
+
+// この会社を除外リストに入れる（今後すべてのキャンペーンで送らない）
+app.post("/jobs/:id/suppress", (req, res) => {
+  const id = Number(req.params.id);
+  const j = ownedJob(req, id);
+  if (!j) return res.status(404).send("not found");
+  if (j.domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(company_name, domain, reason, owner_user_id) VALUES(?,?,?,?)").run(j.company_name, j.domain, "要対応の画面から除外", me(req).id);
+  if (j.email) optOut(j.email, `除外（${j.company_name}）`, me(req).id);
+  db.prepare("UPDATE form_jobs SET status='skip_suppressed', result_text='除外リストに追加（手動）', updated_at=datetime(\'now\') WHERE id=?").run(id);
+  const back = String(req.body.back ?? "") === "todo" ? "/todo" : `/jobs/${id}`;
+  redirectWith(res, back, `${j.company_name} を除外リストに追加しました`);
+});
+
+// ---- 営業メールの法律チェック（#85）----// ---- 営業メールの法律チェック（#85）----
 // 他社に渡すと、表示義務（名称・住所・配信停止の連絡先）を知らないまま送り始めてしまうため、最初の1回だけ確認してもらう
 const lawKey = (userId: number) => `law_ack:${userId}`;
 app.get("/law", (req, res) => {
