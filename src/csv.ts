@@ -133,6 +133,7 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opt
   const campaign = db.prepare("SELECT channel, resend_days, group_name FROM form_campaigns WHERE id=?").get(campaignId) as { channel: string; resend_days: number; group_name: string } | undefined;
   const resendDays = campaign?.resend_days ?? 90;
   const mode = channelMode(campaign?.channel);
+  const sharedSent = db.prepare("SELECT member FROM shared_sent WHERE domain=?");
   const summary: ImportSummary = { added: 0, addedForm: 0, addedEmail: 0, excluded: 0, suppressed: 0, duplicated: 0, noUrl: 0, excludedRows: [], noEntity: [] };
   const insert = db.prepare(`
     INSERT INTO form_jobs(campaign_id, company_name, form_url, site_url, industry, sub_industry, prefecture, representative, domain, channel, email, status, result_text, import_id)
@@ -160,12 +161,15 @@ export function importRowsToCampaign(campaignId: number, rows: CompanyRow[], opt
       let status = "queued";
       let reason = "";
       let groupHit: string | null = null;
+      let sharedHit: { member: string } | undefined;
       const ngWord = matchExcludedKeyword(r);
       if (isExcludedDomain(domain)) { status = "skip_suppressed"; reason = "官公庁・学校等のドメインは既定で除外"; summary.excluded++; note(reason); }
       else if (ngWord) { status = "skip_suppressed"; reason = `除外キーワード「${ngWord}」に一致（設定で変更できます）`; summary.excluded++; note(reason); }
       else if (isSuppressed.get(domain)) { status = "skip_suppressed"; reason = "除外リストに登録済み"; summary.suppressed++; note(reason); }
       else if (hasEmail && isOptedOut.get(r.email)) { status = "skip_optout"; reason = "配信停止・除外済みのアドレス"; summary.suppressed++; note(reason); }
       else if (resendDays > 0 && recentlySent.get(`-${resendDays} days`, domain)) { status = "skip_duplicate"; reason = `${resendDays}日以内に送信済み`; summary.duplicated++; note(reason); }
+      // チームの誰かがすでに送っている会社は取り込まない（#78）
+      else if ((sharedHit = sharedSent.get(domain) as { member: string } | undefined)) { status = "skip_duplicate"; reason = `チームの ${sharedHit.member || "他のメンバー"} が送信済み（共有リスト）`; summary.duplicated++; note(reason); }
       // 同じグループの別キャンペーンで待機中・送信中・送信済みなら登録しない（フォーム無し・失敗・CAPTCHAだった会社は、連絡できていないので対象にしてよい）
       else if (campaign?.group_name && (groupHit = findGroupDuplicate(db, { groupName: campaign.group_name, campaignId, domain, email: hasEmail ? r.email : "", statuses: ["queued", "sending", "sent"] }))) {
         status = "skip_duplicate"; reason = `同じグループの「${groupHit}」に登録済み`; summary.duplicated++; note(reason);

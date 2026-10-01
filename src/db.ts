@@ -269,6 +269,15 @@ function migrate(db: Database.Database) {
   )`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_rules_phrase ON reply_rules(phrase, outcome)`);
 
+  // チームで共有する「他のメンバーが送信済みの会社」（#78）。同じ会社に二重で当たらないようにする
+  db.exec(`CREATE TABLE IF NOT EXISTS shared_sent (
+    domain TEXT PRIMARY KEY,
+    company_name TEXT NOT NULL DEFAULT '',
+    member TEXT NOT NULL DEFAULT '',
+    sent_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now'))
+  )`);
+
   // 文面のA/Bテスト（#64）と、件名のローテーション（#65）
   addCol("form_campaigns", "ab_enabled", "INTEGER NOT NULL DEFAULT 0");
   addCol("form_campaigns", "template_b", "TEXT NOT NULL DEFAULT ''");

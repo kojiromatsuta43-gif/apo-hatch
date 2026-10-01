@@ -16,11 +16,13 @@ import { healthChecks, diagnosticsText } from "./health.js";
 import { createBackup, listBackups, requestRestore, autoBackupIfDue, backupLabel, BACKUP_DIR } from "./backup.js";
 import { autostartEnabled, autostartSupported, enableAutostart, disableAutostart, autostartPath } from "./autostart.js";
 import { releaseAwakeAll, AWAKE_NOTE } from "./awake.js";
+import { licenseStatus, setLicenseKey, licenseEnforced } from "./license.js";
+import { syncShare, shareConfigured, APPS_SCRIPT, KEY as SHARE_KEY } from "./share.js";
 import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "./replies.js";
 import { notify, notifyEnabled } from "./notify.js";
-import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
+import { checkUpdate, applyUpdate, requestRestart, currentVersion, updateChannel } from "./update.js";
 import { esc, layout, lawView, todoView, setupView, reportView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
@@ -1253,9 +1255,20 @@ app.get("/suppressions", (req, res) => {
   const optouts = db.prepare(`SELECT * FROM email_optouts WHERE ${sc.sql} ORDER BY created_at DESC LIMIT 500`).all(...sc.args) as any[];
   const imported = suppImports.get(me(req).id);
   suppImports.delete(me(req).id);
+  const sharedCount = (db.prepare("SELECT COUNT(*) n FROM shared_sent").get() as { n: number }).n;
   res.send(layout("除外リスト", suppressionsView(rows, optouts, imported, loadSuppSync(me(req).id), {
     industries: getSetting("excluded_industries", ""),
     replyRules: loadReplyRules(),
+    share: {
+      sentPullUrl: getSetting(SHARE_KEY.sentPullUrl, ""),
+      pushUrl: getSetting(SHARE_KEY.pushUrl, ""),
+      member: getSetting(SHARE_KEY.member, ""),
+      lastPull: getSetting(SHARE_KEY.lastPull, "") ? jst(getSetting(SHARE_KEY.lastPull, "").replace("T", " ").slice(0, 19)) : "",
+      lastResult: getSetting(SHARE_KEY.lastResult, ""),
+      sharedCount,
+      configured: shareConfigured(),
+      script: APPS_SCRIPT,
+    },
   }), takeFlash(req), navUser(req), updateReady));
 });
 
@@ -1320,7 +1333,23 @@ app.post("/suppressions/sync-url", (req, res) => {
   redirectWith(res, "/suppressions", "共有リストを登録しました。1日1回、自動で取り込みます（今すぐ取り込むこともできます）");
 });
 
-// 送りたくない業種・キーワード（#87）
+// チーム共有の設定（#78 #79）
+app.post("/share/settings", (req, res) => {
+  const pull = String(req.body.sent_pull_url ?? "").trim();
+  const push = String(req.body.push_url ?? "").trim();
+  if (pull && !/spreadsheets\/d\//.test(pull)) return redirectWith(res, "/suppressions", "①はGoogleスプレッドシートの共有URL（/spreadsheets/d/… を含む）を貼ってください");
+  if (push && !/^https:\/\/script\.google\.com\//.test(push)) return redirectWith(res, "/suppressions", "②は Apps Script のウェブアプリURL（https://script.google.com/macros/s/…/exec）を貼ってください");
+  saveSetting(SHARE_KEY.sentPullUrl, pull);
+  saveSetting(SHARE_KEY.pushUrl, push);
+  saveSetting(SHARE_KEY.member, String(req.body.member ?? "").trim().slice(0, 30));
+  redirectWith(res, "/suppressions", pull || push ? "チーム共有の設定を保存しました（1日1回、自動で同期します）" : "チーム共有の設定を解除しました");
+});
+app.post("/share/sync-now", async (req, res) => {
+  const msg = await syncShare();
+  redirectWith(res, "/suppressions", msg ? `同期しました: ${msg}` : "共有の設定がありません");
+});
+
+// 送りたくない業種・キーワード（#87）// 送りたくない業種・キーワード（#87）
 app.post("/suppressions/industries", (req, res) => {
   const words = String(req.body.industries ?? "").split(/[\n,、，]/).map((w) => w.trim()).filter((w) => w.length >= 2);
   saveSetting("excluded_industries", words.join("\n"));
@@ -1698,7 +1727,7 @@ app.get("/settings", requireAdmin, (req, res) => {
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
-  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1", notifyEnabled(), { usage: aiUsageThisMonth(), limit: aiMonthlyLimit() }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1", notifyEnabled(), { usage: aiUsageThisMonth(), limit: aiMonthlyLimit() }, { status: licenseStatus(), key: getSetting("license_key", ""), enforce: licenseEnforced() }), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -1727,6 +1756,17 @@ app.post("/settings/ai", requireAdmin, async (req, res) => {
     redirectWith(res, "/settings", `接続テスト成功。AIが使えるようになりました（${provider} / ${validModel}）`);
   }
 });
+// ライセンス（#90）
+app.post("/settings/license", requireAdmin, (req, res) => {
+  const st = setLicenseKey(String(req.body.key ?? ""));
+  redirectWith(res, "/settings", st.state === "valid" ? `ライセンスを登録しました: ${st.label}` : st.state === "none" ? "ライセンスキーを削除しました" : `ライセンスを保存しましたが、状態は「${st.label}」です`);
+});
+app.post("/settings/license-enforce", requireAdmin, (req, res) => {
+  const on = req.body.enforce === "1";
+  saveSetting("license_enforce", on ? "1" : "0");
+  redirectWith(res, "/settings", on ? "ライセンスが無い・期限切れのときは、1日50件までに制限します" : "ライセンスによる制限をオフにしました（制限なく動きます）");
+});
+
 // AIの月の上限（#66）
 app.post("/settings/ai-budget", requireAdmin, (req, res) => {
   const limit = Math.max(0, Math.round(Number(req.body.limit) || 0));
@@ -1739,6 +1779,15 @@ app.post("/settings/ai/delete", requireAdmin, (req, res) => {
   redirectWith(res, "/settings", "AI設定を削除しました。テンプレートのみで動きます（AI: none）");
 });
 
+// 更新チャネルの切り替え（#94）
+app.post("/settings/update-channel", requireAdmin, async (req, res) => {
+  const ch = req.body.channel === "beta" ? "beta" : "stable";
+  saveSetting("update_channel", ch);
+  const st = await checkUpdate(true);
+  updateReady = st.available;
+  redirectWith(res, "/update", ch === "beta" ? "先行版を受け取る設定にしました（新しい機能を先に試せますが、不具合が残っていることがあります）" : "安定版を受け取る設定にしました");
+});
+
 // ---- アップデート（管理者のみ）----
 const updateResults = new Map<number, Awaited<ReturnType<typeof applyUpdate>>>();
 app.get("/update", requireAdmin, async (req, res) => {
@@ -1746,7 +1795,7 @@ app.get("/update", requireAdmin, async (req, res) => {
   updateReady = st.available;
   const result = updateResults.get(me(req).id);
   updateResults.delete(me(req).id);
-  res.send(layout("アップデート", updateView(st, result), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("アップデート", updateView(st, result, updateChannel()), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/update/check", requireAdmin, async (req, res) => {
   const st = await checkUpdate(true);
@@ -1842,6 +1891,11 @@ process.on("unhandledRejection", (e) => {
 const onReplyErr = (e: unknown) => { console.error("[replies]", e); logError("replies", `受信箱の読み取りに失敗: ${jpError(e)}`); };
 setTimeout(() => { checkReplies().catch(onReplyErr); }, 60_000);
 setInterval(() => { checkReplies().catch(onReplyErr); }, 15 * 60_000);
+
+// ---- チーム共有（送信済み・除外の双方向）を1日1回同期する（#78 #79）----
+const onShareErr = (e: unknown) => { console.error("[share]", e); logError("share", `チーム共有の同期に失敗: ${jpError(e)}`); };
+setTimeout(() => { syncShare().catch(onShareErr); }, 3 * 60_000);
+setInterval(() => { syncShare().catch(onShareErr); }, 24 * 60 * 60_000);
 
 // ---- 共有の除外リスト（スプレッドシート）を1日1回取り込む ----
 const onSuppErr = (e: unknown) => { console.error("[supp-sync]", e); logError("supp-sync", `共有の除外リストの取り込みに失敗: ${jpError(e)}`); };

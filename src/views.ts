@@ -729,7 +729,7 @@ export function suppressionsView(
   optouts: { email: string; reason: string; created_at: string }[] = [],
   imported?: { added: number; already: number; noKey: number; noKeyNames: string[] },
   sync?: { url: string; lastAt?: string; lastResult?: string } | null,
-  extra?: { industries: string; replyRules: { id: number; phrase: string; outcome: string; source: string }[] }
+  extra?: { industries: string; replyRules: { id: number; phrase: string; outcome: string; source: string }[]; share?: { sentPullUrl: string; pushUrl: string; member: string; lastPull: string; lastResult: string; sharedCount: number; configured: boolean; script: string } }
 ) {
   return `<h1>除外リスト</h1>
 <div class="card"><h2 style="margin-top:0">送りたくない業種・キーワード</h2>
@@ -752,7 +752,35 @@ ${(() => {
 <button class="btn sub small">保存</button></form>
 ${sync ? `<form method="post" action="/suppressions/sync-now" style="margin-top:8px" data-busy><button class="btn sub small" data-busytext="取り込み中…">今すぐ取り込む</button> <span class="muted small">${last ? `最終取り込み: ${esc(last)}` : "まだ取り込んでいません"}${sync.lastResult ? ` ／ ${esc(sync.lastResult)}` : ""}</span></form>
 <p class="muted small" style="margin:6px 0 0">解除するには、URLを空にして「保存」を押してください。</p>` : ""}</div>`;
-  })()}<p class="muted">ここに登録した会社には、全キャンペーンで送りません。営業お断りを検知した先は自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
+  })()}
+${extra?.share ? `<div class="card" style="background:var(--honey-50)"><h2 style="margin-top:0">チームで共有する（送信済み・除外の双方向）</h2>
+<p class="muted small" style="margin:0 0 10px">
+  <b>送信済みの共有</b>（#78）: 誰かが送った会社には、ほかのメンバーは送らなくなります（取り込み時と送信直前に確認）。<br>
+  <b>除外の書き戻し</b>（#79）: 自分が追加した断り先を、共有シートへ自動で書き出します。<br>
+  1つのGoogleスプレッドシートをチームで共有し、全員が同じURLを登録してください。1日1回（起動から3分後にも1回）同期します。
+</p>
+<form method="post" action="/share/settings">
+<label>① 共有シートの「送信済み」を読むURL（スプレッドシートの共有URL）</label>
+<input type="url" name="sent_pull_url" value="${esc(extra.share.sentPullUrl)}" placeholder="https://docs.google.com/spreadsheets/d/…">
+<label>② 書き込み用のURL（Apps Script のウェブアプリURL）</label>
+<input type="url" name="push_url" value="${esc(extra.share.pushUrl)}" placeholder="https://script.google.com/macros/s/…/exec">
+<label>③ あなたの名前（誰が送ったか分かるように）</label>
+<input type="text" name="member" value="${esc(extra.share.member)}" placeholder="例: 田中" style="max-width:260px">
+<p style="margin-top:10px"><button class="btn sub">保存する</button>
+${extra.share.configured ? `</form><form method="post" action="/share/sync-now" class="inline" data-busy><button class="btn sub" data-busytext="同期中…">今すぐ同期する</button></form>` : "</form>"}
+</p>
+${extra.share.lastResult ? `<p class="muted small">最終同期: ${esc(extra.share.lastPull)} ／ ${esc(extra.share.lastResult)}</p>` : ""}
+${extra.share.sharedCount ? `<p class="small">共有リストに入っている「送信済みの会社」: <b>${extra.share.sharedCount}社</b></p>` : ""}
+<details style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">書き込み用URLの作り方（Apps Script のコード）</summary>
+<ol class="small" style="line-height:1.9">
+<li>共有に使うスプレッドシートを開き、「拡張機能 → Apps Script」を選ぶ</li>
+<li>出てきたコード欄を全部消して、下のコードを貼り付けて保存する</li>
+<li>右上の「デプロイ → 新しいデプロイ → 種類: ウェブアプリ」を選び、<b>アクセスできるユーザー: 全員</b> にしてデプロイ</li>
+<li>表示された <code>https://script.google.com/macros/s/…/exec</code> を、上の②に貼る（チーム全員が同じURLを使います）</li>
+</ol>
+<textarea readonly style="min-height:220px;font-family:monospace;font-size:11px">${esc(extra.share.script)}</textarea>
+</details></div>` : ""}
+<p class="muted">ここに登録した会社には、全キャンペーンで送りません。営業お断りを検知した先は自動で追加されます。返信で「今後不要」と言われた先も必ず追加してください。</p>
 ${imported ? `<div class="flash">CSVを取り込みました: 追加 ${imported.added}件 / 登録済み ${imported.already}件${imported.noKey ? ` / 登録できず ${imported.noKey}件（ドメインもメールも無いため）: ${esc(imported.noKeyNames.join("、"))}` : ""}</div>` : ""}
 <div class="card"><h2 style="margin-top:0">1件ずつ追加</h2>
 <form method="post" action="/suppressions"><div class="row3">
@@ -777,7 +805,19 @@ ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リス
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true, aiBudget?: { usage: import("./message.js").AiUsage; limit: number }) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true, aiBudget?: { usage: import("./message.js").AiUsage; limit: number }, license?: { status: import("./license.js").LicenseStatus; key: string; enforce: boolean }) {
+  // ライセンス（#90）
+  const licenseCard = license ? `<div class="card"><h2 style="margin-top:0">ライセンス</h2>
+<p>${license.status.state === "valid" ? `<span class="tag sent">有効</span>` : license.status.state === "expired" ? `<span class="tag failed">期限切れ</span>` : license.status.state === "invalid" ? `<span class="tag failed">キーが不正</span>` : `<span class="tag queued">未登録</span>`} ${esc(license.status.label)}</p>
+<form method="post" action="/settings/license">
+<label>ライセンスキー（配布元から受け取った APO1… で始まる1行）</label>
+<input type="text" name="key" value="${esc(license.key)}" placeholder="APO1.xxxxx.xxxxx">
+<p style="margin-top:8px"><button class="btn sub">保存する</button></p></form>
+<form method="post" action="/settings/license-enforce" style="margin-top:6px">
+<label style="display:flex;align-items:center;gap:8px;font-weight:400"><input type="checkbox" name="enforce" value="1" ${license.enforce ? "checked" : ""} onchange="this.form.submit()" style="width:auto">
+ライセンスが無い・期限切れのときは、1日50件までに制限する</label></form>
+<p class="muted small" style="margin:6px 0 0">チェックを外していれば、ライセンスの状態にかかわらず制限なく動きます（既定）。<br>キーには「宛先の会社名・台数・期限」だけが入っており、通信は行いません（オフラインで確認します）。</p></div>` : "";
+
   // AIの使用量と上限（#66）。「いくらかかるか読めない」のが不安でAIを使えない、という状態をなくす
   const budgetCard = aiBudget ? `<div class="card"><h2 style="margin-top:0">AIの利用料と上限</h2>
 <div class="stats"><div class="stat"><span class="muted small">今月の目安</span><b>${Math.round(aiBudget.usage.jpy).toLocaleString("ja-JP")}円</b></div>
@@ -798,7 +838,7 @@ export function settingsView(ngWords: string[], ai: import("./message.js").AiCon
     : "";
   const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>
-${overview}${budgetCard}
+${overview}${budgetCard}${licenseCard}
 <div class="card"><h2 style="margin-top:0">送信が止まったときの通知</h2>
 <p class="muted small">メール送信が一時停止したとき・送信が全部終わったとき・止まっていた送信を自動再開したときに、<b>パソコンの通知</b>（Macは通知センター、Windowsはトースト）でお知らせします。画面を見ていなくても気づけます。</p>
 <form method="post" action="/settings/notify" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="notify_desktop" style="width:auto"><option value="1" ${notifyOn ? "selected" : ""}>通知する</option><option value="0" ${notifyOn ? "" : "selected"}>通知しない</option></select><button class="btn sub small">保存</button></form>
@@ -951,8 +991,14 @@ ${users.map((u) => `<tr>
 }
 
 /** アップデート画面（管理者のみ） */
-export function updateView(st: { current: string; latest?: string; notes?: string; available: boolean; configured: boolean; error?: string }, result?: { ok: boolean; log: string[]; version?: string; error?: string }): string {
+export function updateView(st: { current: string; latest?: string; notes?: string; available: boolean; configured: boolean; error?: string }, result?: { ok: boolean; log: string[]; version?: string; error?: string }, channel: "stable" | "beta" = "stable"): string {
   return `<h1>アップデート</h1>
+<div class="card"><h2 style="margin-top:0">受け取る版</h2>
+<form method="post" action="/settings/update-channel" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<label class="inline" style="font-weight:400"><input type="radio" name="channel" value="stable" ${channel === "stable" ? "checked" : ""} onchange="this.form.submit()" style="width:auto"> 安定版（おすすめ）</label>
+<label class="inline" style="font-weight:400"><input type="radio" name="channel" value="beta" ${channel === "beta" ? "checked" : ""} onchange="this.form.submit()" style="width:auto"> 先行版（新しい機能を先に試す）</label>
+</form>
+<p class="muted small" style="margin:8px 0 0">配布元は、まず先行版で出して問題がないことを確かめてから安定版にします。他社に渡したPCは「安定版」のままにしてください。</p></div>
 ${result ? `<div class="card" style="border-color:${result.ok ? "var(--ok)" : "var(--ng)"}">
 <b>${result.ok ? `v${esc(result.version ?? "")} に更新しました` : `更新できませんでした: ${esc(result.error ?? "")}`}</b>
 <pre style="white-space:pre-wrap;font-size:12px;margin:8px 0 0">${esc(result.log.join("\n"))}</pre>

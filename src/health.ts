@@ -13,6 +13,7 @@ import { awakeSupported, awakeActive, AWAKE_NOTE } from "./awake.js";
 import { autostartEnabled, autostartSupported } from "./autostart.js";
 import { listBackups, backupLabel } from "./backup.js";
 import { recentLogs, logCounts } from "./applog.js";
+import { licenseStatus, licenseEnforced } from "./license.js";
 
 export type CheckLevel = "ok" | "warn" | "ng";
 export type Check = { level: CheckLevel; label: string; detail: string; fix?: string };
@@ -114,6 +115,14 @@ export function healthChecks(): Check[] {
     ? { level: Date.now() - Date.parse(backups[0].at) < 48 * 3600_000 ? "ok" : "warn", label: "バックアップ", detail: `最新 ${backupLabel(backups[0])}・${backups.length}件`, fix: "1日1回、自動で取ります（設定画面から復元できます）" }
     : { level: "warn", label: "バックアップ", detail: "まだありません", fix: "設定画面の「いますぐバックアップ」で1つ作っておいてください" });
 
+  // ライセンス（#90）
+  {
+    const st = licenseStatus();
+    checks.push(st.state === "valid"
+      ? { level: "ok", label: "ライセンス", detail: st.label }
+      : { level: st.state === "none" && !licenseEnforced() ? "ok" : "warn", label: "ライセンス", detail: st.label, fix: licenseEnforced() ? "設定画面でキーを登録してください（未登録のままだと1日50件までに制限されます）" : "制限はかかっていません（設定画面で制限をオンにできます）" });
+  }
+
   // 更新
   checks.push(manifestUrl()
     ? { level: "ok", label: "アップデート", detail: `現在 v${currentVersion()}（更新先の設定あり）` }
@@ -147,6 +156,8 @@ export function diagnosticsText(): string {
   push("AI", activeProvider());
   push("自動起動", autostartEnabled() ? "オン" : "オフ");
   push("自動更新", getSetting("auto_update", "0") === "1" ? "オン" : "オフ");
+  push("更新チャネル", getSetting("update_channel", "stable") === "beta" ? "先行版" : "安定版");
+  push("ライセンス", licenseStatus().label);
   push("通知", getSetting("notify_desktop", "1") === "1" ? "オン" : "オフ");
 
   L.push("", "--- 件数 ---");

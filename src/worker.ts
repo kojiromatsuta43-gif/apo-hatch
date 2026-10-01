@@ -10,6 +10,8 @@ import { logError, logWarn, logInfo } from "./applog.js";
 import { jpError } from "./jp.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { matchExcludedKeyword } from "./csv.js";
+import { sharedSentBy } from "./share.js";
+import { cappedDailyLimit } from "./license.js";
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
 
@@ -83,9 +85,13 @@ export function sentTodayBySender(senderId: number): number {
 const WARMUP_STEPS = [30, 30, 50, 50, 80, 80, 80, 120, 120, 120, 180, 180, 180, 180]; // 1日目から14日目まで
 export function warmupLimit(senderId: number, configured: number): { limit: number; note: string } {
   const db = getDb();
-  const first = db.prepare(`SELECT MIN(sent_at) t FROM form_jobs WHERE status='sent' AND is_test=0 AND channel='email' AND (sent_by_sender=? OR sent_by_sender IS NULL)`).get(senderId) as { t: string | null };
-  if (!first?.t) return { limit: Math.min(configured, WARMUP_STEPS[0]), note: "ウォームアップ中（初日）" };
-  const days = Math.floor((Date.now() - Date.parse(String(first.t).replace(" ", "T") + "Z")) / 86400_000);
+  // このアカウントで最初にメールを送った日。記録が無ければ、送信者を登録した日を起点にする
+  // （この機能ができる前から使っているアカウントは登録日が古いので、すぐ通常の上限に戻る）
+  const first = db.prepare(`SELECT MIN(sent_at) t FROM form_jobs WHERE status='sent' AND is_test=0 AND channel='email' AND sent_by_sender=?`).get(senderId) as { t: string | null };
+  const created = first?.t ? null : (db.prepare("SELECT created_at t FROM sender_profiles WHERE id=?").get(senderId) as { t: string | null } | undefined);
+  const start = first?.t ?? created?.t ?? null;
+  if (!start) return { limit: Math.min(configured, WARMUP_STEPS[0]), note: "ウォームアップ中（初日）" };
+  const days = Math.floor((Date.now() - Date.parse(String(start).replace(" ", "T") + "Z")) / 86400_000);
   if (days >= WARMUP_STEPS.length) return { limit: configured, note: "" };
   // 直近で停止（上限・ログイン拒否）があった場合は1段下げる
   const penalty = getSetting(`warmup_penalty:${senderId}`, "");
@@ -97,8 +103,10 @@ export function warmupLimit(senderId: number, configured: number): { limit: numb
 
 /** このキャンペーンで今日メールに使える上限（ウォームアップ設定を加味した実際の値） */
 export function effectiveEmailLimit(campaign: Campaign, senderId: number): { limit: number; note: string } {
-  if (!campaign.email_warmup) return { limit: campaign.email_daily_limit, note: "" };
-  return warmupLimit(senderId, campaign.email_daily_limit);
+  const capped = cappedDailyLimit(campaign.email_daily_limit);
+  if (!campaign.email_warmup) return capped;
+  const w = warmupLimit(senderId, capped.limit);
+  return { limit: w.limit, note: [capped.note, w.note].filter(Boolean).join("／") };
 }
 
 /** メールに使える送信者アカウントを選ぶ（#24）。
@@ -196,6 +204,11 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
 
   // 除外リスト（送信直前にも確認）
   if (!job.is_test && db.prepare("SELECT 1 FROM form_suppressions WHERE domain=?").get(job.domain)) return finish("skip_suppressed", "除外リストに登録済み");
+  // チームの誰かがすでに送っている会社には送らない（#78）
+  if (!job.is_test && job.domain) {
+    const by = sharedSentBy(job.domain);
+    if (by) return finish("skip_duplicate", `チームの ${by.member || "他のメンバー"} が送信済み（共有リスト${by.sent_at ? `・${by.sent_at.slice(0, 10)}` : ""}）`);
+  }
   // 設定で指定した「送りたくない業種・キーワード」（#87）。取り込み後に設定を変えた場合もここで止まる
   if (!job.is_test) {
     const ng = matchExcludedKeyword({ company_name: job.company_name, industry: job.industry, sub_industry: job.sub_industry });
@@ -313,7 +326,8 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         if (!opts.ignoreWindow && !inSendWindow(campaign)) { reason = "送信時間帯外"; return; }
         // 「メールだけ／フォームだけ」を選んで開始した場合は、その種類だけを送る
         const only = String((campaign as { send_only?: string }).send_only ?? "");
-        const formOk = only !== "email" && sentToday(campaignId, "form") < campaign.daily_limit;
+        const formCap = cappedDailyLimit(campaign.daily_limit).limit;
+        const formOk = only !== "email" && sentToday(campaignId, "form") < formCap;
         // メールは「ウォームアップ中の上限」と「使えるアカウントがあるか」で判断する（#18 #24）
         const mail = pickEmailSender(campaign, sender);
         const emailOk = only !== "form" && Boolean(mail);

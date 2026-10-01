@@ -5,15 +5,20 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import AdmZip from "adm-zip";
+import { getSetting } from "./db.js";
 
 export const ROOT = path.resolve(process.cwd());
 
 /** 更新で入れ替えてよいもの。data/ と node_modules/ は対象外 */
 const UPDATABLE = ["src", "test", "package.json", "package-lock.json", "tsconfig.json", "README.md", "scripts", "update.json",
   // ダブルクリックで起動するファイル（配布済みのPCにも届くように更新対象に入れる）
-  "アポハッチくん起動.command", "アポハッチくん起動.bat"];
+  "アポハッチくん起動.command", "アポハッチくん起動.bat", "インストール（最初に1回）.bat", "アポハッチくん.app"];
 
-export type Manifest = { version: string; notes?: string; zip?: string; published_at?: string };
+export type Release = { version: string; notes?: string; zip?: string; published_at?: string };
+// 更新チャネル（#94）。配布先ごとに「安定版」「先行版」を選べるようにする。
+// release.json は { version, ..., channels: { stable: {...}, beta: {...} } } の形。
+// channels が無い古い release.json でも、これまでどおり最上位の値を使う
+export type Manifest = Release & { channels?: Partial<Record<"stable" | "beta", Release>> };
 export type UpdateStatus = {
   current: string;
   latest?: string;
@@ -23,6 +28,22 @@ export type UpdateStatus = {
   checkedAt?: string;
   error?: string;
 };
+
+/** いまの更新チャネル。設定画面で切り替える（既定は安定版） */
+export function updateChannel(): "stable" | "beta" {
+  try {
+    return getSetting("update_channel", "stable") === "beta" ? "beta" : "stable";
+  } catch { return "stable"; } // DBがまだ無いタイミング
+}
+
+/** マニフェストから、いまのチャネルの配布物を取り出す */
+export function pickRelease(m: Manifest, channel: "stable" | "beta" = updateChannel()): Release {
+  const c = m.channels?.[channel];
+  if (c?.version) return c;
+  // 先行版が未公開なら安定版にフォールバック
+  const stable = m.channels?.stable;
+  return stable?.version ? stable : m;
+}
 
 function readJson<T>(file: string): T | null {
   try { return JSON.parse(fs.readFileSync(file, "utf8")) as T; } catch { return null; }
@@ -50,24 +71,25 @@ export function isNewer(latest: string, current: string): boolean {
   return false;
 }
 
-let cached: UpdateStatus | null = null;
+let cached: (UpdateStatus & { channel?: string }) | null = null;
 
 export async function checkUpdate(force = false): Promise<UpdateStatus> {
   const current = currentVersion();
   const url = manifestUrl();
   if (!url) return { current, available: false, configured: false };
-  if (!force && cached && cached.checkedAt && Date.now() - Date.parse(cached.checkedAt) < 60 * 60 * 1000) return cached;
+  if (!force && cached && cached.channel === updateChannel() && cached.checkedAt && Date.now() - Date.parse(cached.checkedAt) < 60 * 60 * 1000) return cached;
   try {
     const res = await fetch(url, { headers: { "cache-control": "no-cache" }, signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const m = (await res.json()) as Manifest;
+    const rel = pickRelease((await res.json()) as Manifest);
     cached = {
       current,
-      latest: m.version,
-      notes: m.notes,
-      available: isNewer(m.version, current),
+      latest: rel.version,
+      notes: rel.notes,
+      available: isNewer(rel.version, current),
       configured: true,
       checkedAt: new Date().toISOString(),
+      channel: updateChannel(),
     };
     return cached;
   } catch (e) {
@@ -120,7 +142,7 @@ export async function applyUpdate(): Promise<ApplyResult> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "apohatch-"));
   const backup = path.join(tmp, "backup");
   try {
-    const m = (await (await fetch(url, { signal: AbortSignal.timeout(15000) })).json()) as Manifest;
+    const m = pickRelease((await (await fetch(url, { signal: AbortSignal.timeout(15000) })).json()) as Manifest);
     if (!isNewer(m.version, currentVersion())) return { ok: false, log, error: "すでに最新です" };
     const zipUrl = m.zip;
     if (!zipUrl) throw new Error("release.json に zip のURLがありません");
@@ -154,7 +176,11 @@ export async function applyUpdate(): Promise<ApplyResult> {
         else fs.copyFileSync(cur, path.join(backup, name));
         fs.rmSync(cur, { recursive: true, force: true });
       }
-      if (fs.statSync(next).isDirectory()) copyDir(next, cur);
+      if (fs.statSync(next).isDirectory()) {
+        copyDir(next, cur);
+        // Mac のアプリ（.app）は中の実行ファイルに実行権限が要る
+        if (name.endsWith(".app")) { try { fs.chmodSync(path.join(cur, "Contents", "MacOS", "apo-hatch"), 0o755); } catch { /* 無い場合は何もしない */ } }
+      }
       else {
         fs.copyFileSync(next, cur);
         // Mac のダブルクリック起動ファイルは実行できる必要がある（zip経由で権限が落ちることがある）

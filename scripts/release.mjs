@@ -18,13 +18,30 @@ if (!m) {
 }
 const [, owner, repo, branch] = m;
 
-const release = {
+// 更新チャネル（#94）: 「--beta」を付けると先行版として出す。
+// 先行版は、先行版を選んでいる端末にだけ届く（安定版の端末には届かない）
+const args = process.argv.slice(2);
+const beta = args.includes("--beta");
+const notes = args.filter((a) => a !== "--beta").join(" ") || "細かな改善";
+
+const entry = {
   version: pkg.version,
-  notes: process.argv.slice(2).join(" ") || "細かな改善",
+  notes,
   zip: `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`,
   published_at: new Date().toISOString(),
 };
+
+// 既存の release.json を読み、チャネルを保ったまま更新する
+let prev = {};
+try { prev = JSON.parse(fs.readFileSync(path.join(root, "release.json"), "utf8")); } catch { /* 初回 */ }
+const channels = { ...(prev.channels ?? {}) };
+channels[beta ? "beta" : "stable"] = entry;
+// 先行版を出すときは、安定版の情報をそのまま残す（古い端末は最上位を見るので、最上位は安定版のまま）
+const release = beta
+  ? { ...(channels.stable ?? prev), channels }
+  : { ...entry, channels };
 fs.writeFileSync(path.join(root, "release.json"), JSON.stringify(release, null, 2) + "\n");
+console.log(beta ? "※ 先行版として出しました（先行版を選んでいる端末にだけ届きます）" : "※ 安定版として出しました（全端末に届きます）");
 console.log("release.json を書き出しました:");
 console.log(JSON.stringify(release, null, 2));
 console.log("\nこのあと git でプッシュすると、配布済みの全員が更新できるようになります:");
