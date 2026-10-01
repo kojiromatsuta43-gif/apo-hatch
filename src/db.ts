@@ -296,6 +296,9 @@ function migrate(db: Database.Database) {
     created_at TEXT DEFAULT (datetime('now'))
   )`);
 
+  // 1=送信用Gmailの受信箱を振り分ける（自動返信・届かなかったメールはラベルに移して受信箱から外す。アポ・返信はラベルを付ける）
+  addCol("sender_profiles", "inbox_sort", "INTEGER NOT NULL DEFAULT 1");
+
   // 事前チェックで出す「送れそう度」0〜100（-1=未計測）。送れる会社から先に回せるようにする
   addCol("form_jobs", "scan_score", "INTEGER NOT NULL DEFAULT -1");
 
@@ -362,6 +365,7 @@ export type SenderProfile = {
   reply_check: number;
   tls_insecure: number;
   unsubscribe_url: string;
+  inbox_sort: number;
 };
 
 export type User = {

@@ -26,12 +26,26 @@ import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmai
 import { notify, notifyEnabled, pollEvents } from "../notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion, updateChannel } from "../update.js";
 import { errorPage } from "../ui/layout.js";
-import { esc, layout, lawView, todoView, todoRunView, setupView, checklistView, reportView, campaignListView, sendersView, type SenderExtra, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "../views.js";
+import { esc, layout, lawView, todoView, todoRunView, setupView, checklistView, reportView, campaignListView, sendersView, type SenderExtra, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser, appointmentsView } from "../views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "../auth.js";
 import { app, db, redirectWith, takeFlash, me, appState, gameOnFor, navUser, scope, setupState, lawKey } from "../app/context.js";
 
 /** この画面の経路を登録する。server.ts から、ログイン確認などの共通処理のあとに呼ばれる */
 export function register(): void {
+// アポだけの画面。返信の一覧や送信一覧に混ざると、大事なアポを見落とすため
+app.get("/appointments", (req, res) => {
+  const sc = scope(req);
+  const campaignId = Number(req.query.campaign) || 0;
+  const where = `j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}${campaignId ? " AND c.id=?" : ""}`;
+  const args = [...sc.args, ...(campaignId ? [campaignId] : [])];
+  const cols = `j.id, j.company_name, j.domain, j.email, j.channel, j.outcome, j.outcome_note, j.updated_at, j.sent_at, c.id campaign_id, c.name campaign_name, lower(s.smtp_user) mailbox`;
+  const from = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id`;
+  const appos = db.prepare(`SELECT ${cols} ${from} WHERE ${where} AND j.outcome='appointment' ORDER BY j.updated_at DESC`).all(...args) as import("../views.js").AppoRow[];
+  const replies = db.prepare(`SELECT ${cols} ${from} WHERE ${where} AND j.outcome='replied' ORDER BY j.updated_at DESC LIMIT 50`).all(...args) as import("../views.js").AppoRow[];
+  const campaigns = db.prepare(`SELECT id, name FROM form_campaigns c WHERE ${sc.sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY id DESC`).all(...sc.args) as { id: number; name: string }[];
+  res.send(layout("アポ", appointmentsView(appos, replies, campaigns, campaignId), takeFlash(req), navUser(req), appState.updateReady));
+});
+
 // 開いているページが、新しいお知らせを取りに来る（数秒ごと）。通知はページ側が出す
 app.get("/events", (req, res) => {
   res.setHeader("cache-control", "no-store");

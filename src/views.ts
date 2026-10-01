@@ -13,3 +13,4 @@ export * from "./ui/onboarding.js";
 export * from "./ui/stats.js";
 export * from "./ui/game.js";
 export * from "./ui/todo.js";
+export * from "./ui/appointments.js";

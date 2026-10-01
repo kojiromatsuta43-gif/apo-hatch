@@ -56,7 +56,7 @@ app.post("/jobs/:id/outcome", (req, res) => {
     if (j.domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(j.domain, `断り（${j.company_name}）`);
     if (j.email) optOut(j.email, `断り（${j.company_name}）`, me(req).id);
   }
-  redirectWith(res, `/jobs/${id}`, `反応を記録しました${learned ? `／この返信の言い回し ${learned}件を覚えました（次から同じ言い回しは「${OUTCOME_LABEL[outcome] ?? outcome}」に振り分けます。設定画面で確認・削除できます）` : ""}`);
+  redirectWith(res, String(req.body.back ?? "") === "/appointments" ? "/appointments" : `/jobs/${id}`, `反応を記録しました${learned ? `／この返信の言い回し ${learned}件を覚えました（次から同じ言い回しは「${OUTCOME_LABEL[outcome] ?? outcome}」に振り分けます。設定画面で確認・削除できます）` : ""}`);
 });
 
 // ---- jobs ----

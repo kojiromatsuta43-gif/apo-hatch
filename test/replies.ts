@@ -8,7 +8,7 @@ process.env.FO_NO_NOTIFY = "1"; // テスト中は通知を出さない
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fo-replies-"));
 
 const { getDb } = await import("../src/db.js");
-const { applyIncomingMail, classifyReply, stripQuoted, imapHostFor } = await import("../src/replies.js");
+const { applyIncomingMail, classifyReply, stripQuoted, imapHostFor, inboxCategory } = await import("../src/replies.js");
 
 const db = getDb();
 const MAILBOX = "sales@sender.example";
@@ -153,6 +153,45 @@ assert.equal(get(jCtrl).outcome, "");
   assert.equal(applyBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Delay)", "info@delay.example への配信が遅れています")), null, "遅延通知は失敗にしない");
   assert.equal(st(jDelay).status, "sent");
   assert.equal(applyBounce(MAILBOX, mail("info@normal.example", "Re: ご提案", "ありがとうございます")), null, "普通の返信は戻りメールではない");
+}
+
+// ---- 受信箱の振り分け（ラベル）----
+{
+  const own = ["株式会社サンプル商事", "田中 太郎"];
+  // 送った会社からの自動返信 → 自動返信（受信箱から外す）
+  assert.equal(inboxCategory(MAILBOX, mail("info@appo.co.jp", "【アポ株式会社】お問い合わせありがとうございます", "このメールは自動送信しています。以下の内容で受け付けました。"), own), "auto");
+  // 差出人が送り先と違うアドレス（フォームの送信システム）でも、本文にこちらの名前が入った受付確認なら自動返信
+  assert.equal(inboxCategory(MAILBOX, mail("apache@server-host.example", "受付完了メール", "※本メールは自動送信されております。\nお名前: 田中 太郎\n会社名: 株式会社サンプル商事"), own), "auto");
+  // フォーム作成サービスから届く受付確認（こちらの名前もドメインも無い）でも、直前に送った会社の名前が入っていれば自動返信
+  const soon = { ...mail("info@tayori.example", "*No.406 返信だけ株式会社お問い合わせフォーム*", "送信が完了いたしました。お問い合わせ内容の確認は下記から。", true), date: new Date("2026-09-10T01:05:00Z") };
+  assert.equal(inboxCategory(MAILBOX, soon, own), "auto");
+  // 同じメールでも、送ってから何日も後なら（たまたま名前が一致しただけかもしれないので）触らない
+  assert.equal(inboxCategory(MAILBOX, mail("info@tayori.example", "*No.406 返信だけ株式会社お問い合わせフォーム*", "送信が完了いたしました。", true), own), null);
+  // こちらの名前が入っていない自動送信メール（カード会社の通知など）には触らない
+  assert.equal(inboxCategory(MAILBOX, mail("no-reply@card.example", "【カード】オンライン支払い口座設定・完了のおしらせ", "このメールは送信専用アドレスから自動送信しています。"), own), null);
+  // 関係のない人からの普通のメールにも触らない
+  assert.equal(inboxCategory(MAILBOX, mail("friend@gmail.com", "週末の件", "来週の打ち合わせの日程を決めましょう"), own), null);
+  // 送った会社からの本物の返信は、その中身で振り分ける（アポ・断り）
+  assert.equal(inboxCategory(MAILBOX, mail("tanaka@appo.co.jp", "Re: ご提案", "一度お話を伺いたく、来週のご都合を教えてください。"), own), "appointment");
+  assert.equal(inboxCategory(MAILBOX, mail("soumu@kotowari.jp", "Re: ご提案", "今後のご連絡は不要です。"), own), "declined");
+  // 契約・署名・セキュリティの知らせは、こちらの社名が入っていても受信箱から外さない
+  assert.equal(inboxCategory(MAILBOX, mail("noreply@gmosign.example", "署名依頼登録通知（株式会社サンプル商事 御中_覚書）", "株式会社サンプル商事 様より署名依頼がありました。このメールは自動送信です。", true), own), null);
+  assert.equal(inboxCategory(MAILBOX, mail("no-reply@accounts.google.example", "セキュリティ通知", "田中 太郎 さん、新しいログインがありました。", true), own), null);
+  // 送った会社からの人の返信（件名が Re:）は、自動返信の言い回しが本文にあっても外さない
+  assert.equal(inboxCategory(MAILBOX, mail("tanaka@appo.co.jp", "Re: 【ご提案】人事担当者との商談機会について", "お問い合わせありがとうございます。社内で検討いたします。"), own), "replied");
+  // 送った会社からの辞退の連絡は「断り」（件名が Re: でなくても）
+  assert.equal(inboxCategory(MAILBOX, mail("w@appo.co.jp", "ご提案へのお礼と辞退のご連絡", "このたびはご提案ありがとうございました。今回は見送らせていただきます。"), own), "declined");
+  // 丁寧な辞退（「ご期待に沿うことが難しい」「拝辞」）は、「お送りいただきました内容」とあっても人の断り
+  assert.equal(inboxCategory(MAILBOX, mail("w@appo.co.jp", "ご提案へのお礼と辞退のご連絡", "お世話になっております。株式会社アポの和才と申します。お送りいただきました内容について社内にて検討しましたが、現時点ではご期待に沿うことが難しいという結論に至りました。"), own), "declined");
+  // 受付確認の自動返信が、こちらの文面（日程・商談）を写し返していても、アポにはしない
+  assert.equal(inboxCategory(MAILBOX, mail("info@appo.co.jp", "お問い合わせありがとうございました", "このメールは自動送信されています。以下の内容で受け付けました。ご都合のよい日程で商談の機会をいただけますと幸いです。"), own), "auto");
+  // 受付確認が、こちらの文面（「田中と申します」）を写し返していても、人の返信とはみなさない
+  assert.equal(inboxCategory(MAILBOX, mail("info@appo.co.jp", "お問い合わせありがとうございます。", "この度はお問い合わせ頂き誠にありがとうございます。改めて担当者よりご連絡します。─ご送信内容の確認─ [お名前] 田中 太郎 [お問い合わせ内容] 株式会社BizLaboの田中と申します。ぜひ一度お打ち合わせの日程をいただけますと幸いです。"), own), "auto");
+  // Googleフォームの回答の控え・社内のメールには触らない
+  assert.equal(inboxCategory(MAILBOX, mail("forms-receipts-noreply@google.com", "フォームにご記入いただきありがとうございます: 経費申請フォーム", "株式会社サンプル商事 田中 太郎", true), own), null);
+  assert.equal(inboxCategory(MAILBOX, mail("keiri@sender.example", "お問い合わせありがとうございます", "株式会社サンプル商事 田中 太郎"), own), null);
+  // 自分自身から届いたメール（送信の控えなど）には触らない
+  assert.equal(inboxCategory(MAILBOX, mail(MAILBOX, "【ご提案】", "本文"), own), null);
 }
 
 console.log("replies: ALL OK");

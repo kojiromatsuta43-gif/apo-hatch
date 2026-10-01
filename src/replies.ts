@@ -4,7 +4,7 @@
 // 人が手で記録した反応は上書きしない。
 import { ImapFlow } from "imapflow";
 import type { Readable } from "node:stream";
-import { getDb, FREE_MAIL_DOMAINS, jst, type SenderProfile } from "./db.js";
+import { getDb, getSetting, setSetting, FREE_MAIL_DOMAINS, jst, type SenderProfile } from "./db.js";
 import { optOut, emailPause } from "./email.js";
 import { notify } from "./notify.js";
 import { S, settingOn } from "./settings.js";
@@ -21,11 +21,11 @@ export type ReplyVerdict = { outcome: "replied" | "appointment" | "declined"; re
 
 // 自動返信・受付確認・エラーメール。フォーム送信後に届く「お問い合わせを受け付けました」は会社のドメインから来るが、人の返信ではない
 const AUTO_SUBJECT_RE = /(自動返信|自動応答|自動送信|自動配信|auto[- ]?reply|automatic reply|out of office|不在|受付完了|受け付けました|受付のお知らせ|受付確認|送信完了|お問い?合わ?せ(を)?(受け付け|受付|承り|ありがとう)|お問い?合わ?せ内容の確認|(お問い?合わ?せ|ご連絡|ご送信|送信|ご依頼|ご相談)(を)?(いただき|頂き)?(まして)?[、,]?(誠に|大変)?(ありがとう|有難う|有り難う)|フォーム(より|から)|受付番号|お問い?合わ?せ内容の?(ご)?確認|お問い?合わ?せ確認|お問い?合わ?せ\s*控え|登録(いただき|頂き)?ありがとう|Undeliver|Delivery Status|Mail Delivery|配信(に)?失敗|配信不能|returned mail|failure notice)/i;
-const AUTO_BODY_RE = /(このメールは(自動|送信専用)|本メールは(自動|送信専用|システム)|(自動|システム)(で|により)?(送信|配信|返信)(され|して|いた|しており|しています)|送信専用(アドレス|メール)|(返信|ご返信)(いただいても|されても|頂いても)[^。\n]{0,20}(お答え|回答|対応|返答)(でき|いたしかね|致しかね)|以下の内容で(受け付け|受付|承り|送信)|下記の内容で(受け付け|受付|承り|送信)|自動送信した|自動返信です|(ウェブサイト|ホームページ|webサイト|WEBサイト|サイト)(より|から)(自動)?送信されて|(お送り|送信)(頂|いただ)きました内容)/;
+const AUTO_BODY_RE = /(このメールは(自動|送信専用)|本メールは(自動|送信専用|システム)|(自動|システム)(で|により)?(送信|配信|返信)(され|して|いた|しており|しています)|送信専用(アドレス|メール)|(返信|ご返信)(いただいても|されても|頂いても)[^。\n]{0,20}(お答え|回答|対応|返答)(でき|いたしかね|致しかね)|以下の内容で(受け付け|受付|承り|送信)|下記の内容で(受け付け|受付|承り|送信)|自動送信した|自動返信です|(ウェブサイト|ホームページ|webサイト|WEBサイト|サイト)(より|から)(自動)?送信されて|(お送り|送信)(頂|いただ)きました内容(は|を)(以下|下記))/;
 const AUTO_FROM_RE = /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply|noreply|bounce)/i;
 
 // 断り（今後送らない）。「本メッセージが不要な場合は…」等、こちらの文面の引用は本文から取り除いてから見る
-const DECLINE_RE = /(不要です|不要でございます|必要(は|も)?(ござい|あり)ません|お断り|見送(り|らせ|ります|ることに)|遠慮(いた|致|させ|し|くだ|下さ)|控えさせ|差し控え|配信(を)?停止|送らないで|送付(は|を)?(不要|ご遠慮|お控え)|ご連絡(は|を)?(不要|結構|お控え|ご遠慮)|(今後|以後)[^。\n]{0,15}(不要|ご遠慮|お控え|控えて|送らない|結構)|検討(は|を)?(して)?(おりません|いたしかね|致しかね|できかね)|予定(は|が)?(ござい|あり)ません|間に合って|結構です|対応(いた|致)しかね|お受け(でき|いたし|致し)かね|(リスト|名簿)から(外|削除|除外)|営業(メール|のご連絡)?(は|を)?(お断り|禁止|受け付けて))/;
+const DECLINE_RE = /(辞退|拝辞|ご期待に(沿|添)(う|え)(こと|ず|かね)|ご希望に(沿|添)え(ず|ない|かね)|お見送り|今回は見送|難しい(という|との)?(結論|判断)|お断りさせ|不要です|不要でございます|必要(は|も)?(ござい|あり)ません|お断り|見送(り|らせ|ります|ることに)|遠慮(いた|致|させ|し|くだ|下さ)|控えさせ|差し控え|配信(を)?停止|送らないで|送付(は|を)?(不要|ご遠慮|お控え)|ご連絡(は|を)?(不要|結構|お控え|ご遠慮)|(今後|以後)[^。\n]{0,15}(不要|ご遠慮|お控え|控えて|送らない|結構)|検討(は|を)?(して)?(おりません|いたしかね|致しかね|できかね)|予定(は|が)?(ござい|あり)ません|間に合って|結構です|対応(いた|致)しかね|お受け(でき|いたし|致し)かね|(リスト|名簿)から(外|削除|除外)|営業(メール|のご連絡)?(は|を)?(お断り|禁止|受け付けて))/;
 // アポ・前向き（日程調整や話を聞きたい）
 const APPO_RE = /(日程|日時|候補日|ご都合|打ち?合わ?せ|面談|ミーティング|商談|お時間(を)?(いただ|頂|取|作|頂戴)|お話(を)?(伺|お聞き|聞かせ|聞き)|詳しく(伺|お聞き|聞きた|教えて|知りた)|zoom|teams|google\s*meet|オンライン(で|会議|面談|ミーティング)|ご来社|ご訪問|(資料|詳細|見積|お見積)(を|も)?(送|お送り|いただ|頂|ご送付|ください|下さい)|ご説明(を)?(いただ|頂|お願い)|お話(の|する)?(機会|場|時間)|機会を(頂戴|いただ|頂)|(予約|登録)(させて)?(いただ|頂)きました|予約(いた|致)しました|\d{1,2}月\d{1,2}日[^。\n]{0,12}\d{1,2}[:：]\d{2}|\d{1,2}\/\d{1,2}[^。\n]{0,12}\d{1,2}[:：]\d{2})/i;
 
@@ -157,6 +157,18 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
   // これは相手の意思表示なので自動返信扱いにしない
   const unsubscribe = /^\s*配信停止/.test(m.subject);
   if (!unsubscribe && (m.autoHeader || AUTO_FROM_RE.test(from.split("@")[0] ?? ""))) return null;
+  const job = findSentJob(mailbox, m);
+  if (!job) return null;
+  return recordReply(mailbox, m, job, unsubscribe);
+}
+
+/** この受信箱から送った会社のうち、届いたメールの差出人に当たる会社を探す（直近90日）。見つからなければ undefined */
+export function findSentJob(mailbox: string, m: IncomingMail): SentJob | undefined {
+  const db = getDb();
+  const from = m.from.trim().toLowerCase();
+  const fromDomain = from.split("@")[1] ?? "";
+  if (!fromDomain || from === mailbox.toLowerCase()) return undefined;
+  const unsubscribe = /^\s*配信停止/.test(m.subject);
   const at = m.date.toISOString().replace("T", " ").slice(0, 19);
   // この受信箱（送信用アカウント）を使う送信者から、このメールより前に送った会社（直近90日）
   const base = `SELECT j.id, j.company_name, j.email, j.domain, j.sent_at, j.outcome, j.outcome_note, j.message_used, s.owner_user_id
@@ -176,10 +188,16 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
     const target = m.text.match(/対象アドレス[:：]\s*([^\s<>]+@[^\s<>]+)/)?.[1]?.toLowerCase();
     if (target) job = db.prepare(`${base} AND lower(j.email)=? ORDER BY j.sent_at DESC LIMIT 1`).get(at, at, mailbox.toLowerCase(), target) as SentJob | undefined;
   }
-  if (!job) return null;
+  return job;
+}
+
+/** 突き合わせた会社に、届いたメールの反応（返信あり・アポ・断り）を記録する。記録したら job id */
+function recordReply(mailbox: string, m: IncomingMail, job: SentJob, unsubscribe: boolean): number | null {
+  const db = getDb();
+  const at = m.date.toISOString().replace("T", " ").slice(0, 19);
   const body = stripQuoted(m.text, `${job.message_used}\n${FOOTER_ECHO}`);
   // 自動返信の判定は引用を除いた本文で行う（引用されたこちらの文面の言葉で誤判定しないため）
-  if (!unsubscribe && isAutoMail({ ...m, text: body })) return null;
+  if (!unsubscribe && !looksHuman(body, mailbox) && isAutoMail({ ...m, text: body })) return null;
   const v = classifyReply(m.subject, body);
   // 人が手で付けた反応は触らない。自動で付けたものは、より強い判定（アポ・断り）が来たときだけ上げる
   const auto = job.outcome === "" || job.outcome_note.startsWith("自動判定");
@@ -197,6 +215,162 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
     if (job.email) optOut(job.email, `断り・返信から自動判定（${job.company_name}）`, job.owner_user_id ?? undefined);
   }
   return job.id;
+}
+
+/** 1通ずつ振り分ける係を作る。ラベル（フォルダ）は最初に使うときに作る。失敗しても読み取りは続ける */
+type Sorter = ((uid: number, cat: InboxCategory) => Promise<boolean>) & { names: string[] };
+function makeSorter(client: ImapFlow, gmail: boolean, ownNames: string[]): Sorter {
+  const ready = new Set<string>();
+  let delimiter = "/";
+  const ensure = async (path: string[]): Promise<string | null> => {
+    const key = path.join("\u0000");
+    if (ready.has(key)) return path.join(delimiter);
+    try {
+      const list = await client.list();
+      delimiter = list.find((x) => x.delimiter)?.delimiter ?? "/";
+      const full = path.join(delimiter);
+      const exists = list.some((x) => x.path === full || x.name === path[path.length - 1] && x.path.endsWith(full));
+      if (!exists) await client.mailboxCreate(path).catch(() => {});
+      ready.add(key);
+      return full;
+    } catch { return null; }
+  };
+  const fn = (async (uid: number, cat: InboxCategory) => {
+    const rule = INBOX_LABEL[cat];
+    try {
+      const target = await ensure(rule.path);
+      if (!target) return false;
+      if (rule.seen) await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true }).catch(() => {});
+      if (rule.star) await client.messageFlagsAdd(String(uid), ["\\Flagged"], { uid: true }).catch(() => {});
+      if (rule.archive) {
+        // Gmail では「ラベルを付けて受信箱から外す」、それ以外では「フォルダに移す」になる
+        await client.messageMove(String(uid), target, { uid: true });
+      } else if (gmail) {
+        // Gmail ではコピー＝ラベルを付ける（受信箱に残る）。Gmail以外はコピーすると重複するので、ラベルは付けない
+        await client.messageCopy(String(uid), target, { uid: true });
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }) as Sorter;
+  fn.names = ownNames;
+  return fn;
+}
+
+// ---- 受信箱の振り分け ----
+// 送信用のGmailには、フォームに送った会社からの「お問い合わせありがとうございます」という自動返信が大量に届き、
+// 本物の返信（アポ・断り）が埋もれていた。届いたメールを次のように振り分ける:
+//   ・自動返信・受付確認 → ラベル「アポハッチ/自動返信」に移して、受信箱から外す（既読にする）
+//   ・届かなかったメール → ラベル「アポハッチ/届かなかった」に移して、受信箱から外す
+//   ・アポ → ラベル「アポハッチ/アポ」を付けてスターを付ける（受信箱に残す）
+//   ・返信・断り → ラベル「アポハッチ/返信」「アポハッチ/断り」を付ける（受信箱に残す）
+// 営業と関係のないメール（カード会社の通知など）には触らない。消すことはしない（「すべてのメール」とラベルから見られる）。
+export type InboxCategory = "auto" | "bounce" | "appointment" | "replied" | "declined";
+export const INBOX_LABEL: Record<InboxCategory, { path: string[]; archive: boolean; star: boolean; seen: boolean }> = {
+  auto: { path: ["アポハッチ", "自動返信"], archive: true, star: false, seen: true },
+  bounce: { path: ["アポハッチ", "届かなかった"], archive: true, star: false, seen: true },
+  appointment: { path: ["アポハッチ", "アポ"], archive: false, star: true, seen: false },
+  replied: { path: ["アポハッチ", "返信"], archive: false, star: false, seen: false },
+  declined: { path: ["アポハッチ", "断り"], archive: false, star: false, seen: false },
+};
+
+const squash = (s: string) => s.replace(/[\s　]+/g, "");
+/** 人が書いたメールらしい（書き出しで名乗っている）。受付確認の自動返信は「〇〇と申します」とは書かない。
+ *  ただし受付確認は、こちらが送った文面（「田中と申します」）を写し返すので、こちらの名前での名乗りは数えない */
+function looksHuman(body: string, mailbox: string): boolean {
+  const head = squash(body).slice(0, 260);
+  const ours = ownNamePartsFor(mailbox);
+  for (const mm of head.matchAll(/(.{0,14})と申します/g)) {
+    const prefix = mm[1] ?? "";
+    if (!ours.some((p) => prefix.includes(p))) return true;
+  }
+  return false;
+}
+/** この受信箱を使う送信者の名前（姓・名・会社名）。「こちらの名乗り」を見分けるのに使う */
+const namePartCache = new Map<string, string[]>();
+function ownNamePartsFor(mailbox: string): string[] {
+  const hit = namePartCache.get(mailbox);
+  if (hit) return hit;
+  const rows = getDb().prepare("SELECT company, person, person_kana FROM sender_profiles WHERE lower(smtp_user)=?").all(mailbox.toLowerCase()) as { company: string; person: string; person_kana: string }[];
+  const parts = new Set<string>();
+  for (const r of rows) {
+    for (const p of `${r.person} ${r.person_kana}`.split(/[\s　]+/)) if (p.length >= 1) parts.add(p);
+    const core = squash(r.company).replace(/(株式会社|有限会社|合同会社)/g, "");
+    if (core.length >= 2) parts.add(core);
+  }
+  const list = [...parts];
+  namePartCache.set(mailbox, list);
+  return list;
+}
+
+/** 件名だけで「問い合わせの受付確認」と分かる言い回し */
+const RECEIPT_SUBJECT_RE = /((お問い?合わ?せ|お問合せ|問い?合わ?せ|ご相談|ご依頼|資料請求|ご応募|応募|エントリー|フォーム).{0,24}(ありがとう|有難う|有り難う|受付|受け付け|承り|完了|確認|控|自動)|(ありがとう|受付|受け付け|承り)(ました|ございました|ございます)?.{0,12}(お問い?合わ?せ|問い?合わ?せ)|送信(ありがとう|完了|内容|控)|受付(完了|確認|のお知らせ)|受信完了|自動(返信|送信|応答|配信)|auto[- ]?reply|thank you for (your )?(inquiry|contacting)|への(お)?問い?合わ?せ$|メールフォーム)/i;
+/** 本文の書き出しで「受付確認」と分かる言い回し（件名に出ていないフォーム作成サービス等の受付確認用） */
+const RECEIPT_BODY_RE = /(送信が完了|受付が完了|受け付けました|受付いたしました|お問い?合わ?せ(を)?(いただき|頂き)(まして)?(誠に)?ありがとう|以下の内容で(送信|受け付け|受付|承り)|下記の内容で(送信|受け付け|受付|承り))/;
+/** 受信箱から外してはいけない種類の知らせ（契約・署名・セキュリティ・支払い・審査など） */
+const SENSITIVE_RE = /(署名|契約|締結|申込書|セキュリティ|請求|お支払|支払い|審査|ログイン|パスワード|認証コード|アカウント|招待|共有され)/;
+
+/** 届いた1通が、営業の送信に関係するメールなら、その種類を返す。関係なければ null（触らない）。
+ *  受信箱から外す（"auto"）のは、確かな手がかりがあるときだけにする。
+ *  人のメールを外してしまう害は、自動返信が受信箱に残る害よりずっと大きいため、迷ったら外さない */
+export function inboxCategory(mailbox: string, m: IncomingMail, ownNames: string[]): InboxCategory | null {
+  const from = m.from.trim().toLowerCase();
+  if (!from || from === mailbox.toLowerCase()) return null;
+  // 自社のアドレス（社内のやり取り）と Google（フォームの回答の控え・セキュリティ通知など）からのメールには触らない
+  const dom = from.split("@")[1] ?? "";
+  if (dom === (mailbox.toLowerCase().split("@")[1] ?? "") || /(^|\.)google\.com$/.test(dom)) return null;
+  const unsubscribe = /^\s*配信停止/.test(m.subject);
+  const human = /^\s*(re|fw|fwd)\s*[:：]/i.test(m.subject);          // こちらのメールへの返信・転送は人のメール
+  const sensitive = SENSITIVE_RE.test(m.subject);
+  const receipt = RECEIPT_SUBJECT_RE.test(m.subject) || RECEIPT_BODY_RE.test(squash(m.text).slice(0, 300));
+  const machine = m.autoHeader || AUTO_FROM_RE.test(from.split("@")[0] ?? "");
+  const job = findSentJob(mailbox, m);
+  if (job) {
+    if (unsubscribe) return "declined";
+    const body = stripQuoted(m.text, `${job.message_used}\n${FOOTER_ECHO}`);
+    // 受付確認の自動返信は、こちらの文面（日程・商談 など）を写し返すので、言葉で判定するとアポや断りに見えてしまう。
+    // 先に「人の返信か」を見て、人でなく受付確認の手がかりがあれば自動返信にする
+    const humanMail = human || looksHuman(body, mailbox);
+    if (!humanMail && !sensitive && (RECEIPT_SUBJECT_RE.test(m.subject) || machine || isAutoMail({ ...m, text: body }))) return "auto";
+    return classifyReply(m.subject, body).outcome;
+  }
+  // 送った会社と差出人が結びつかないメール（フォーム作成サービスのアドレスから届く等）は、
+  // 件名が受付確認の言い回しで、しかも中身がこちらの送信と結びつくときだけ「自動返信」にする
+  if (human || sensitive || !receipt) return null;
+  const hay = squash(`${m.subject}\n${m.text}`);
+  const ours = ownNames.map(squash).filter((x) => x.length >= 3);
+  if (ours.some((x) => hay.includes(x))) return "auto";
+  if (sentTemplateLines(mailbox).filter((l) => hay.includes(l)).length >= 2) return "auto";
+  if (namesRecentlySentCompany(mailbox, m.date, hay)) return "auto";
+  return null;
+}
+
+/** 届いた時刻の直前3時間に、この受信箱から送った会社の名前が本文に入っているか（法人格を除いた名前で比べる） */
+function namesRecentlySentCompany(mailbox: string, at: Date, hay: string): boolean {
+  const to = at.toISOString().replace("T", " ").slice(0, 19);
+  const from = new Date(at.getTime() - 3 * 3600_000).toISOString().replace("T", " ").slice(0, 19);
+  const rows = getDb().prepare(`SELECT j.company_name n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id
+    WHERE lower(s.smtp_user)=? AND j.status='sent' AND j.is_test=0 AND j.sent_at BETWEEN ? AND ? LIMIT 500`).all(mailbox.toLowerCase(), from, to) as { n: string }[];
+  return rows.some((r) => {
+    const core = squash(r.n).replace(/(株式会社|有限会社|合同会社|合資会社|一般社団法人|一般財団法人|社会福祉法人|医療法人|学校法人|\(株\)|（株）|\(有\)|（有）)/g, "");
+    return core.length >= 3 && hay.includes(core);
+  });
+}
+
+/** この受信箱から送った文面のうち、どの会社にも共通する行（テンプレートの行）。受付確認メールの「控え」の見分けに使う */
+const templateLineCache = new Map<string, { at: number; lines: string[] }>();
+function sentTemplateLines(mailbox: string): string[] {
+  const hit = templateLineCache.get(mailbox);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.lines;
+  const rows = getDb().prepare(`SELECT j.message_used m FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id
+    WHERE lower(s.smtp_user)=? AND j.status='sent' AND j.is_test=0 AND j.message_used<>'' ORDER BY j.id DESC LIMIT 300`).all(mailbox.toLowerCase()) as { m: string }[];
+  const freq = new Map<string, number>();
+  for (const r of rows) for (const l of new Set(r.m.split(/\r?\n/).map(squash).filter((x) => x.length >= 15))) freq.set(l, (freq.get(l) ?? 0) + 1);
+  // 3社以上で同じ行＝テンプレートの行（会社名などが入った行は除かれる）
+  const lines = [...freq.entries()].filter(([, c]) => c >= 3).map(([l]) => l);
+  templateLineCache.set(mailbox, { at: Date.now(), lines });
+  return lines;
 }
 
 // ---- 届かなかったメール（エラーで戻ってきたメール）の検知 ----
@@ -295,7 +469,10 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
       if (seen.has(mailbox)) continue;
       seen.add(mailbox);
       // Gmail にログインを拒否された・一時停止されている間は、受信箱にもログインしない（何度も試すと解除が遅れるため）
-      const paused = emailPause(s);
+      // ログインを拒否された・アカウントが一時停止された場合だけ、受信箱にもログインしない（何度も試すと解除が遅れるため）。
+      // 「1日の送信上限」「通信エラー」で送信を止めているだけなら、受信箱は読む（以前はここで一緒に止まり、返信の記録も止まっていた）
+      const pausedAny = emailPause(s);
+      const paused = pausedAny && /ログイン|拒否|パスワード|2段階|一時停止され|認証|Username|BadCredentials/i.test(pausedAny.reason) ? pausedAny : null;
       if (paused) {
         db.prepare(`INSERT INTO reply_scans(mailbox, checked_at, error) VALUES(?,datetime('now'),?) ON CONFLICT(mailbox) DO UPDATE SET checked_at=excluded.checked_at, error=excluded.error`)
           .run(mailbox, `メール送信の一時停止中のため、受信箱の確認も休止しています（${paused.reason}）`);
@@ -312,7 +489,11 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
           const mb = client.mailbox;
           const validity = mb && typeof mb === "object" ? String(mb.uidValidity) : "";
           let uids: number[];
-          if (state.uidvalidity === validity && state.last_uid > 0) {
+          // 振り分けをオンにして最初の1回は、すでに受信箱に溜まっているメールもさかのぼって振り分ける
+          const sortOn = Number((s as SenderProfile & { inbox_sort?: number }).inbox_sort ?? 1) === 1;
+          const sweepKey = `inbox_sorted_v1:${mailbox}`;
+          const needSweep = sortOn && !getSetting(sweepKey, "");
+          if (!needSweep && state.uidvalidity === validity && state.last_uid > 0) {
             uids = ((await client.search({ uid: `${state.last_uid + 1}:*` }, { uid: true })) || []).filter((u) => u > state.last_uid);
           } else {
             // 初回（または受信箱が作り直された）: 最初の送信の前日以降に届いたメールを見る
@@ -322,6 +503,10 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
             uids = (await client.search({ since: isNaN(since.getTime()) ? new Date(Date.now() - 7 * 86400_000) : since }, { uid: true })) || [];
           }
           let maxUid = state.uidvalidity === validity ? state.last_uid : 0;
+          // 振り分けの準備: Gmail なら「ラベル」、それ以外のメールサービスなら「フォルダ」として扱う
+          const gmail = client.capabilities.has("X-GM-EXT-1");
+          const sorter = sortOn ? makeSorter(client, gmail, [s.company, s.person, s.label].filter(Boolean)) : null;
+          let sorted = 0;
           for (const uid of uids.sort((a, b) => a - b).slice(0, 2000)) {
             maxUid = Math.max(maxUid, uid);
             const msg = await client.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true, internalDate: true, headers: ["auto-submitted", "x-autoreply", "x-autorespond", "precedence", "x-auto-response-suppress"] }, { uid: true });
@@ -341,9 +526,18 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
             }
             const date = msg.internalDate ? new Date(msg.internalDate) : (msg.envelope?.date ? new Date(msg.envelope.date) : new Date());
             const incoming = { from: addr, subject: msg.envelope?.subject ?? "", text, date, autoHeader };
-            if (applyBounce(mailbox, incoming) != null) continue; // 戻りメールは送信結果に反映（反応ではない）
+            if (applyBounce(mailbox, incoming) != null) { // 戻りメールは送信結果に反映（反応ではない）
+              if (sorter && await sorter(uid, "bounce")) sorted++;
+              continue;
+            }
             if (applyIncomingMail(mailbox, incoming) != null) found++;
+            if (sorter) {
+              const cat = inboxCategory(mailbox, incoming, sorter.names);
+              if (cat && await sorter(uid, cat)) sorted++;
+            }
           }
+          if (needSweep && uids.length <= 2000) setSetting(sweepKey, new Date().toISOString());
+          if (sorted) console.log(`[apo-hatch] 受信箱（${mailbox}）を振り分けました: ${sorted}通`);
           db.prepare(`INSERT INTO reply_scans(mailbox, uidvalidity, last_uid, checked_at, error, found) VALUES(?,?,?,datetime('now'),'',?)
             ON CONFLICT(mailbox) DO UPDATE SET uidvalidity=excluded.uidvalidity, last_uid=excluded.last_uid, checked_at=excluded.checked_at, error='', found=reply_scans.found+excluded.found`)
             .run(mailbox, validity, maxUid, found);
