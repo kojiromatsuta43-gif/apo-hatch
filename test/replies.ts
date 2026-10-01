@@ -153,6 +153,25 @@ assert.equal(get(jCtrl).outcome, "");
   assert.equal(applyBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Delay)", "info@delay.example への配信が遅れています")), null, "遅延通知は失敗にしない");
   assert.equal(st(jDelay).status, "sent");
   assert.equal(applyBounce(MAILBOX, mail("info@normal.example", "Re: ご提案", "ありがとうございます")), null, "普通の返信は戻りメールではない");
+  // 2回目に読んだとき: 記録は済んでいるので applyBounce は null だが、振り分けでは「戻りメール」と分かる必要がある
+  const { isOurBounce } = await import("../src/replies.js");
+  const again = mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Failure)", "アドレス不明 メールは info@nouser.example に配信されませんでした。 550 5.1.1 User unknown");
+  assert.equal(applyBounce(MAILBOX, again), null, "記録済みの戻りメールは二重に記録しない");
+  assert.equal(isOurBounce(MAILBOX, again), true, "記録済みでも、うちから送った宛先の戻りメールは振り分ける");
+  assert.equal(isOurBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Failure)", "メールは friend@private.example に配信されませんでした。")), false, "アプリで送っていない宛先の戻りメールは触らない");
+  assert.equal(isOurBounce(MAILBOX, mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Delay)", "info@nouser.example への配信が遅れています")), false, "遅延通知は振り分けない");
+  // 本文に元の宛先が無く、添付の元ヘッダーの To にだけあるサーバー（kagoya 等）でも、失敗として記録する
+  const jKagoya = job(camp, "転送先株式会社", "info@alias.example", "alias.example");
+  const kagoya = mail("MAILER-DAEMON@mas03.kagoya.net", "Undelivered Mail Returned to Sender", "This is the mail system at host mas03.kagoya.net.\n<kir0001.info@mas03.kagoya.net>: can't create user output file\n"
+    + `Reporting-MTA: dns; mas03.kagoya.net\nFinal-Recipient: rfc822; kir0001.info@mas03.kagoya.net\nFrom: ${MAILBOX}\nTo: info@alias.example\nList-Unsubscribe: =?UTF-8?Q?=3Cmailto=3Ax=40y=2Ecom?=\n =?UTF-8?Q?=3Fsubject=3D=E9=85=8D=E4=BF=A1=E5=81=9C?=`);
+  assert.equal(applyBounce(MAILBOX, kagoya), jKagoya, "添付ヘッダーの To から送り先を見つける");
+  // 別のPCのアポハッチくんから同じアカウントで送った分（このPCに記録が無い）も、目印のヘッダーで戻りメールと分かる
+  const other = mail("mailer-daemon@googlemail.com", "Delivery Status Notification (Failure)", "shibata@other-pc.example に配信されませんでした\nList-Unsubscribe:\n <mailto:x@y.com?subject=%E9%85%8D%E4%BF%A1%E5%81%9C%E6%AD%A2&body=...>\nTo: shibata@other-pc.example");
+  assert.equal(applyBounce(MAILBOX, other), null, "このPCに送信記録が無いので記録はしない");
+  assert.equal(isOurBounce(MAILBOX, other), true, "でも振り分けはする");
+  const { isOurDelayNotice } = await import("../src/replies.js");
+  assert.equal(isOurDelayNotice(mail("Mailer-Daemon@s264.xrea.com", "Warning: message 1x70 delayed 24 hours", "not yet been delivered\nList-Unsubscribe: <mailto:x@y.com?subject=%E9%85%8D%E4%BF%A1%E5%81%9C%E6%AD%A2>")), true, "うちの送信の遅延通知は受信箱から外す");
+  assert.equal(isOurDelayNotice(mail("Mailer-Daemon@s264.xrea.com", "Warning: message 1x70 delayed 24 hours", "not yet been delivered")), false, "目印が無ければ触らない");
 }
 
 // ---- 受信箱の振り分け（ラベル）----

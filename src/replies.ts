@@ -217,26 +217,36 @@ function recordReply(mailbox: string, m: IncomingMail, job: SentJob, unsubscribe
   return job.id;
 }
 
+function errText(e: unknown): string {
+  const x = e as { message?: string; responseText?: string } | undefined;
+  return String(x?.responseText || x?.message || e).slice(0, 160);
+}
+
 /** 1通ずつ振り分ける係を作る。ラベル（フォルダ）は最初に使うときに作る。失敗しても読み取りは続ける */
-type Sorter = ((uid: number, cat: InboxCategory) => Promise<boolean>) & { names: string[] };
-function makeSorter(client: ImapFlow, gmail: boolean, ownNames: string[]): Sorter {
+type Sorter = ((uid: number, cat: InboxCategory) => Promise<boolean>) & { names: string[]; failures: string[]; counts: Partial<Record<InboxCategory, number>> };
+function makeSorter(getClient: () => ImapFlow, gmail: boolean, ownNames: string[]): Sorter {
   const ready = new Set<string>();
   let delimiter = "/";
   const ensure = async (path: string[]): Promise<string | null> => {
     const key = path.join("\u0000");
     if (ready.has(key)) return path.join(delimiter);
+    const client = getClient();
     try {
       const list = await client.list();
       delimiter = list.find((x) => x.delimiter)?.delimiter ?? "/";
       const full = path.join(delimiter);
       const exists = list.some((x) => x.path === full || x.name === path[path.length - 1] && x.path.endsWith(full));
-      if (!exists) await client.mailboxCreate(path).catch(() => {});
+      if (!exists) await client.mailboxCreate(path).catch((e) => fail(`ラベル「${full}」を作れませんでした: ${errText(e)}`));
       ready.add(key);
       return full;
-    } catch { return null; }
+    } catch (e) { fail(`ラベル一覧を読めませんでした: ${errText(e)}`); return null; }
   };
+  // 失敗しても読み取りは続けるが、黙って失敗すると「振り分けたはずなのに受信箱に残っている」原因が分からないため、理由を控えておく
+  const failures: string[] = [];
+  const fail = (msg: string) => { if (failures.length < 5 && !failures.includes(msg)) failures.push(msg); };
   const fn = (async (uid: number, cat: InboxCategory) => {
     const rule = INBOX_LABEL[cat];
+    const client = getClient();
     try {
       const target = await ensure(rule.path);
       if (!target) return false;
@@ -249,12 +259,17 @@ function makeSorter(client: ImapFlow, gmail: boolean, ownNames: string[]): Sorte
         // Gmail ではコピー＝ラベルを付ける（受信箱に残る）。Gmail以外はコピーすると重複するので、ラベルは付けない
         await client.messageCopy(String(uid), target, { uid: true });
       }
+      fn.counts[cat] = (fn.counts[cat] ?? 0) + 1;
       return true;
-    } catch {
+    } catch (e) {
+      // 接続が切れただけなら、呼び出し側がつなぎ直してやり直す（失敗には数えない）
+      if (client.usable) fail(`${rule.path.join("/")} へ移せませんでした: ${errText(e)}`);
       return false;
     }
   }) as Sorter;
   fn.names = ownNames;
+  fn.failures = failures;
+  fn.counts = {};
   return fn;
 }
 
@@ -389,14 +404,48 @@ export function bounceKind(text: string): BounceKind {
 const BOUNCE_LABEL: Record<BounceKind, string> = { hard: "宛先不明（アドレスやドメインが存在しない）", full: "相手の受信箱がいっぱい", size: "メールが大きすぎて受け取れない（添付を外すかリンクにしてください）", other: "相手のサーバーに拒否された" };
 
 /** 戻りメールなら、送った会社を「失敗」にして job id を返す。戻りメールでなければ null */
-export function applyBounce(mailbox: string, m: IncomingMail): number | null {
+/** 届かなかったことを知らせるメール（配信遅延の通知は除く）なら、本文に出てくる宛先アドレス。違えば null */
+function bounceAddrs(mailbox: string, m: IncomingMail): string[] | null {
   const local = (m.from.split("@")[0] ?? "").toLowerCase();
   if (!BOUNCE_FROM_RE.test(local) && !BOUNCE_SUBJECT_RE.test(m.subject)) return null;
   if (/delay|遅延|will retry|まだ配信を試みて/i.test(m.subject)) return null; // 配信遅延の通知は失敗ではない
+  return Array.from(new Set((m.text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []).map((a) => a.toLowerCase())))
+    .filter((a) => a !== mailbox.toLowerCase() && !BOUNCE_FROM_RE.test(a.split("@")[0]) && !/googlemail\.com$|google\.com$/.test(a));
+}
+
+/** 配送サーバーからの通知（戻り・遅延）か。添付の「元のメールのヘッダー」も読むかどうかの判断に使う */
+export function isDeliveryNotice(m: { from: string; subject: string }): boolean {
+  return BOUNCE_FROM_RE.test((m.from.split("@")[0] ?? "").toLowerCase()) || BOUNCE_SUBJECT_RE.test(m.subject);
+}
+
+// このアプリが送ったメールには、配信停止用のヘッダー（件名「配信停止」の mailto）が必ず付いている。
+// 戻りメールに添付された元のヘッダーにこれがあれば、別のPCのアポハッチくんから同じアカウントで送った分でも「うちの送信」と分かる
+// （古い版はヘッダーを Q エンコードしていたので、その形も見る）
+const APP_SENT_RE = /List-Unsubscribe:[\s\S]{0,200}?subject(=|=3D)(%E9%85%8D%E4%BF%A1|=E9=85=8D=E4=BF=A1|配信停止)/i;
+
+/** このアプリから送ったメールが戻ってきたものか（記録済みかどうかは問わない）。振り分け用。
+ *  applyBounce は「送信済み」の送信だけを失敗に書き換えるので、2回目に読んだときは null になり、
+ *  それを見て振り分けると、記録済みの戻りメールがいつまでも受信箱に残ってしまう */
+export function isOurBounce(mailbox: string, m: IncomingMail): boolean {
+  const addrs = bounceAddrs(mailbox, m);
+  if (!addrs) return false;
+  if (APP_SENT_RE.test(m.text)) return true;
+  if (!addrs.length) return false;
+  const db = getDb();
+  return addrs.some((addr) => !!db.prepare(`SELECT 1 FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id
+    WHERE j.is_test=0 AND j.channel='email' AND lower(j.email)=? AND lower(s.smtp_user)=? LIMIT 1`).get(addr, mailbox.toLowerCase()));
+}
+
+/** このアプリから送ったメールの「配信が遅れています」通知か（失敗ではないので記録はしないが、受信箱からは外す） */
+export function isOurDelayNotice(m: IncomingMail): boolean {
+  return isDeliveryNotice(m) && /delay|遅延|will retry|まだ配信を試みて/i.test(m.subject) && APP_SENT_RE.test(m.text);
+}
+
+export function applyBounce(mailbox: string, m: IncomingMail): number | null {
+  const addrs = bounceAddrs(mailbox, m);
+  if (!addrs) return null;
   const db = getDb();
   const at = m.date.toISOString().replace("T", " ").slice(0, 19);
-  const addrs = Array.from(new Set((m.text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []).map((a) => a.toLowerCase())))
-    .filter((a) => a !== mailbox.toLowerCase() && !BOUNCE_FROM_RE.test(a.split("@")[0]) && !/googlemail\.com$|google\.com$/.test(a));
   for (const addr of addrs) {
     const job = db.prepare(`SELECT j.id, j.company_name, j.result_text FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id
       WHERE j.is_test=0 AND j.channel='email' AND j.status='sent' AND lower(j.email)=? AND lower(s.smtp_user)=? AND j.sent_at <= datetime(?, '+10 minutes') AND j.sent_at >= datetime(?, '-30 days')
@@ -441,6 +490,14 @@ async function readStream(s: Readable, max = 200_000): Promise<string> {
 }
 
 type Node = { part?: string; type: string; disposition?: string; childNodes?: Node[] };
+/** 戻りメールに添付された配送レポート・元のメールのヘッダー。サーバーによっては本文に元の宛先が書かれず、ここにしか無い */
+function findReportParts(n: Node | undefined, out: Node[] = []): Node[] {
+  if (!n) return out;
+  if (/^(message\/(delivery-status|global-delivery-status|rfc822|global|global-headers)|text\/rfc822-headers)$/i.test(n.type ?? "")) out.push(n);
+  for (const c of n.childNodes ?? []) findReportParts(c, out);
+  return out;
+}
+
 function findTextPart(n: Node | undefined, type: string): Node | undefined {
   if (!n) return undefined;
   if (n.type === type && n.disposition !== "attachment") return n;
@@ -468,7 +525,6 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
       const mailbox = s.smtp_user.trim().toLowerCase();
       if (seen.has(mailbox)) continue;
       seen.add(mailbox);
-      // Gmail にログインを拒否された・一時停止されている間は、受信箱にもログインしない（何度も試すと解除が遅れるため）
       // ログインを拒否された・アカウントが一時停止された場合だけ、受信箱にもログインしない（何度も試すと解除が遅れるため）。
       // 「1日の送信上限」「通信エラー」で送信を止めているだけなら、受信箱は読む（以前はここで一緒に止まり、返信の記録も止まっていた）
       const pausedAny = emailPause(s);
@@ -479,12 +535,18 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
         continue;
       }
       const state = (db.prepare("SELECT * FROM reply_scans WHERE mailbox=?").get(mailbox) as ScanState | undefined) ?? { mailbox, uidvalidity: "", last_uid: 0, checked_at: null, error: "", found: 0 };
-      const client = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000, ...(s.tls_insecure ? { tls: { rejectUnauthorized: false } } : {}) });
-      client.on("error", () => { /* 切断等。下の catch で拾う */ });
+      const open = async () => {
+        const c = new ImapFlow({ host: imapHostFor(s), port: 993, secure: true, auth: { user: s.smtp_user, pass: s.smtp_pass.replace(/^([a-z]{4}) ([a-z]{4}) ([a-z]{4}) ([a-z]{4})$/i, "$1$2$3$4") }, logger: false, socketTimeout: 60_000, ...(s.tls_insecure ? { tls: { rejectUnauthorized: false } } : {}) });
+        c.on("error", () => { /* 切断等。下でつなぎ直すか、catch で拾う */ });
+        await c.connect();
+        return { c, l: await c.getMailboxLock("INBOX") };
+      };
+      let client: ImapFlow | null = null;
       let found = 0;
       try {
-        await client.connect();
-        const lock = await client.getMailboxLock("INBOX");
+        let opened = await open();
+        client = opened.c;
+        let lock = opened.l;
         try {
           const mb = client.mailbox;
           const validity = mb && typeof mb === "object" ? String(mb.uidValidity) : "";
@@ -505,14 +567,40 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
           let maxUid = state.uidvalidity === validity ? state.last_uid : 0;
           // 振り分けの準備: Gmail なら「ラベル」、それ以外のメールサービスなら「フォルダ」として扱う
           const gmail = client.capabilities.has("X-GM-EXT-1");
-          const sorter = sortOn ? makeSorter(client, gmail, [s.company, s.person, s.label].filter(Boolean)) : null;
+          const sorter = sortOn ? makeSorter(() => client!, gmail, [s.company, s.person, s.label].filter(Boolean)) : null;
           let sorted = 0;
-          for (const uid of uids.sort((a, b) => a - b).slice(0, 2000)) {
-            maxUid = Math.max(maxUid, uid);
-            const msg = await client.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true, internalDate: true, headers: ["auto-submitted", "x-autoreply", "x-autorespond", "precedence", "x-auto-response-suppress"] }, { uid: true });
-            if (!msg) continue;
+          // 受信箱を長く読んでいると Gmail 側から接続を切られることがある。以前は切れた後のメールを黙って飛ばし、
+          // しかも「読んだ」扱いにしていたため、振り分けも返信の記録も漏れていた。切れたらつなぎ直して続きから読む
+          let reconnects = 0;
+          let lost = false;
+          const reconnect = async (): Promise<boolean> => {
+            if (reconnects >= 5) return false;
+            reconnects++;
+            try { lock.release(); } catch { /* 既に切れている */ }
+            try { client!.close(); } catch { /* 既に閉じている */ }
+            try {
+              opened = await open();
+              client = opened.c;
+              lock = opened.l;
+              const v = client.mailbox && typeof client.mailbox === "object" ? String(client.mailbox.uidValidity) : "";
+              return v === validity; // 受信箱が作り直されていたら、次回に最初から読み直す
+            } catch { return false; }
+          };
+          const list = uids.sort((a, b) => a - b).slice(0, 2000);
+          for (let i = 0; i < list.length; i++) {
+            const uid = list[i];
+            const msg = await client.fetchOne(String(uid), { uid: true, envelope: true, bodyStructure: true, internalDate: true, headers: ["auto-submitted", "x-autoreply", "x-autorespond", "precedence", "x-auto-response-suppress"] }, { uid: true }).catch(() => false as const);
+            if (!msg) {
+              if (!client.usable) {
+                if (await reconnect()) { i--; continue; } // 同じメールから読み直す
+                lost = true;
+                break;
+              }
+              maxUid = Math.max(maxUid, uid); // もう無いメール（移動・削除済み）
+              continue;
+            }
             const addr = msg.envelope?.from?.[0]?.address ?? "";
-            if (!addr) continue;
+            if (!addr) { maxUid = Math.max(maxUid, uid); continue; }
             const hdr = msg.headers ? msg.headers.toString("utf8") : "";
             const autoHeader = /auto-submitted:\s*auto-/i.test(hdr) || /x-autore(ply|spond):/i.test(hdr) || /precedence:\s*(auto_reply|bulk|junk)/i.test(hdr);
             let text = "";
@@ -523,26 +611,58 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
                 text = await readStream(dl.content);
                 if (node.type === "text/html") text = text.replace(/<br\s*\/?>|<\/(p|div|tr|li)>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
               } catch { /* 本文が読めなくても件名だけで判定する */ }
+              if (!text && !client.usable) { // 本文を読む途中で切れた
+                if (await reconnect()) { i--; continue; }
+                lost = true;
+                break;
+              }
+            }
+            if (isDeliveryNotice({ from: addr, subject: msg.envelope?.subject ?? "" })) {
+              // 元の宛先（To・Final-Recipient）と、このアプリが送ったかどうかの目印は、添付のヘッダー側にある。
+              // 元のメールの本文までは足さない（本文の言葉で「戻りの理由」を取り違えないため）
+              for (const p of findReportParts(msg.bodyStructure as Node | undefined).slice(0, 3)) {
+                try {
+                  const dl = await client.download(String(uid), p.part || "2", { uid: true, maxBytes: 30_000 });
+                  const raw = await readStream(dl.content, 30_000);
+                  text += "\n" + (/rfc822$|^message\/global$/i.test(p.type ?? "") ? raw.split(/\r?\n\r?\n/)[0] : raw);
+                } catch { /* 読めなければ本文だけで判定する */ }
+              }
             }
             const date = msg.internalDate ? new Date(msg.internalDate) : (msg.envelope?.date ? new Date(msg.envelope.date) : new Date());
             const incoming = { from: addr, subject: msg.envelope?.subject ?? "", text, date, autoHeader };
-            if (applyBounce(mailbox, incoming) != null) { // 戻りメールは送信結果に反映（反応ではない）
-              if (sorter && await sorter(uid, "bounce")) sorted++;
-              continue;
+            let cat: InboxCategory | null;
+            if (applyBounce(mailbox, incoming) != null || isOurBounce(mailbox, incoming)) { // 戻りメールは送信結果に反映（反応ではない）
+              cat = "bounce";
+            } else if (isOurDelayNotice(incoming)) {
+              cat = "auto";
+            } else {
+              if (applyIncomingMail(mailbox, incoming) != null) found++;
+              cat = sorter ? inboxCategory(mailbox, incoming, sorter.names) : null;
             }
-            if (applyIncomingMail(mailbox, incoming) != null) found++;
-            if (sorter) {
-              const cat = inboxCategory(mailbox, incoming, sorter.names);
-              if (cat && await sorter(uid, cat)) sorted++;
+            maxUid = Math.max(maxUid, uid); // 記録まで済んだ。ここから先（振り分け）が切れても、記録はやり直さない
+            if (sorter && cat) {
+              let ok = await sorter(uid, cat);
+              if (!ok && !client.usable) {
+                if (!(await reconnect())) { lost = true; break; }
+                ok = await sorter(uid, cat);
+              }
+              if (ok) sorted++;
             }
           }
-          if (needSweep && uids.length <= 2000) setSetting(sweepKey, new Date().toISOString());
-          if (sorted) console.log(`[apo-hatch] 受信箱（${mailbox}）を振り分けました: ${sorted}通`);
+          // 移せなかったメールがあれば、次回もさかのぼってやり直す
+          if (needSweep && !lost && uids.length <= 2000 && !sorter?.failures.length) setSetting(sweepKey, new Date().toISOString());
+          if (sorter) {
+            const label: Record<InboxCategory, string> = { auto: "自動返信", bounce: "届かなかった", appointment: "アポ", replied: "返信", declined: "断り" };
+            const detail = Object.entries(sorter.counts).map(([k, n]) => `${label[k as InboxCategory]}${n}`).join("・");
+            if (sorted) console.log(`[apo-hatch] 受信箱（${mailbox}）を振り分けました: ${sorted}通（${detail}）`);
+            if (sorter.failures.length) console.warn(`[apo-hatch] 受信箱（${mailbox}）の振り分けで失敗がありました: ${sorter.failures.join(" / ")}`);
+          }
+          if (lost) console.warn(`[apo-hatch] 受信箱（${mailbox}）の読み取り中に接続が切れました。次回、続きから読みます`);
           db.prepare(`INSERT INTO reply_scans(mailbox, uidvalidity, last_uid, checked_at, error, found) VALUES(?,?,?,datetime('now'),'',?)
             ON CONFLICT(mailbox) DO UPDATE SET uidvalidity=excluded.uidvalidity, last_uid=excluded.last_uid, checked_at=excluded.checked_at, error='', found=reply_scans.found+excluded.found`)
             .run(mailbox, validity, maxUid, found);
         } finally {
-          lock.release();
+          try { lock.release(); } catch { /* 切断済み */ }
         }
         await client.logout().catch(() => {});
         recorded += found;
@@ -555,7 +675,7 @@ export async function checkReplies(): Promise<{ recorded: number; errors: string
             : `受信箱（${mailbox}）の確認に失敗: ${raw.slice(0, 120)}`;
         errors.push(msg);
         db.prepare(`INSERT INTO reply_scans(mailbox, checked_at, error) VALUES(?,datetime('now'),?) ON CONFLICT(mailbox) DO UPDATE SET checked_at=excluded.checked_at, error=excluded.error`).run(mailbox, msg);
-        try { client.close(); } catch { /* 既に閉じている */ }
+        try { client?.close(); } catch { /* 既に閉じている */ }
       }
     }
   } finally {
