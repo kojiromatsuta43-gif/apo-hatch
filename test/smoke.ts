@@ -31,6 +31,7 @@ const rows: [string, string, string, string, string, string, string, string, str
   ["失敗サービス", "https://fail.example.test/", "fail.example.test", "サービス", "福岡県", "form", "", "failed", "入力エラー: この質問は必須です", null, "", "", 60],
   ["設定ミス一号", "", "m1.example.test", "小売", "北海道", "email", "a@m1.example.test", "failed", "メール送信エラー: このアカウントは2段階認証が必要です", null, "", "", -1],
   ["設定ミス二号", "", "m2.example.test", "小売", "北海道", "email", "a@m2.example.test", "failed", "メール送信エラー: このアカウントは2段階認証が必要です", null, "", "", -1],
+  ["設定ミス三号", "", "m3.example.test", "小売", "北海道", "email", "a@m3.example.test", "failed", "メール送信エラー: このアカウントは2段階認証が必要です", null, "", "", -1],
   ["フォーム無し建設", "https://nf.example.test/", "nf.example.test", "建設", "広島県", "form", "", "skip_no_form", "サイトにアクセスできない", null, "", "", 0],
 ];
 for (const r of rows) ins.run(...r);
@@ -113,6 +114,40 @@ try {
     const body = await (await get("/")).text();
     if (/>\s*(paused|running|done|draft)\s*</.test(body)) ng("ホームに英語の状態（paused 等）がそのまま出ています");
     if (/>\s*(template|tpl_ai|hybrid)\s*</.test(body)) ng("ホームに英語のモード（template 等）がそのまま出ています");
+  }
+  // ---- 要対応の作り直し（#113〜#118）----
+  {
+    const post = (p: string, body: string) => fetch(`${BASE}${p}`, { method: "POST", redirect: "manual", headers: { cookie, "content-type": "application/x-www-form-urlencoded" }, body });
+    let body = await (await get("/todo")).text();
+    if (!body.includes("今日やる")) ng("要対応に「今日やる◯件」がありません");
+    if (!body.includes("同じ原因のまとめ") || !body.includes("メールの設定が原因で送れなかった")) ng("要対応に「同じ原因のまとめ」がありません");
+    // 開けないサイトには「開いて入力」を出さない（#116）
+    const nf = await (await get("/todo?kind=noform")).text();
+    if (/フォーム無し建設[\s\S]{0,1200}開いて入力/.test(nf)) ng("開けないサイトに「開いて入力」ボタンが出ています");
+    if (!nf.includes("URLを直す")) ng("開けないサイトに「URLを直す」がありません");
+    // 同じ原因を1回の操作で片づける（#117）
+    const r1 = await post("/todo/group", "key=mailconfig&action=requeue");
+    if (r1.status !== 302) ng(`/todo/group → HTTP ${r1.status}`);
+    body = await (await get("/todo?kind=failed")).text();
+    if (body.includes("設定ミス一号")) ng("まとめて送り直したのに、要対応に残っています");
+    // 見送る → 見送りタブに移る → 戻せる（#115）
+    await post("/todo/bulk", "action=dismiss&all=1&kind=captcha&back=%2Ftodo");
+    if (!(await (await get("/todo?kind=dismissed")).text()).includes("認証株式会社")) ng("見送った会社が「見送り」タブにありません");
+    if ((await (await get("/todo?kind=captcha")).text()).includes("認証株式会社")) ng("見送った会社が要対応に残っています");
+    await post("/todo/bulk", "action=undismiss&all=1&kind=dismissed&back=%2Ftodo");
+    // 続けて処理する画面（#118）
+    const run = await (await get("/todo/run?kind=captcha")).text();
+    if (!run.includes("認証株式会社") || !run.includes("送信済みにして次へ")) ng("「続けて処理する」画面に会社が出ていません");
+  }
+  // ---- キャンペーンの3タブと一覧（#98 #103）----
+  {
+    const prep = await (await get("/campaigns/1?tab=prep")).text();
+    const res2 = await (await get("/campaigns/1?tab=result&size=50")).text();
+    if (!/data-tab="prep">/.test(prep) || !/data-tab="result" hidden>/.test(prep)) ng("準備タブを開いたとき、他のタブが隠れていません");
+    if (!/data-tab="result">/.test(res2)) ng("結果タブが表示されていません");
+    if (!res2.includes("1 / 1 ページ")) ng("一覧にページ送りがありません");
+    const list = await (await get("/campaigns")).text();
+    if (!list.includes("一時停止")) ng("キャンペーン一覧の状態が日本語になっていません");
   }
   // 起動中にエラーが出ていないこと
   if (/TypeError|ReferenceError|SqliteError/.test(out)) ng(`起動ログにエラー:\n${out.slice(-600)}`);

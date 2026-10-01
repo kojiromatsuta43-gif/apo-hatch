@@ -31,31 +31,31 @@ AIのAPIキーは**設定画面（管理者のみ）からの登録が優先**�
 
 ## ファイルの地図
 
-| ファイル | 役割 |
+| 場所 | 役割 |
 |---|---|
-| `src/db.ts` | SQLite のスキーマとマイグレーション、型定義。`addCol()` で列追加、テーブル作り直しが要るときは `form_suppressions` の例を参照 |
-| `src/auth.ts` | ログイン（scrypt + セッションCookie）、ユーザー発行。**単体版だけの機能**。本体組み込み時は不要 |
+| `src/server.ts` | 起動だけ。共通処理 → 経路の登録 → 裏で動く仕事 → 待ち受け、の順に組み立てる |
+| `src/app/context.ts` | どの経路からも使う共通の道具（`app`・`db`・権限チェック `scope/ownedCampaign/…`・`redirectWith`・`navUser`・要対応の条件など）。書き換える共有の値は `appState` に入れる |
+| `src/app/background.ts` | 裏で動く仕事（自動バックアップ・自動更新・返信確認・共有の同期・送信の自動再開・終了時の後片付け） |
+| `src/routes/*.ts` | 画面ごとの経路。`register()` を `server.ts` が順に呼ぶ（auth / todo / jobs / campaigns / senders / lists / settings / pages） |
+| `src/ui/*.ts` | 画面のHTML（テンプレートリテラル。フレームワークなし）。`layout.ts`＝枠とナビ、`styles.ts`＝色・文字・余白（デザイントークン）、`parts.ts`＝共通の小さな部品 |
+| `src/views.ts` | `src/ui` をまとめて再輸出するだけ（古い import 先を保つため） |
+| `src/settings.ts` | 設定キーと既定値。**設定を足すときは必ずここに書く**（文字列を直接書かない） |
+| `src/db.ts` | SQLite のスキーマとマイグレーション、型定義。`addCol()` で列追加 |
+| `src/auth.ts` | ログイン（scrypt + セッションCookie）、ユーザー発行 |
 | `src/csv.ts` | 営業リストCSVと除外リストCSVの読み取り、キャンペーンへの登録と振り分け |
 | `src/detect.ts` | 「営業お断り」文言と CAPTCHA の検知パターン |
 | `src/formFinder.ts` | 会社URLから問い合わせフォームのページを探す |
 | `src/formFiller.ts` | **中核。** 入力欄を集めて種類を判定し、値を入れて送信ボタンを押し、結果を判定する |
 | `src/engine.ts` | ブラウザ起動、1社分の送信、事前チェック（`scanCompany`） |
-| `src/message.ts` | 文面の組み立て（テンプレ／AI個別化／全文AI）、文面チェック（lint） |
+| `src/message.ts` | 文面の組み立て（テンプレ／AI／A/B／件名の使い分け）、AIの利用量と上限、文面チェック |
 | `src/email.ts` | SMTP送信、配信停止、SMTPエラーの日本語化 |
-| `src/worker.ts` | キューを回す。送信時間帯・日次上限・リトライ・事前チェックの一括実行 |
-| `src/views.ts` | 画面のHTML（テンプレートリテラル。フレームワークなし） |
-| `src/server.ts` | Express のルーティング。認証・権限チェックもここ |
-| `src/update.ts` | 配布後の自動アップデート（安定版／先行版のチャネル対応） |
-| `src/share.ts` | チーム共有。送信済み・除外をGoogleスプレッドシート＋Apps Script経由で双方向に同期 |
-| `src/license.ts` | ライセンスキーの検証（ed25519。秘密鍵は `license-keys/`＝gitignore） |
-| `src/health.ts` | 動作チェック画面と診断ファイルの中身 |
-| `src/backup.ts` | 自動バックアップ（7世代）と復元の予約。実際の入れ替えは `db.ts` の起動時 |
-| `src/applog.ts` | 画面で見られるエラーログ（直近500件） |
-| `src/awake.ts` | 送信中のスリープ抑止（caffeinate / SetThreadExecutionState） |
-| `src/autostart.ts` | ログイン時の自動起動（launchd / スタートアップ） |
-| `src/templates.ts` | 業種別の文面ひな形 |
-| `src/jp.ts` | 英語のエラー文言を日本語にする変換表 |
-| `test/e2e.ts` | ダミーサイト15パターンの通しテスト |
+| `src/replies.ts` | 受信箱の読み取り、返信の自動判定と学習、戻りメール |
+| `src/worker.ts` | キューを回す。時間帯・日次上限・ウォームアップ・アカウント切替・リトライ・事前チェック |
+| `src/share.ts` / `license.ts` / `health.ts` / `backup.ts` / `applog.ts` / `awake.ts` / `autostart.ts` / `templates.ts` / `jp.ts` | チーム共有／ライセンス／動作チェック／バックアップ／エラーログ／スリープ抑止／自動起動／文面ひな形／エラーの日本語化 |
+| `src/update.ts` | 配布後の自動アップデート（安定版／先行版） |
+| `test/unit.ts` | 部品の単体テスト（数秒） |
+| `test/smoke.ts` | 全画面が開けるか・主要な操作が通るかの確認（20秒ほど） |
+| `test/e2e.ts` | ダミーサイト27社の通しテスト（数分） |
 
 ## 触る前に知っておくべきこと
 
@@ -73,10 +73,21 @@ AIのAPIキーは**設定画面（管理者のみ）からの登録が優先**�
 実在の企業に向けてテスト送信しないこと。`test/e2e.ts` はローカルに立てたダミーサイトに対して動くので、これで検証します。
 
 ```bash
-npm test    # 2〜3分。送信まわりを直したら必ず流す
+npm run test:quick   # 型チェック＋単体＋画面の確認（1分以内）。画面や設定を直したとき
+npm test             # 通しテストまで全部（数分）。送信まわりを直したら必ず流す
 ```
 
 コンテナ等で Chromium のパスが通らない場合は `CHROMIUM_PATH=... npm test`。
+
+### ページの中で動かす関数（page.evaluate）の落とし穴
+このアプリは `tsx` で動かしていて、`tsx` は関数に名前を付ける `__name(...)` をコードに差し込みます。
+ページの中にはそれが無いので、`page.evaluate(() => { const f = () => …; })` のように**内側に名前付きの関数があると
+「__name is not defined」で落ち、たいてい catch で握りつぶされて黙って空振りします**（赤字エラーの検知がこれで効いていなかった）。
+`engine.ts` の `newContext()` で全ページに何もしない `__name` を入れてあります。**自分で `browser.newContext()` を呼ぶときは必ず `NAME_SHIM` を入れること。**
+
+### 動いているアポハッチくんを巻き込まない
+開発フォルダで本番を動かしている場合、`pkill -f "tsx src/server.ts"` のような**名前での停止は本番にも当たります**（実際に止めてしまった）。
+テスト用に立てたものは、必ずポートを指定して止めること: `lsof -ti:3999 | xargs kill`。
 
 ### 安全装置は外さない
 「営業お断り」検知、CAPTCHAスキップ、再送禁止期間、官公庁ドメイン除外、配信停止。いずれもキャンペーン設定で緩められますが、**既定値は安全側のまま**にしてください。クレームは配布元（松田さん）に返ってきます。
@@ -161,6 +172,9 @@ git add -A && git commit -m "アポハッチくん v0.3.2" && git push
 ## コードの作法
 
 - 画面はテンプレートリテラルで組む。フレームワークやビルドは入れない（配布のハードルを上げないため）
+- 色・文字サイズ・余白は `src/ui/styles.ts` の変数を使う。色の意味は全画面共通（緑＝送れた／赤＝手が要る／黄＝待ち／青＝進行中／灰＝対象外）。黄色のボタン（`.btn.primary`）は1画面に1つ
+- 数字は `n()`（桁区切り）を通す。内部の値（paused / template など）はそのまま画面に出さず、`CAMPAIGN_STATUS_LABEL` などの日本語を使う
+- 画面を足したら `test/smoke.ts` の一覧に1行足す
 - 依存パッケージを増やすときは慎重に。利用者の `npm install` が重くなる
 - コメントは日本語。「なぜそうしているか」を書く（何をしているかはコードを読めば分かる）
 - コミットメッセージは日本語1行 + 必要なら詳細

@@ -2,7 +2,7 @@
 
 問い合わせフォームとメールへの営業送信を自動化するツールです。各自のパソコンにインストールして使います（外部のサーバーは使いません。送信もデータの保存も、そのパソコンの中で行います）。
 
-使い方は、起動後の画面上部にある **「ご利用ガイド」** に手順とよくある質問をまとめています。初めての方はそちらから進めてください。
+使い方は、ホームに出る **「はじめの設定」**（6ステップ）に沿って進めてください。くわしい手順とよくある質問は **設定 → ガイド** にあります。
 
 開発する方は `CLAUDE.md` を先に読んでください。
 
@@ -35,7 +35,7 @@ npm start                            # → http://localhost:3210
 ※ `npx playwright install chromium` が「Playwright does not support chromium on mac13」などで失敗する古いOS（macOS 13 以前など）でも、**Google Chrome（または Microsoft Edge）が入っていれば自動でそちらを使う**ので、そのまま `npm start` で使えます。
 
 4. ブラウザで http://localhost:3210 を開き、ターミナルに表示された管理者アカウントでログイン
-5. 画面上部の「ご利用ガイド」に沿って、送信者の登録 → キャンペーン作成 → リスト取り込み → 開始
+5. ホームに出る「はじめの設定」に沿って、送信者の登録 → キャンペーン作成 → リスト取り込み → 開始
 
 止めるときはターミナルで Ctrl+C（送信中の会社があれば、送り終わってから止まります）。データは `data/` フォルダに残ります。
 
@@ -85,13 +85,16 @@ GEMINI_API_KEY=...       npm start     # Gemini
 
 ## 画面の案内
 
-- **はじめの設定**（`/setup`）… 送信者の登録からリスト取り込みまで6ステップで案内します
-- **ホーム**（`/`）… 今日・今月の送信数、アポ、要対応、次にやることを1画面に
-- **要対応**（`/todo`）… 自動で送れなかった会社（画像認証・失敗・要確認・フォーム無し）を1画面で処理
-- **送信数と分析**（`/stats`）… 日別・月別の送信数、業種別／都道府県別／時間帯別の反応率、送れなかった理由ランキング
-- **週次レポート**（`/report`）… 前週比・アポ一覧。印刷してそのまま報告に使えます
-- **動作チェック**（`/health`）… 動かない原因の切り分け、自動起動・自動更新・バックアップ・診断ファイル
-- **エラーログ**（`/logs`）… 直近500件の出来事（黒い画面を閉じても追えます）
+上のメニューは5つです。
+
+- **ホーム** … 今日の進み具合、アポ、要対応、次にやること。最初は「はじめの設定」への案内が出ます
+- **キャンペーン** … 一覧と作成（3ステップ）。キャンペーンの中は「① 準備／② 送信／③ 結果」の3タブ
+- **要対応** … 自動で送れなかった会社。「今日やる10件」と「同じ原因のまとめ」から片づけます。画像認証の会社は「続けて処理する」で1社ずつ
+- **成果** … 日別・月別の送信数、業種別／都道府県別／時間帯別の反応率、送れなかった理由、週次レポート
+- **設定** … 基本設定／送信者／除外・チーム共有／動作チェック・バックアップ／アップデート／ユーザー／ガイド（上のタブで切り替え）
+
+困ったときは **設定 → 動作チェック・バックアップ** を開き、解決しなければ「診断ファイル」を配布元に送ってください。
+導入時に渡す資料は **/checklist**（導入チェックリスト。印刷・PDF保存できます）。
 
 ## チームで使う
 
@@ -153,35 +156,38 @@ npm run release -- "問題なかったので全員へ" # 安定版（全端末�
 ## 構成
 
 ```
-src/db.ts          テーブル定義とマイグレーション
-src/csv.ts         CSV取り込み（列名の別名対応・振り分け）
-src/formFinder.ts  フォームページ探索（DBのURL → トップのリンク → /contact 等）
-src/formFiller.ts  項目の判定と入力・確認画面・送信・結果判定
-src/detect.ts      営業お断り・CAPTCHA 検知
-src/engine.ts      1社分の送信フロー（Playwright）
-src/message.ts     文面生成（テンプレ差し込み / AI / ハイブリッド、NGワード、文面チェック）
-src/email.ts       メール送信（SMTP）・配信停止リンク・送信の一時停止
-src/replies.ts     受信箱の読み取り（返信の自動判定・戻りメールの検知）
-src/company.ts     社名の法人格をHPから補完
-src/worker.ts      キュー処理（時間帯・上限・並列・停止）
-src/auth.ts        ログイン・ユーザー管理
-src/update.ts      配布後の自動アップデート（安定版／先行版）
-src/share.ts       チームでの共有（送信済み・除外の双方向）
-src/license.ts     ライセンスの検証
-src/health.ts      動作チェックと診断ファイル
-src/backup.ts      自動バックアップと復元
-src/applog.ts      画面で見られるエラーログ
-src/awake.ts       送信中のスリープ抑止
-src/autostart.ts   ログイン時の自動起動
-src/templates.ts   業種別の文面ひな形
-src/jp.ts          英語のエラー文言の日本語化
-src/server.ts      管理画面（Express）
-src/views.ts       画面のHTML
-scripts/run.mjs    起動役（更新後に自動再起動）
-scripts/release.mjs 更新版を出すための release.json 生成
-test/e2e.ts        ダミーサイトでの通しテスト（npm test）
-test/replies.ts    返信判定・戻りメール検知のテスト
+src/server.ts        起動（共通処理 → 経路の登録 → 裏で動く仕事 → 待ち受け）
+src/app/context.ts   どの経路からも使う共通の道具（権限・お知らせ・集計など）
+src/app/background.ts 裏で動く仕事（自動バックアップ・自動更新・返信確認・共有の同期・再開・終了処理）
+src/routes/*.ts      画面ごとの経路（auth / campaigns / jobs / todo / senders / lists / settings / pages）
+src/ui/*.ts          画面のHTML（layout / styles / home / campaign / job / todo / senders / settings / stats / onboarding …）
+src/views.ts         src/ui をまとめて再輸出するだけ
+src/settings.ts      設定キーと既定値の一覧
+src/db.ts            テーブル定義とマイグレーション
+src/csv.ts           CSV取り込み（列名の別名対応・振り分け）
+src/formFinder.ts    フォームページ探索（URL → サイト内リンク → よくあるパス → サイトマップ）
+src/formFiller.ts    項目の判定と入力・確認画面・送信・結果判定
+src/detect.ts        営業お断り・CAPTCHA 検知
+src/engine.ts        1社分の送信フロー（Playwright）
+src/message.ts       文面生成（テンプレ差し込み / AI / A/B / 件名の使い分け / AIの上限）
+src/templates.ts     業種別の文面ひな形
+src/email.ts         メール送信（SMTP）・配信停止・送信の一時停止
+src/replies.ts       受信箱の読み取り（返信の自動判定・学習・戻りメール）
+src/worker.ts        キュー処理（時間帯・上限・ウォームアップ・アカウント切替・停止）
+src/share.ts         チームでの共有（送信済み・除外の双方向）
+src/license.ts       ライセンスの検証
+src/health.ts / backup.ts / applog.ts / awake.ts / autostart.ts / notify.ts / jp.ts
+                     動作チェック・バックアップ・エラーログ・スリープ抑止・自動起動・通知・エラーの日本語化
+src/auth.ts          ログイン・ユーザー管理
+src/update.ts        配布後の自動アップデート（安定版／先行版）
+scripts/             起動役・release.json 生成・ライセンス発行
+test/unit.ts         部品の単体テスト（数秒）
+test/replies.ts      返信判定・戻りメール検知のテスト
+test/smoke.ts        全画面が開けるかの確認（20秒ほど）
+test/e2e.ts          ダミーサイト27社での通しテスト（数分）
 ```
+
+`npm run test:quick` は型チェック＋単体＋画面の確認だけ（1分以内）。`npm test` は通しテストまで全部。
 
 ## 経緯
 

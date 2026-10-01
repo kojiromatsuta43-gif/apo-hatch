@@ -30,6 +30,8 @@ export const CSS = `
   --bg:var(--c-bg); --ok:var(--c-ok); --ng:var(--c-ng); --warn:var(--c-warn);
 }
 *{box-sizing:border-box}
+/* hidden 属性は必ず効かせる（style="display:flex" などを付けた要素でも隠れるように。拡大表示の黒い幕が出っぱなしになる不具合があった） */
+[hidden]{display:none!important}
 body{margin:0;font-family:-apple-system,"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif;background:var(--c-bg);color:var(--c-ink);font-size:var(--fs-base);line-height:var(--lh)}
 a{color:var(--c-link)}
 
