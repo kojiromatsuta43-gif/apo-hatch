@@ -13,7 +13,9 @@ export const ROOT = path.resolve(process.cwd());
 /** 更新で入れ替えてよいもの。data/ と node_modules/ は対象外 */
 const UPDATABLE = ["src", "test", "package.json", "package-lock.json", "tsconfig.json", "README.md", "scripts", "update.json",
   // ダブルクリックで起動するファイル（配布済みのPCにも届くように更新対象に入れる）
-  "アポハッチくん起動.command", "アポハッチくん起動.bat", "インストール（最初に1回）.bat", "アポハッチくん.app"];
+  "アポハッチくん起動.command", "アポハッチくん起動.bat", "インストール（最初に1回）.bat", "アポハッチくん.app",
+  // 通知の絵（蜂）など。ゲームの素材もここに入っている
+  "assets"];
 
 export type Release = { version: string; notes?: string; zip?: string; published_at?: string };
 // 更新チャネル（#94）。配布先ごとに「安定版」「先行版」を選べるようにする。
