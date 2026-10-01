@@ -28,7 +28,7 @@ import { checkUpdate, applyUpdate, requestRestart, currentVersion, updateChannel
 import { errorPage } from "../ui/layout.js";
 import { esc, layout, lawView, todoView, todoRunView, setupView, checklistView, reportView, campaignListView, sendersView, type SenderExtra, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "../views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "../auth.js";
-import { app, upload, db, flashes, redirectWith, takeFlash, me, appState, navUser, scope, ownedCampaign, ownedSender, notFound, forbidden, groupCandidates, applyGroupMembers, groupNames, retryTargetJobs, campaignRows, extraSenderIds, saveMaterial, removeMaterialFileIfUnused, loadCampaignFull, lastImports, pendingImports, previews, fetchGoogleSheetCsv, ReactionRow, jobFilter, CAMPAIGN_EXPORT_COLS, importHistory, recentUndo, deleteJobsWhere, setupState, setupProgress, todoCounts, lawKey } from "../app/context.js";
+import { app, upload, db, flashes, redirectWith, takeFlash, me, appState, navUser, scope, ownedCampaign, ownedSender, notFound, forbidden, groupCandidates, applyGroupMembers, groupNames, retryTargetJobs, campaignRows, extraSenderIds, saveMaterial, removeMaterialFileIfUnused, loadCampaignFull, lastImports, pendingImports, previews, fetchGoogleSheetCsv, ReactionRow, jobFilter, CAMPAIGN_EXPORT_COLS, importHistory, recentUndo, deleteJobsWhere, setupState, setupProgress, todoCounts, lawKey, TODO_ANY, todoActive } from "../app/context.js";
 
 /** この画面の経路を登録する。server.ts から、ログイン確認などの共通処理のあとに呼ばれる */
 export function register(): void {
@@ -67,9 +67,40 @@ app.get("/", (req, res) => {
     nextStart: (openCampaigns[0] ?? rows[0]) ? nextWindowText(openCampaigns[0] ?? rows[0]) : "",
     setupDone: setup.done,
     setupTotal: setup.total,
+    perCampaign: [] as import("../ui/home.js").CampaignHome[],
     newAppointments: db.prepare(`SELECT j.id, j.company_name company, j.updated_at at ${jobsWhere} AND j.outcome='appointment' AND j.updated_at > datetime('now','-3 days') ORDER BY j.updated_at DESC LIMIT 3`).all(...sc2.args) as { id: number; company: string; at: string }[],
   };
   for (const r of rows) r.is_running = isRunning(r.id);
+  // キャンペーンごとの進み具合と数字（ホームに1件ずつカードで出す）
+  const per = new Map<number, Record<string, number>>();
+  for (const r of db.prepare(`SELECT j.campaign_id id,
+      SUM(j.status='sent' AND j.channel='form' AND date(j.sent_at,'+9 hours')=@today) todayForm,
+      SUM(j.status='sent' AND j.channel='email' AND date(j.sent_at,'+9 hours')=@today) todayEmail,
+      SUM(j.status='sent' AND j.channel='form' AND strftime('%Y-%m', j.sent_at,'+9 hours')=@month) monthForm,
+      SUM(j.status='sent' AND j.channel='email' AND strftime('%Y-%m', j.sent_at,'+9 hours')=@month) monthEmail,
+      SUM(j.outcome='appointment') appointments, SUM(j.outcome='replied') replies, SUM(j.outcome='declined') declines,
+      SUM(j.status='queued') queued,
+      SUM(${TODO_ANY} AND ${todoActive()}) todo,
+      SUM(j.status='skip_captcha' AND ${todoActive()}) todoCaptcha
+    FROM form_jobs j WHERE j.is_test=0 GROUP BY j.campaign_id`).all({ today, month }) as (Record<string, number> & { id: number })[]) per.set(r.id, r);
+  const senderById = new Map(senderRows.map((sd) => [sd.id, sd]));
+  home.perCampaign = rows.map((r) => {
+    const v = per.get(r.id) ?? {};
+    const usesEmail = r.send_only !== "form" && channelMode(r.channel) !== "form_only";
+    const usesForm = r.send_only !== "email" && channelMode(r.channel) !== "email_only";
+    const sd = senderById.get(r.sender_id);
+    const p = sd ? emailPause(sd) : null;
+    return {
+      id: r.id, name: r.name, status: r.status, running: Boolean(r.is_running),
+      todayForm: v.todayForm ?? 0, todayEmail: v.todayEmail ?? 0, monthForm: v.monthForm ?? 0, monthEmail: v.monthEmail ?? 0,
+      appointments: v.appointments ?? 0, replies: v.replies ?? 0, declines: v.declines ?? 0,
+      queued: v.queued ?? 0, todo: v.todo ?? 0, todoCaptcha: v.todoCaptcha ?? 0,
+      capForm: usesForm ? r.daily_limit : 0,
+      capEmail: usesEmail ? effectiveEmailLimit(r, r.sender_id).limit : 0,
+      windowOk: inSendWindow(r), nextStart: nextWindowText(r),
+      paused: usesEmail && p ? `${p.reason.slice(0, 70)}（${new Date(p.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}に再開）` : "",
+    };
+  });
   res.send(layout("ホーム", campaignListView(rows, aiStatusLabel(), senderRows.map((x) => ({ id: x.id, label: x.label, company: x.company, person: x.person })), home), takeFlash(req), navUser(req), appState.updateReady));
 });
 

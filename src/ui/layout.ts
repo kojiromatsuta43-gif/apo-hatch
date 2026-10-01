@@ -11,9 +11,10 @@ export type NavUser = { username: string; display_name: string; role: string; ga
 const FAVICON = `data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2048%2048%22%3E%3Crect%20width%3D%2248%22%20height%3D%2248%22%20rx%3D%2210%22%20fill%3D%22%23FFF8E1%22%2F%3E%3Cpath%20d%3D%22M20%2015C18.5%2010%2016%208.5%2013.5%208%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222.2%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M28%2015C29.5%2010%2032%208.5%2034.5%208%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222.2%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2212.8%22%20cy%3D%227.4%22%20r%3D%222.4%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2235.2%22%20cy%3D%227.4%22%20r%3D%222.4%22%20fill%3D%22%231C1710%22%2F%3E%3Cellipse%20cx%3D%229.5%22%20cy%3D%2221%22%20rx%3D%227.6%22%20ry%3D%225.3%22%20fill%3D%22%23fff%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%221.6%22%20transform%3D%22rotate%28-24%209.5%2021%29%22%2F%3E%3Cellipse%20cx%3D%2238.5%22%20cy%3D%2221%22%20rx%3D%227.6%22%20ry%3D%225.3%22%20fill%3D%22%23fff%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%221.6%22%20transform%3D%22rotate%2824%2038.5%2021%29%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2214%22%20width%3D%2222%22%20height%3D%2229%22%20rx%3D%2211%22%20fill%3D%22%23FFC62E%22%20stroke%3D%22%231C1710%22%20stroke-width%3D%222%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2228.5%22%20width%3D%2222%22%20height%3D%224.6%22%20fill%3D%22%231C1710%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%2237%22%20width%3D%2222%22%20height%3D%224.6%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2219.6%22%20cy%3D%2222.5%22%20r%3D%222.3%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2228.4%22%20cy%3D%2222.5%22%20r%3D%222.3%22%20fill%3D%22%231C1710%22%2F%3E%3Ccircle%20cx%3D%2220.4%22%20cy%3D%2221.7%22%20r%3D%22.8%22%20fill%3D%22%23fff%22%2F%3E%3Ccircle%20cx%3D%2229.2%22%20cy%3D%2221.7%22%20r%3D%22.8%22%20fill%3D%22%23fff%22%2F%3E%3C%2Fsvg%3E`;
 const LOGO = `<svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg>`;
 
-/** ナビは5つに絞る（#97）。以前は12リンクが2段に折り返していた。
- *  送信者・除外リスト・動作チェック・ユーザー管理・ガイド・アップデートは「設定」の中のタブへ */
-const SETTINGS_PATHS = ["/settings", "/senders", "/suppressions", "/health", "/logs", "/users", "/update", "/guide", "/law", "/setup", "/checklist", "/password"];
+/** ナビは6つに絞る（#97）。以前は12リンクが2段に折り返していた。
+ *  送信者・除外リスト・動作チェック・ユーザー管理・アップデートは「設定」の中のタブへ。
+ *  ガイドは、導入動画を載せる場所なので上のメニューに残す */
+const SETTINGS_PATHS = ["/settings", "/senders", "/suppressions", "/health", "/logs", "/users", "/update", "/law", "/setup", "/checklist", "/password"];
 function navOf(user: NonNullable<NavUser>): string {
   const p = user.path ?? "/";
   const at = (test: (x: string) => boolean) => (test(p) ? ' class="on"' : "");
@@ -23,6 +24,7 @@ function navOf(user: NonNullable<NavUser>): string {
 <a href="/campaigns"${at((x) => x.startsWith("/campaigns") || x.startsWith("/jobs"))}>キャンペーン</a>
 <a href="/todo"${at((x) => x.startsWith("/todo"))}>要対応${user.todo ? `<span class="badge">${n(user.todo)}</span>` : ""}</a>
 <a href="/stats"${at((x) => x.startsWith("/stats") || x.startsWith("/report"))}>成果</a>
+<a href="/guide"${at((x) => x.startsWith("/guide"))}>ガイド</a>
 <a href="/settings"${inSettings ? ' class="on"' : ""}>設定</a>
 ${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰</a>` : ""}
 </nav>`;
@@ -37,7 +39,6 @@ export function settingsTabs(active: string, isAdmin: boolean): string {
     ["/health", "動作チェック・バックアップ", false],
     ["/update", "アップデート", true],
     ["/users", "ユーザー", true],
-    ["/guide", "ガイド", false],
   ];
   return `<div class="subnav">${tabs.filter(([, , adminOnly]) => isAdmin || !adminOnly).map(([href, label]) => `<a href="${href}"${active === href ? ' class="on"' : ""}>${label}</a>`).join("")}</div>`;
 }
@@ -45,7 +46,7 @@ export function settingsTabs(active: string, isAdmin: boolean): string {
 /** いまの画面が「設定」の仲間なら、上にタブを出す */
 function settingsTabsFor(user: NonNullable<NavUser>): string {
   const p = user.path ?? "";
-  const map: [string, string][] = [["/settings", "/settings"], ["/senders", "/senders"], ["/suppressions", "/suppressions"], ["/health", "/health"], ["/logs", "/health"], ["/update", "/update"], ["/users", "/users"], ["/guide", "/guide"]];
+  const map: [string, string][] = [["/settings", "/settings"], ["/senders", "/senders"], ["/suppressions", "/suppressions"], ["/health", "/health"], ["/logs", "/health"], ["/update", "/update"], ["/users", "/users"]];
   const hit = map.find(([prefix]) => p === prefix || p.startsWith(prefix + "/"));
   return hit ? settingsTabs(hit[1], user.role === "admin") : "";
 }

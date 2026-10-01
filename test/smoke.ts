@@ -149,6 +149,11 @@ try {
     const list = await (await get("/campaigns")).text();
     if (!list.includes("一時停止")) ng("キャンペーン一覧の状態が日本語になっていません");
   }
+  // ホームは、キャンペーンごとに進み具合と数字を出す
+  {
+    const home = await (await get("/")).text();
+    if (!home.includes("スモーク用キャンペーン") || !home.includes("今日の進み具合")) ng("ホームにキャンペーンごとの進み具合がありません");
+  }
   // 起動中にエラーが出ていないこと
   if (/TypeError|ReferenceError|SqliteError/.test(out)) ng(`起動ログにエラー:\n${out.slice(-600)}`);
 } catch (e) {

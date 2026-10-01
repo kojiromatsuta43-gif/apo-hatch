@@ -17,13 +17,20 @@ export type HomeSummary = {
   nextStart: string;                   // 時間帯外のとき、次に始まる時刻
   setupDone: number; setupTotal: number;
   newAppointments: { id: number; company: string; at: string }[]; // 直近3日のアポ
+  perCampaign: CampaignHome[];         // キャンペーンごとの進み具合と数字
+};
+/** ホームに出す、キャンペーン1件ぶんのまとめ */
+export type CampaignHome = {
+  id: number; name: string; status: string; running: boolean;
+  todayForm: number; todayEmail: number; monthForm: number; monthEmail: number;
+  appointments: number; replies: number; declines: number;
+  queued: number; todo: number; todoCaptcha: number;
+  capForm: number; capEmail: number;   // このキャンペーンが今日送れる上限
+  windowOk: boolean; nextStart: string;
+  paused: string;                      // メール送信が一時停止中なら、その理由
 };
 
 export function homeCard(h: HomeSummary): string {
-  const stat = (label: string, value: string, sub = "", href = "", color = "") => {
-    const inner = `<div class="stat" style="min-width:140px"><span class="muted" data-nohelp>${label}</span><b${color ? ` style="color:${color}"` : ""}>${value}</b>${sub ? `<span class="muted" data-nohelp>${sub}</span>` : ""}</div>`;
-    return href ? `<a href="${href}" style="text-decoration:none;color:inherit">${inner}</a>` : inner;
-  };
   // いま一番やるべきことを1つだけ出す（最初の人が迷わないように）
   const next = !h.senders ? { t: "はじめの設定（6ステップ）から始めましょう", b: "はじめの設定を開く", href: "/setup" }
     : !h.campaigns ? { t: "キャンペーンを作って、会社リストを取り込みましょう", b: "はじめの設定を開く", href: "/setup" }
@@ -32,24 +39,48 @@ export function homeCard(h: HomeSummary): string {
     : h.todo > 0 ? { t: `自動で送れなかった会社が ${n(h.todo)}社あります。まず「今日やる10件」から`, b: "要対応を見る", href: "/todo" }
     : h.runningNames.length ? { t: `送信中: ${h.runningNames.join("、")}`, b: "", href: "" }
     : { t: "いまやることはありません。お疲れさまでした", b: "", href: "" };
-  const sentToday = h.todayForm + h.todayEmail;
-  const cap = h.capForm + h.capEmail;
-  const pct = cap ? Math.min(100, Math.round((sentToday / cap) * 100)) : 0;
+  const total = (label: string, v: string) => `<span style="margin-right:16px"><span class="muted" data-nohelp>${label}</span> <b>${v}</b></span>`;
+  // 上は「次にやること」と全体の合計だけ。進み具合と数字は、下にキャンペーンごとに出す
   return `<div class="card">
-  <p style="margin:0 0 14px;font-size:17px"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn primary small" href="${next.href}" style="margin-left:8px">${esc(next.b)}</a>` : ""}</p>
-  ${cap ? `<div style="margin:0 0 14px"><div style="display:flex;justify-content:space-between;max-width:620px" class="small"><span><b>今日の進み具合</b>　${n(sentToday)} / ${n(cap)}件</span><span class="muted" data-nohelp>${pct}%</span></div>
-  <div class="bar"><i style="width:${pct}%"></i></div>
-  <div class="muted" data-nohelp>${h.windowOk ? (h.runningNames.length ? "送信中です" : "送信できる時間帯です") : `いまは送信時間帯の外です。${esc(h.nextStart)}`}</div></div>`
-    : h.windowOk ? "" : `<p class="muted" data-nohelp style="margin:0 0 14px">いまは送信時間帯の外です。${esc(h.nextStart)}</p>`}
-  <div class="stats">
-    ${stat("今日の送信", n(sentToday), `フォーム${n(h.todayForm)}・メール${n(h.todayEmail)}`, "/stats")}
-    ${stat("今月の送信", n(h.monthForm + h.monthEmail), `フォーム${n(h.monthForm)}・メール${n(h.monthEmail)}`, "/stats?mode=month")}
-    ${stat("アポ", n(h.appointments), `返信${n(h.replies)}・断り${n(h.declines)}`, "/stats#analysis", h.appointments ? "var(--c-ok)" : "")}
-    ${stat("送信待ち", n(h.queued), "社", "/campaigns")}
-    ${stat("要対応", n(h.todo), h.todoCaptcha ? `うち画像認証 ${n(h.todoCaptcha)}` : "社", "/todo", h.todo ? "var(--c-ng)" : "")}
+  <p style="margin:0 0 10px;font-size:16px"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn primary small" href="${next.href}" style="margin-left:8px">${esc(next.b)}</a>` : ""}</p>
+  <p class="small" style="margin:0">${total("全体の今日の送信", `${n(h.todayForm + h.todayEmail)}件`)}${total("今月", `${n(h.monthForm + h.monthEmail)}件`)}${total("アポ", `${n(h.appointments)}件`)}${total("送信待ち", `${n(h.queued)}社`)}${h.todo ? `<a href="/todo" style="color:var(--c-ng)">${total("要対応", `${n(h.todo)}社`)}</a>` : ""}</p>
+  ${h.setupDone < h.setupTotal ? `<p class="small" style="margin:10px 0 0">はじめの設定: <b>${h.setupDone} / ${h.setupTotal}</b> 完了　<a href="/setup">続きを進める</a></p>` : ""}
+</div>
+${h.perCampaign.map(campaignHomeCard).join("")}`;
+}
+
+/** キャンペーン1件ぶんのカード: 今日の進み具合のバーと、今日・今月・アポ・送信待ち・要対応 */
+function campaignHomeCard(c: CampaignHome): string {
+  const url = `/campaigns/${c.id}`;
+  const stat = (label: string, value: string, sub = "", href = "", color = "") => {
+    const inner = `<div class="stat" style="min-width:132px"><span class="muted" data-nohelp>${label}</span><b${color ? ` style="color:${color}"` : ""}>${value}</b>${sub ? `<span class="muted" data-nohelp>${sub}</span>` : ""}</div>`;
+    return href ? `<a href="${href}" style="text-decoration:none;color:inherit">${inner}</a>` : inner;
+  };
+  const sentToday = c.todayForm + c.todayEmail;
+  const cap = c.capForm + c.capEmail;
+  const pct = cap ? Math.min(100, Math.round((sentToday / cap) * 100)) : 0;
+  const stateText = c.status === "done" ? "すべて送り終わりました"
+    : c.running ? "送信中です"
+    : c.status !== "running" ? (c.queued ? "止まっています（「開始」を押すと送ります）" : "送信待ちの会社はありません")
+    : !c.windowOk ? `いまは送信時間帯の外です。${c.nextStart}`
+    : cap && sentToday >= cap ? "今日の上限に達しました。残りは次の送信時間帯に続きます"
+    : "送信できる時間帯です";
+  return `<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
+    <h2 style="margin:0"><a href="${url}" style="color:inherit;text-decoration:none">${esc(c.name)}</a> ${campaignStatusTag(c.status, c.running)}</h2>
+    <a class="btn small" href="${url}">開く</a>
   </div>
-  ${h.emailPaused.length ? `<p class="small" style="margin:12px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${h.emailPaused.map((p) => `${esc(p.label)}（${esc(p.reason.slice(0, 60))}／${new Date(p.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}に再開）`).join("、")}</p>` : ""}
-  ${h.setupDone < h.setupTotal ? `<p class="small" style="margin:12px 0 0">はじめの設定: <b>${h.setupDone} / ${h.setupTotal}</b> 完了　<a href="/setup">続きを進める</a></p>` : ""}
+  <div style="margin:0 0 12px"><div style="display:flex;justify-content:space-between;max-width:620px" class="small"><span><b>今日の進み具合</b>　${n(sentToday)} / ${n(cap)}件</span><span class="muted" data-nohelp>${pct}%</span></div>
+  <div class="bar"><i style="width:${pct}%"></i></div>
+  <div class="muted" data-nohelp>${esc(stateText)}</div></div>
+  <div class="stats">
+    ${stat("今日の送信", n(sentToday), `フォーム${n(c.todayForm)}・メール${n(c.todayEmail)}`, `/stats?campaign=${c.id}`)}
+    ${stat("今月の送信", n(c.monthForm + c.monthEmail), `フォーム${n(c.monthForm)}・メール${n(c.monthEmail)}`, `/stats?mode=month&campaign=${c.id}`)}
+    ${stat("アポ", n(c.appointments), `返信${n(c.replies)}・断り${n(c.declines)}`, `${url}?tab=result#reactions`, c.appointments ? "var(--c-ok)" : "")}
+    ${stat("送信待ち", n(c.queued), "社", `${url}?tab=send`)}
+    ${stat("要対応", n(c.todo), c.todoCaptcha ? `うち画像認証 ${n(c.todoCaptcha)}` : "社", "/todo", c.todo ? "var(--c-ng)" : "")}
+  </div>
+  ${c.paused ? `<p class="small" style="margin:10px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${esc(c.paused)}</p>` : ""}
 </div>`;
 }
 
@@ -94,7 +125,7 @@ ${rows.map((c) => {
   if (home) {
     return `<h1>ホーム</h1>
 ${homeCard(home)}
-${rows.length ? `<h2 id="list" style="display:flex;justify-content:space-between;align-items:center">キャンペーン <a class="btn small" href="/campaigns/new">＋ 新しいキャンペーン</a></h2>${list}` : ""}`;
+<p style="margin:14px 0 0"><a class="btn small" href="/campaigns/new">＋ 新しいキャンペーン</a> <a class="btn small" href="/campaigns">キャンペーンの一覧を見る</a></p>`;
   }
   return `<h1 style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">キャンペーン <a class="btn primary" href="/campaigns/new">＋ 新しいキャンペーン</a></h1>
 <p class="muted">キャンペーン＝「この文面で、この会社たちに、この送り方で送る」という送信のまとまり1件です。商材ごと・ターゲットごとに分けて作ると、反応率を比べられます。AI: ${esc(provider === "none" ? "未設定（テンプレートのみで動きます）" : provider)}</p>
