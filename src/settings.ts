@@ -18,6 +18,7 @@ export const S = {
   dailySummary: "daily_summary",             // 1=1日の終わりにまとめを通知
   notifyReply: "notify_reply",               // 1=アポ・返信が来たらすぐ通知
   listPageSize: "list_page_size",            // 送信一覧の1ページの件数
+  sendPace: "send_pace",                     // フォーム送信の間隔: slow(8〜15秒・既定) | normal(5〜9秒) | fast(3〜5秒)
 } as const;
 
 export type SettingKey = (typeof S)[keyof typeof S];
@@ -35,6 +36,7 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   [S.dailySummary]: "1",
   [S.notifyReply]: "1",
   [S.listPageSize]: "100",
+  [S.sendPace]: "slow",
 };
 
 export function setting(key: SettingKey): string {

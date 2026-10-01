@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
+process.env.FO_NO_NOTIFY = "1"; // テスト中は通知を出さない
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fo-replies-"));
 
 const { getDb } = await import("../src/db.js");

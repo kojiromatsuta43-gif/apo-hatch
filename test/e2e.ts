@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
 
+process.env.FO_NO_NOTIFY = "1"; // テスト中は通知を出さない
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fo-test-"));
 
 const { getDb } = await import("../src/db.js");
@@ -17,6 +18,7 @@ const DEFAULT_TEMPLATE = RAW_TEMPLATE.replace(/【ここに[^】]*】/g, "テス
 
 const received: Record<string, Record<string, string>> = {};
 const simpleHits: Record<string, string>[] = [];
+let ariaChoice = "", hiraKana = "", hira2Kana = "", hira2Posts = 0, backerrKana = "";
 let itadakiHits = 0, cfm1Hits = 0, cfm2Hits = 0, recapHits = 0, modalHits = 0, resetHits = 0, reset2Hits = 0;
 
 const page = (title: string, body: string) => `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>${title}</title></head><body><header><nav><a href="/">ホーム</a> <a href="/company">会社概要</a> <a href="/recruit">採用情報</a> <a href="/simple">お問い合わせ</a></nav></header>${body}<footer>© Test Co.</footer></body></html>`;
@@ -83,6 +85,27 @@ const server = http.createServer(async (req, res) => {
   if (p === "/captcha") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post"><input type="text" name="name" placeholder="お名前"><input type="email" name="email" placeholder="メール"><textarea name="msg"></textarea><div class="g-recaptcha" data-sitekey="x" style="width:304px;height:78px;background:#eee">reCAPTCHA</div><button>送信</button></form>`));
 
   // 5. 入力エラーで弾かれる
+  // ---- v0.3.91 以降に足したパターン（#119〜#122）----
+  // A. 見た目だけの選択肢（Googleフォーム風の role=radio）。必須で、選ばないと「この質問は必須です」
+  if (p === "/aria" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/aria"><p><label>お名前 <input type="text" name="name"></label></p><p><label>メール <input type="email" name="email"></label></p>
+<div role="listitem"><div role="heading">ご用件 *</div><div role="radiogroup" aria-required="true"><div role="radio" aria-checked="false" data-value="採用について" tabindex="0">採用について</div><div role="radio" aria-checked="false" data-value="その他" tabindex="0">その他</div></div></div>
+<input type="hidden" name="choice" id="choice"><p><label>内容 <textarea name="msg"></textarea></label></p><button>送信</button></form>
+<script>document.querySelectorAll('[role=radio]').forEach(r=>r.addEventListener('click',()=>{document.querySelectorAll('[role=radio]').forEach(x=>x.setAttribute('aria-checked','false'));r.setAttribute('aria-checked','true');document.getElementById('choice').value=r.dataset.value;}));</script>`));
+  if (p === "/aria" && req.method === "POST") { const b = await parseBody(req); if (!b.choice) return send(page("お問い合わせ", `<p class="error">この質問は必須です</p><form method="post" action="/aria"><textarea name="msg">${b.msg ?? ""}</textarea><button>送信</button></form>`)); ariaChoice = b.choice; return send(page("完了", "<p>送信が完了しました。</p>")); }
+  // B. ひらがな指定（ラベルからは分からず、送ってみて「ひらがなで入力してください」と言われる）
+  if (p === "/hira" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/hira"><p><label>お名前 <input type="text" name="name"></label></p><p><label>フリガナ <input type="text" name="kana"></label></p><p><label>メール <input type="email" name="email"></label></p><p><label>内容 <textarea name="msg"></textarea></label></p><button>送信</button></form>`));
+  if (p === "/hira" && req.method === "POST") { const b = await parseBody(req); if (!/^[ぁ-ん]+$/.test(b.kana ?? "")) return send(page("お問い合わせ", `<p class="error">フリガナはひらがなで入力してください</p><form method="post" action="/hira"><p><label>お名前 <input type="text" name="name" value="${b.name ?? ""}"></label></p><p><label>フリガナ <input type="text" name="kana" value="${b.kana ?? ""}"></label></p><p><label>メール <input type="email" name="email" value="${b.email ?? ""}"></label></p><p><label>内容 <textarea name="msg">${b.msg ?? ""}</textarea></label></p><button>送信</button></form>`)); hiraKana = b.kana; return send(page("完了", "<p>送信が完了しました。</p>")); }
+  // B'. ラベルに「ひらがな」と書いてある（最初からひらがなで入れる）
+  if (p === "/hira2" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/hira2"><p><label>お名前 <input type="text" name="name"></label></p><p><label>ふりがな（ひらがな） <input type="text" name="kana"></label></p><p><label>メール <input type="email" name="email"></label></p><p><label>内容 <textarea name="msg"></textarea></label></p><button>送信</button></form>`));
+  if (p === "/hira2" && req.method === "POST") { const b = await parseBody(req); hira2Kana = b.kana ?? ""; hira2Posts++; return send(page("完了", "<p>送信が完了しました。</p>")); }
+  // C. 確認画面のあとで「前画面に戻って正しく入力してください」（フリガナにスペースがあると弾く）
+  if (p === "/backerr" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/backerr"><p><label>お名前 <input type="text" name="name"></label></p><p><label>フリガナ <input type="text" name="kana"></label></p><p><label>メール <input type="email" name="email"></label></p><p><label>内容 <textarea name="msg"></textarea></label></p><button>確認する</button></form>`));
+  if (p === "/backerr" && req.method === "POST") { const b = await parseBody(req); const h = (k: string) => `<input type="hidden" name="${k}" value="${(b[k] ?? "").replace(/"/g, "&quot;")}">`; return send(page("確認", `<h1>入力内容のご確認</h1><p>以下の内容で送信します。</p><form method="post" action="/backerr/send">${h("name")}${h("kana")}${h("email")}${h("msg")}<button>送信する</button></form><p><a href="/backerr">戻る</a></p>`)); }
+  if (p === "/backerr/send" && req.method === "POST") { const b = await parseBody(req); if (/[\s　]/.test(b.kana ?? "")) return send(page("エラー", `<p class="error">前画面に戻って正しく入力してください</p><p><a href="/backerr">戻る</a></p>`)); backerrKana = b.kana ?? ""; return send(page("完了", "<p>送信が完了しました。</p>")); }
+  // D. 送信ボタンが有効にならない（8桁の会員番号が必要）。送れないのが正しく、どの欄で止まったかを残せること
+  if (p === "/disabled") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/disabled"><p><label>お名前 <input type="text" name="name"></label></p><p><label>メール <input type="email" name="email"></label></p><p><label>会員番号 <input type="text" name="member" id="member" required pattern="\\d{8}"></label></p><p><label>内容 <textarea name="msg"></textarea></label></p><button id="go" disabled>送信</button></form>
+<script>const m=document.getElementById('member'),g=document.getElementById('go');m.addEventListener('input',()=>{g.disabled=!/^\d{8}$/.test(m.value)});</script>`));
+
   if (p === "/strict" && req.method === "GET") return send(page("お問い合わせ", `<h1>お問い合わせ</h1><form method="post" action="/strict"><p><label>お名前 <input type="text" name="name"></label></p><p><label>メール <input type="email" name="email"></label></p><p><label>ご希望の来店日 <input type="text" name="visit_date"></label></p><p><label>内容 <textarea name="msg"></textarea></label></p><button>送信</button></form>`));
   if (p === "/strict" && req.method === "POST") { const b = await parseBody(req); return send(page("お問い合わせ", `<h1>お問い合わせ</h1><p class="error">ご希望の来店日を入力してください</p><form method="post" action="/strict"><input type="text" name="name" value="${b.name ?? ""}"><textarea name="msg">${b.msg ?? ""}</textarea><button>送信</button></form>`)); }
 
@@ -263,6 +286,11 @@ const rows: import("../src/csv.js").CompanyRow[] = [
   { company_name: "確認ポップアップ社", form_url: `${base}/modal`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "同ページ完了社", form_url: `${base}/reset`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
   { company_name: "お礼だけ社", form_url: `${base}/reset2`, site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "見た目選択社", form_url: `${base}/aria`.replace("127.0.0.1", "e30.localhost"), site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "ひらがな社", form_url: `${base}/hira`.replace("127.0.0.1", "e31.localhost"), site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "ひらがな表記社", form_url: `${base}/hira2`.replace("127.0.0.1", "e32.localhost"), site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "前画面エラー社", form_url: `${base}/backerr`.replace("127.0.0.1", "e33.localhost"), site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
+  { company_name: "ボタン無効社", form_url: `${base}/disabled`.replace("127.0.0.1", "e34.localhost"), site_url: "", email: "", industry: "", sub_industry: "", prefecture: "", representative: "" },
 ];
 // 同一ドメインは1件に寄せられるため、ドメイン重複を避けるために localhost 名を変えて登録
 rows[5].site_url = `http://localhost:${port}/`;
@@ -274,7 +302,7 @@ alias(7, "e7.localhost"); alias(8, "e8.localhost"); alias(9, "e9.localhost"); ro
 
 const summary = importRowsToCampaign(campaignId, rows);
 console.log("import:", summary);
-assert.equal(summary.added, 22);
+assert.equal(summary.added, 27);
 assert.equal(summary.excluded, 1);
 
 const browser = await launchBrowser();
@@ -291,6 +319,24 @@ try {
 }
 
 assert.equal(results["シンプル商事"], "sent");
+// #119 見た目だけの選択肢: 必須の設問に「その他」を選んで送れる
+assert.equal(results["見た目選択社"], "sent");
+assert.equal(ariaChoice, "その他");
+// #120 ひらがな: エラーで言われたら入れ直す／ラベルに書いてあれば最初からひらがな
+assert.equal(results["ひらがな社"], "sent");
+assert.equal(hiraKana, "まつだこうじろう");
+assert.equal(results["ひらがな表記社"], "sent");
+assert.ok(/^[ぁ-ん\s　]+$/.test(hira2Kana), `ひらがなで入っていない: ${hira2Kana}`);
+assert.equal(hira2Posts, 1);
+// #121 「前画面に戻って正しく入力してください」: 戻って直してから送れる
+assert.equal(results["前画面エラー社"], "sent");
+assert.equal(backerrKana, "マツダコウジロウ");
+// #122 送信ボタンが有効にならない: 送れないのが正しく、どの欄で止まったかが残る
+assert.equal(results["ボタン無効社"], "failed");
+{
+  const t = (db.prepare("SELECT result_text FROM form_jobs WHERE company_name='ボタン無効社'").get() as { result_text: string }).result_text;
+  assert.ok(/引っかかっている欄: .*会員番号/.test(t), `止まった欄が残っていない: ${t.slice(0, 200)}`);
+}
 assert.ok(simpleHits.length >= 2);
 received.simple = simpleHits[0];
 assert.equal(received.simple["your-company"], "株式会社ブリッジハッチ");

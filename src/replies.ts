@@ -6,6 +6,8 @@ import { ImapFlow } from "imapflow";
 import type { Readable } from "node:stream";
 import { getDb, FREE_MAIL_DOMAINS, jst, type SenderProfile } from "./db.js";
 import { optOut, emailPause } from "./email.js";
+import { notify } from "./notify.js";
+import { S, settingOn } from "./settings.js";
 
 export type IncomingMail = {
   from: string; // 差出人アドレス
@@ -185,6 +187,10 @@ export function applyIncomingMail(mailbox: string, m: IncomingMail): number | nu
   // 一覧で「どこを見て判定したか」が分かるよう、判定に使った言葉の前後の本文を残す（時刻は東京時間）
   const note = `自動判定（キーワード: ${v.reason}）${jst(at)} 件名「${m.subject.slice(0, 50)}」 本文「…${v.excerpt.slice(0, 90)}…」`.slice(0, 300);
   db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, updated_at=datetime('now') WHERE id=?").run(v.outcome, note, job.id);
+  // アポ・返信が来たら、すぐ知らせる（#134）。受信箱は15分ごとに読んでいるのに、これまでは画面を開くまで分からなかった
+  if (v.outcome !== "declined" && settingOn(S.notifyReply)) {
+    notify(v.outcome === "appointment" ? "アポの返信が来ました" : "返信が来ました", `${job.company_name}: ${v.excerpt.slice(0, 60)}`, `reply:${job.id}:${v.outcome}`);
+  }
   if (v.outcome === "declined") {
     // 手で「断り」を押したときと同じく、今後この会社には送らない（誤判定でも送らない側に倒す）
     if (job.domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(job.domain, `断り・返信から自動判定（${job.company_name}）`);

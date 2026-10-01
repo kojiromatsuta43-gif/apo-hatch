@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+process.env.FO_NO_NOTIFY = "1"; // テスト中は通知を出さない
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fo-unit-"));
 
 const { jpError } = await import("../src/jp.js");

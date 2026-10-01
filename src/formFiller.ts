@@ -298,10 +298,20 @@ function fitMessage(message: string, max: number): string {
 }
 
 /** 収集した項目に値を入れる。戻り値は入力レポート */
-export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean; normalize?: boolean; mode?: "fill" | "type" } = {}): Promise<FillReport> {
+/** カタカナ→ひらがな。「ふりがな（ひらがな）」の欄にカタカナを入れて弾かれる失敗があった（#120） */
+export const kataToHira = (s: string) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+
+export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: FillValues, opts: { requireMessage?: boolean; normalize?: boolean; mode?: "fill" | "type"; kana?: "hira" | "kata" } = {}): Promise<FillReport> {
   const s = v.sender;
   // normalize 時は「カナのスペース除去」などの修正ルールを通す（送信エラー後の埋め直し用）
   const nz = (cat: Category, value: string) => (opts.normalize ? applyFixups(cat, value) : value);
+  // フリガナ欄をひらがなで入れるべきか: ラベルに「ひらがな」とある、またはエラー文で「ひらがなで」と言われた（#120）
+  const kanaFor = (f: FieldInfo, cat: Category, value: string) => {
+    const own = f.sig.split(" || ")[0] + " " + f.placeholder;
+    const wantHira = opts.kana === "hira" || (opts.kana !== "kata" && (/(ひらがな|平仮名)/.test(own) || /^[ぁ-ん\s　]+$/.test(f.placeholder.trim())) && !/(カタカナ|片仮名|カナ)/.test(own.replace(/フリガナ/g, "")));
+    const base = nz(cat, value);
+    return wantHira ? kataToHira(base) : base;
+  };
   const [lastName, firstName] = splitName(s.person);
   const [lastKana, firstKana] = splitName(s.person_kana || "");
   const email = s.email;
@@ -441,9 +451,9 @@ export async function fillFields(target: Page | Frame, fields: FieldInfo[], v: F
         case "name": ok = await setText(f, nz(cat, s.person)); break;
         case "name_last": ok = await setText(f, nz(cat, lastName)); break;
         case "name_first": ok = await setText(f, nz(cat, firstName)); break;
-        case "kana": ok = await setText(f, nz(cat, s.person_kana || s.person)); break;
-        case "kana_last": ok = await setText(f, nz(cat, lastKana || lastName)); break;
-        case "kana_first": ok = await setText(f, nz(cat, firstKana || firstName)); break;
+        case "kana": ok = await setText(f, kanaFor(f, cat, s.person_kana || s.person)); break;
+        case "kana_last": ok = await setText(f, kanaFor(f, cat, lastKana || lastName)); break;
+        case "kana_first": ok = await setText(f, kanaFor(f, cat, firstKana || firstName)); break;
         case "email": case "email_confirm": ok = await setText(f, nz(cat, email)); break;
         case "tel": {
           // 「電話番号が必須の欄にだけ入力する」設定なら任意の欄は空のまま。
@@ -537,6 +547,109 @@ export async function fillRequiredLeftovers(target: Page | Frame, log: string[])
     }
   }
   return filled;
+}
+
+/** Googleフォームなどの「見た目だけの選択肢」（role=radio / role=checkbox）を選ぶ（#119）。
+ *  これらは input 要素ではないため、これまで存在に気づけず「この質問は必須です」で弾かれていた。
+ *  requiredOnly=true のときは必須の設問だけ、false のときは未選択の設問すべてを対象にする（エラー後の埋め直し用） */
+export async function fillAriaChoices(target: Page | Frame, log: string[], opts: { requiredOnly?: boolean } = {}): Promise<number> {
+  type G = { g: number; kind: "radio" | "checkbox"; label: string; options: { i: number; text: string }[] };
+  let groups: G[] = [];
+  try {
+    groups = await target.evaluate((requiredOnly) => {
+      const out: { g: number; kind: "radio" | "checkbox"; label: string; options: { i: number; text: string }[] }[] = [];
+      const vis = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const isRequired = (box: Element) => {
+        const item = box.closest('[role="listitem"], fieldset, .question, [data-required]') ?? box;
+        return box.getAttribute("aria-required") === "true" || item.querySelector('[aria-required="true"]') !== null
+          || /(\*|＊|必須)/.test(((item.querySelector('[role="heading"], legend, label') as HTMLElement | null)?.innerText ?? "").slice(0, 80));
+      };
+      const labelOf = (box: Element) => {
+        const item = box.closest('[role="listitem"], fieldset, .question') ?? box;
+        return (((item.querySelector('[role="heading"], legend') as HTMLElement | null)?.innerText) || box.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim().slice(0, 40);
+      };
+      let gi = 0;
+      document.querySelectorAll('[role="radiogroup"]').forEach((box) => {
+        const opts = Array.from(box.querySelectorAll('[role="radio"]')).filter(vis);
+        if (!opts.length || opts.some((o) => o.getAttribute("aria-checked") === "true")) return;
+        if (requiredOnly && !isRequired(box)) return;
+        const g = gi++;
+        out.push({ g, kind: "radio", label: labelOf(box), options: opts.map((o, i) => { o.setAttribute("data-fo-aria", `${g}-${i}`); return { i, text: (o.getAttribute("aria-label") || (o as HTMLElement).innerText || o.getAttribute("data-value") || "").trim() }; }) });
+      });
+      // チェックボックスの設問（同じ listitem の中の role=checkbox をひとまとまりとみなす）
+      const seen = new Set<Element>();
+      document.querySelectorAll('[role="checkbox"]').forEach((cb) => {
+        const box = cb.closest('[role="list"], [role="group"], [role="listitem"], fieldset');
+        if (!box || seen.has(box)) return;
+        seen.add(box);
+        const opts = Array.from(box.querySelectorAll('[role="checkbox"]')).filter(vis);
+        if (!opts.length || opts.some((o) => o.getAttribute("aria-checked") === "true")) return;
+        if (!isRequired(box)) return; // チェックボックスは必須の設問だけ（任意のものに勝手にチェックしない）
+        const g = gi++;
+        out.push({ g, kind: "checkbox", label: labelOf(box), options: opts.map((o, i) => { o.setAttribute("data-fo-aria", `${g}-${i}`); return { i, text: (o.getAttribute("aria-label") || (o as HTMLElement).innerText || "").trim() }; }) });
+      });
+      return out;
+    }, opts.requiredOnly !== false);
+  } catch { return 0; }
+  let filled = 0;
+  for (const g of groups) {
+    const pick = pickOption(g.options.map((o) => ({ f: o, text: o.text })), "type");
+    if (!pick) continue;
+    try {
+      await target.locator(`[data-fo-aria="${g.g}-${pick.f.i}"]`).first().click({ timeout: 3000 });
+      filled++;
+      log.push(`選択式の設問に回答: 「${g.label || "（見出しなし）"}」→「${pick.text.slice(0, 20)}」`);
+    } catch { /* 押せなくても他の設問は続ける */ }
+  }
+  return filled;
+}
+
+/** 入力チェックで引っかかっている欄の名前を集める（#122）。
+ *  「送信ボタンが有効になりません」だけでは、人が直すときにどの欄を見ればよいか分からなかった */
+export async function describeInvalidFields(target: Page | Frame): Promise<string[]> {
+  try {
+    return await target.evaluate(() => {
+      const out: string[] = [];
+      const vis = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const label = (el: Element) => {
+        const id = el.getAttribute("id");
+        const byFor = id ? (document.querySelector(`label[for="${CSS.escape(id)}"]`) as HTMLElement | null)?.innerText : "";
+        const wrap = (el.closest("label") as HTMLElement | null)?.innerText;
+        const row = (el.closest("tr, dl, .form-group, .field, p, li") as HTMLElement | null)?.innerText;
+        return (byFor || wrap || el.getAttribute("aria-label") || el.getAttribute("placeholder") || (row ?? "").split("\n")[0] || el.getAttribute("name") || "").replace(/\s+/g, " ").trim().slice(0, 24);
+      };
+      const cands = Array.from(document.querySelectorAll('input:not([type=hidden]):not([type=submit]):not([type=button]), select, textarea')).filter(vis);
+      for (const el of cands) {
+        const f = el as HTMLInputElement;
+        const invalid = el.getAttribute("aria-invalid") === "true" || (typeof f.checkValidity === "function" && !f.checkValidity())
+          || ((f.required || el.getAttribute("aria-required") === "true") && !(f.type === "checkbox" || f.type === "radio" ? f.checked : String(f.value ?? "").trim()));
+        if (!invalid) continue;
+        const l = label(el);
+        if (l && !out.includes(l)) out.push(l);
+        if (out.length >= 5) break;
+      }
+      return out;
+    });
+  } catch { return []; }
+}
+
+/** 確認画面などの「戻る」を押す（#121）。「前画面に戻って正しく入力してください」と言われたときに使う */
+export async function clickBackButton(target: Page | Frame, page: Page): Promise<boolean> {
+  try {
+    const idx = await target.evaluate(() => {
+      const vis = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const els = Array.from(document.querySelectorAll('button, input[type=button], input[type=submit], a, [role=button]')).filter(vis);
+      const hit = els.find((el) => /^(前(の)?(画面|ページ)?(に|へ)?)?(戻る|もどる|修正(する)?|入力(画面)?(に|へ)戻る|back)$/i.test((((el as HTMLElement).innerText || (el as HTMLInputElement).value || "")).replace(/[\s<>＜＞«»←]/g, "")));
+      if (!hit) return false;
+      hit.setAttribute("data-fo-back", "1");
+      return true;
+    });
+    if (!idx) { await page.goBack({ timeout: 8000 }).catch(() => {}); return true; }
+    await target.locator('[data-fo-back="1"]').first().click({ timeout: 4000 });
+    await page.waitForLoadState("domcontentloaded", { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    return true;
+  } catch { return false; }
 }
 
 /** チェックボックス／ラジオを確実にONにする（カスタムデザインで本体が隠れている場合はラベルクリック→JS） */

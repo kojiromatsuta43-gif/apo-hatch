@@ -15,6 +15,7 @@ export function notifyEnabled(): boolean {
 export function notify(title: string, body: string, key = title): void {
   console.log(`[apo-hatch] お知らせ: ${title} — ${body}`);
   if (!notifyEnabled()) return;
+  if (process.env.FO_NO_NOTIFY === "1") return; // 自動テスト中は、利用者の画面に通知を出さない
   const now = Date.now();
   if (now - (lastSent.get(key) ?? 0) < 60 * 60_000) return;
   lastSent.set(key, now);

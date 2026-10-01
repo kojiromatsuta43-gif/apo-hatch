@@ -464,7 +464,23 @@ app.get("/campaigns/:id", (req, res) => {
   const c = loadCampaignFull(req, id);
   if (!c) return notFound(req, res);
   const { statusFilter, qFilter, outcomeFilter, impFilter, sortKey, orderBy, sql: fSql, args: fArgs } = jobFilter(req.query as Record<string, unknown>);
-  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND ${fSql} ORDER BY ${orderBy} LIMIT 200`).all(id, ...fArgs) as Job[];
+  // ページ送り（#103）。以前は200件で打ち切りで、4,000社の中から探せなかった
+  const pageSize = [50, 100, 200].includes(Number(req.query.size)) ? Number(req.query.size) : settingNum(S.listPageSize, 50, 200);
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const jobs = db.prepare(`SELECT * FROM form_jobs WHERE campaign_id=? AND ${fSql} ORDER BY ${orderBy} LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`).all(id, ...fArgs) as Job[];
+  const rowTotal = (db.prepare(`SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND ${fSql}`).get(id, ...fArgs) as { n: number }).n;
+  // 画面の数字は「社（同じ会社は1つ）」でそろえる（#125）。以前は「全件4,090社」と「一覧4,125件」が並んでいた
+  const companyTotal = (db.prepare(`SELECT COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${fSql}`).get(id, ...fArgs) as { n: number }).n;
+  // どのタブを開くか（#98）。指定が無ければ、状況に合うタブを選ぶ
+  const q = req.query as Record<string, unknown>;
+  const hasListQuery = ["status", "outcome", "q", "imp", "sort", "page", "size"].some((k) => typeof q[k] === "string" && q[k] !== "");
+  const hasJobs = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0").get(id) as { n: number }).n > 0;
+  const queuedAny = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued'").get(id) as { n: number }).n > 0;
+  const tabParam = String(q.tab ?? "");
+  const tab: "prep" | "send" | "result" = tabParam === "prep" || tabParam === "send" || tabParam === "result" ? tabParam
+    : hasListQuery ? "result"
+    : previews.has(id) || lastImports.has(id) || !hasJobs || isScanning(id) ? "prep"
+    : isRunning(id) || queuedAny ? "send" : "result";
   // 絞り込み条件に一致する件数（一覧は200件までしか出ないので、全件の数と送信済みの数を別に数える）
   const matched = db.prepare(`SELECT COUNT(*) n, COALESCE(SUM(status='sent'),0) sent FROM form_jobs WHERE campaign_id=? AND is_test=0 AND ${fSql}`).get(id, ...fArgs) as { n: number; sent: number };
   const counts: Record<string, number> = {};
@@ -511,7 +527,7 @@ app.get("/campaigns/:id", (req, res) => {
       ? `本日の上限に達しています。残り ${queuedNow}社は翌営業日の送信時間帯に続きます（1社あたり約${Math.round(perJob)}秒）`
       : `残り ${queuedNow}社 ／ このペース（1社あたり約${Math.round(perJob)}秒）だと、きょう送れる ${doable}社で約${minutes}分（${end.slice(11, 16)}ごろ）${doable < queuedNow ? `。残りの ${queuedNow - doable}社は翌営業日に続きます` : ""}`;
   }
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, ab, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, ab, tab, page, pageSize, total: rowTotal, companyTotal, warmup: channelMode(c.channel) !== "form_only" ? { sent: sentTodayBySender(c.sender_id), ...effectiveEmailLimit(c, c.sender_id) } : null, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -813,7 +829,13 @@ app.get("/campaigns/:id/export.csv", (req, res) => {
   if (!ownedCampaign(req, id)) return forbidden(req, res);
   const jobs = db.prepare("SELECT * FROM form_jobs WHERE campaign_id=? AND is_test=0 ORDER BY id").all(id) as Job[];
   const q = (s: unknown) => `"${String(s ?? "").replace(/"/g, '""')}"`;
-  const lines = ["企業名,送り方,送信先,業種,状態,結果,反応,メモ,送信日時", ...jobs.map((j) => [j.company_name, j.channel === "email" ? "メール" : "フォーム", j.channel === "email" ? j.email : j.form_url, j.sub_industry || j.industry, STATUS_LABEL[j.status] ?? j.status, (j.result_text || "").split("\n")[0], OUTCOME_LABEL[j.outcome] ?? "", j.outcome_note, jst(j.sent_at)].map(q).join(","))];
+  // 社内の管理表にそのまま貼れるように、反応の種類・判定の根拠・A/B・送信アカウント・都道府県も出す（#127）
+  const senderLabel = new Map((db.prepare("SELECT id, label FROM sender_profiles").all() as { id: number; label: string }[]).map((r) => [r.id, r.label]));
+  const said = (note: string) => (note.match(/本文「…?([\s\S]*?)…?」/)?.[1] ?? "").replace(/\s+/g, " ").trim();
+  const lines = ["企業名,企業URL,送り方,送信先,業種,都道府県,状態,結果,反応,反応の判定,相手の言葉,メモ,文面(A/B),送信アカウント,試行回数,送信日時,更新日時",
+    ...jobs.map((j) => [j.company_name, j.site_url, j.channel === "email" ? "メール" : "フォーム", j.channel === "email" ? j.email : j.form_url, j.sub_industry || j.industry, j.prefecture,
+      STATUS_LABEL[j.status] ?? j.status, (j.result_text || "").split("\n")[0], OUTCOME_LABEL[j.outcome] ?? "", j.outcome ? (j.outcome_note.startsWith("自動判定") ? "自動" : "手動") : "", said(j.outcome_note), j.outcome_note,
+      j.variant, senderLabel.get((j as Job & { sent_by_sender?: number }).sent_by_sender ?? -1) ?? "", j.attempts, jst(j.sent_at), jst(j.updated_at)].map(q).join(","))];
   res.setHeader("content-type", "text/csv; charset=utf-8");
   res.setHeader("content-disposition", `attachment; filename=campaign-${id}.csv`);
   res.send("﻿" + lines.join("\n"));
@@ -1507,6 +1529,13 @@ app.post("/settings/notify-test", (req, res) => {
   redirectWith(res, "/settings", "テスト通知を送りました（画面の右上などに出ます。出ない場合はOS側の通知設定をご確認ください）");
 });
 
+// 一覧と要対応の設定（#103 #115）
+app.post("/settings/lists", requireAdmin, (req, res) => {
+  saveSettingValue(S.todoHideDays, Math.min(365, Math.max(1, Math.round(Number(req.body.todo_hide_days) || 30))));
+  saveSettingValue(S.listPageSize, [50, 100, 200].includes(Number(req.body.list_page_size)) ? Number(req.body.list_page_size) : 100);
+  saveSettingValue(S.sendPace, ["slow", "normal", "fast"].includes(String(req.body.send_pace)) ? String(req.body.send_pace) : "slow");
+  redirectWith(res, "/settings", "保存しました");
+});
 // キャラクターの表示（#135）
 app.post("/settings/effects", requireAdmin, (req, res) => {
   saveSettingValue(S.effectsEnabled, req.body.effects_enabled === "1");
@@ -1928,7 +1957,7 @@ app.get("/settings", requireAdmin, (req, res) => {
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
-  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting(S.gameEnabled, "0") === "1", notifyEnabled(), { usage: aiUsageThisMonth(), limit: aiMonthlyLimit() }, { status: licenseStatus(), key: getSetting(S.licenseKey, ""), enforce: licenseEnforced() }, { effects: settingOn(S.effectsEnabled), notifyReply: settingOn(S.notifyReply), dailySummary: settingOn(S.dailySummary) }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting(S.gameEnabled, "0") === "1", notifyEnabled(), { usage: aiUsageThisMonth(), limit: aiMonthlyLimit() }, { status: licenseStatus(), key: getSetting(S.licenseKey, ""), enforce: licenseEnforced() }, { effects: settingOn(S.effectsEnabled), notifyReply: settingOn(S.notifyReply), dailySummary: settingOn(S.dailySummary), todoHideDays: settingNum(S.todoHideDays, 1, 365), listPageSize: settingNum(S.listPageSize, 50, 200), sendPace: setting(S.sendPace) }), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -2077,6 +2106,29 @@ async function autoUpdateIfEnabled() {
 }
 setTimeout(() => { autoUpdateIfEnabled().catch(() => {}); }, 3 * 60_000);
 setInterval(() => { autoUpdateIfEnabled().catch(() => {}); }, 6 * 60 * 60_000);
+
+// ---- 1日の終わりのまとめ（#133）----
+// 送信時間帯が終わったら、その日の結果を1回だけ知らせる。毎日画面を見に来なくても状況が分かるように
+function dailySummaryIfDue() {
+  if (!settingOn(S.dailySummary)) return;
+  const nowJ = new Date(Date.now() + 9 * 3600_000);
+  const today = nowJ.toISOString().slice(0, 10);
+  if (getSetting("daily_summary_last", "") === today) return;
+  const end = (db.prepare("SELECT MAX(send_window_end) e FROM form_campaigns WHERE status IN ('running','paused','done')").get() as { e: number | null }).e ?? 18;
+  if (nowJ.getUTCHours() < end) return;
+  const one = (sql: string) => (db.prepare(sql).get(today) as { n: number }).n;
+  const form = one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND status='sent' AND channel='form' AND date(sent_at,'+9 hours')=?");
+  const mail = one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND status='sent' AND channel='email' AND date(sent_at,'+9 hours')=?");
+  saveSetting("daily_summary_last", today);
+  if (form + mail === 0) return; // 何も送っていない日は知らせない
+  const appo = one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND outcome='appointment' AND date(updated_at,'+9 hours')=?");
+  const reply = one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND outcome='replied' AND date(updated_at,'+9 hours')=?");
+  const todo = one("SELECT COUNT(*) n FROM form_jobs WHERE is_test=0 AND status IN ('failed','skip_captcha') AND date(updated_at,'+9 hours')=?");
+  const msg = `送信 ${form + mail}件（フォーム${form}・メール${mail}）／アポ ${appo}・返信 ${reply}／要対応 +${todo}`;
+  notify("今日のまとめ", msg, `summary:${today}`);
+  logInfo("summary", `今日のまとめ: ${msg}`);
+}
+setInterval(() => { try { dailySummaryIfDue(); } catch (e) { logError("summary", jpError(e)); } }, 5 * 60_000);
 
 // ---- 想定外のエラーもログに残す（黒い画面を閉じていても後から追えるように）----
 process.on("uncaughtException", (e) => {

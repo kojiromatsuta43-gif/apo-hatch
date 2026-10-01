@@ -188,6 +188,9 @@ async function safeGoto(page: Page, url: string): Promise<boolean> {
   try {
     const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
     if (res && res.status() >= 400 && !(await waitOutChallenge(page, url))) return false;
+    // フォームがもう見えているなら、通信が落ち着くのを待たずに進む（#123）。
+    // 以前は必ず最大6秒待っていて、事前チェックで見つけたURLを直接開く場合でも時間がかかっていた
+    if (await scanFrames(page)) { await page.waitForTimeout(400); return true; }
     // JSで描画されるフォーム（SPA・埋め込み）を待つ
     await page.waitForLoadState("networkidle", { timeout: 6000 }).catch(() => {});
     await page.waitForTimeout(500);

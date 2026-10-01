@@ -7,6 +7,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "fo-smoke-"));
+process.env.FO_NO_NOTIFY = "1"; // テスト中は通知を出さない
 process.env.DATA_DIR = DATA_DIR;
 const PORT = 39000 + Math.floor(Math.random() * 900);
 const BASE = `http://127.0.0.1:${PORT}`;

@@ -6,7 +6,7 @@ import os from "node:os";
 import { SCREENSHOT_DIR, type SenderProfile, type JobStatus } from "./db.js";
 import { detectRefusal, CAPTCHA_CHECK_SCRIPT, CHALLENGE_RE } from "./detect.js";
 import { findContactForm, detectFormService } from "./formFinder.js";
-import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, fillRequiredLeftovers, type PendingQuestion, type FieldInfo } from "./formFiller.js";
+import { collectFields, fillFields, clickNextButton, judgeOutcome, classify, hasHiddenTextarea, pageText, collectUnknownQuestions, toPendingQuestions, aiAnswerUnknownFields, allSubmitButtonsDisabled, fillRequiredLeftovers, fillAriaChoices, describeInvalidFields, clickBackButton, type PendingQuestion, type FieldInfo } from "./formFiller.js";
 import { extractLegalName } from "./company.js";
 import { llm } from "./message.js";
 
@@ -70,9 +70,18 @@ export async function launchBrowser(): Promise<Browser> {
   });
 }
 
+/** ページの中で実行する関数（page.evaluate）のための補助。
+ *  このアプリは tsx で動かしており、tsx は関数に名前を付けるための `__name(...)` という呼び出しをコードに差し込む。
+ *  ところがページの中にはその `__name` が無いため、内側に名前付きの関数を持つ処理は
+ *  「__name is not defined」で失敗し、しかも多くは catch で握りつぶされて黙って空振りしていた
+ *  （送信後の「赤字のエラー表示を拾う」処理がこれで効いていなかった）。
+ *  全ページ・全フレームに、何もしない `__name` を先に置いておく。 */
+const NAME_SHIM = "globalThis.__name = globalThis.__name || function (f) { return f; };";
+
 export async function newContext(browser: Browser): Promise<BrowserContext> {
   const ctx = await browser.newContext({ userAgent: UA, locale: "ja-JP", viewport: { width: 1280, height: 900 }, ignoreHTTPSErrors: true });
   ctx.setDefaultTimeout(15000);
+  await ctx.addInitScript(NAME_SHIM);
   return ctx;
 }
 
@@ -87,6 +96,7 @@ export async function openAndFill(
   const close = async () => { await browser.close().catch(() => {}); };
   const ctx = await browser.newContext({ userAgent: UA, locale: "ja-JP", viewport: null, ignoreHTTPSErrors: true });
   ctx.setDefaultTimeout(15000);
+  await ctx.addInitScript(NAME_SHIM);
   const page = await ctx.newPage();
   try {
     const formPage = await findContactForm(page, input.formUrl, input.siteUrl);
@@ -188,6 +198,8 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     if (report.unfilled.length) log.push(`unfilled: ${report.unfilled.join(",")}`);
     log.push(...report.log);
     if (!report.hasMessage && !(service && report.filled.length >= 3)) return done("failed", "本文欄への入力に失敗");
+    // Googleフォームなどの「見た目だけの選択肢」のうち、必須の設問に回答しておく（#119）
+    await fillAriaChoices(target, log, { requiredOnly: true });
 
     // 想定外の質問（判定できないテキスト欄・未チェックの選択肢グループ）への対応。
     // 優先順位は「要確認画面で利用者が選んだ回答」→「AI（全文AIモードのとき）」。
@@ -223,7 +235,15 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       log.push(`入れ直し: ${rt.filled.join(",") || "なし"}`);
       await page.waitForTimeout(800);
       if (await allSubmitButtonsDisabled(target)) {
-        return done("failed", "フォームの入力チェックを通過できず、送信ボタンが有効になりません\nスクリーンショットで未入力・エラー表示になっている欄を確認してください");
+        // 見た目だけの選択肢や、空のままの必須項目が原因のことが多いので、1回だけ補ってから見直す
+        const a1 = await fillAriaChoices(target, log, { requiredOnly: false });
+        const a2 = await fillRequiredLeftovers(target, log);
+        if (a1 || a2) await page.waitForTimeout(600);
+        if (await allSubmitButtonsDisabled(target)) {
+          // どの欄で止まっているかを残す（#122）。人が直すときに、どこを見ればよいか分かるように
+          const bad = await describeInvalidFields(target);
+          return done("failed", `フォームの入力チェックを通過できず、送信ボタンが有効になりません${bad.length ? `\n引っかかっている欄: ${bad.join(" / ")}` : ""}\nスクリーンショットで未入力・エラー表示になっている欄を確認してください`);
+        }
       }
     }
 
@@ -232,7 +252,8 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
     const fieldCountBefore = fields.length;
     const urlBefore = page.url(); // 送信ボタンを押す前のURL（ページが切り替わったかの判定に使う）
     let refilled = false; // 入力エラー後の埋め直しは1回だけ
-    for (let round = 0; round < 3; round++) {
+    // 5回まで: 確認→送信→（エラーなら戻って入れ直し）→確認→送信、の流れに足りる回数（#121）
+    for (let round = 0; round < 5; round++) {
       const kind = await clickNextButton(target, page, log);
       if (kind === "none") return done("failed", "送信ボタンが見つからない");
       // 確認画面で CAPTCHA が出る場合
@@ -252,17 +273,26 @@ export async function submitToCompany(browser: Browser, input: SubmitInput): Pro
       }
       if (outcome.status === "failed") {
         // バリデーションエラーなら、カナのスペース除去などの修正ルールを通して集め直し、埋め直して1回だけ再送する
-        if (!refilled && round < 2 && /入力エラー/.test(outcome.detail)) {
+        if (!refilled && round < 3 && /入力エラー/.test(outcome.detail)) {
           refilled = true;
+          // 「前画面に戻って正しく入力してください」と言われたら、戻ってから入れ直す（#121）
+          if (/(前(の)?(画面|ページ)|入力画面)(に|へ)?戻/.test(outcome.detail)) {
+            const went = await clickBackButton(target, page);
+            log.push(`前の画面に戻って入れ直し: ${went ? "戻りました" : "戻れませんでした"}`);
+          }
+          // フリガナの文字種を指定された場合は、それに合わせる（#120）
+          const kana = /ひらがな|平仮名/.test(outcome.detail) ? "hira" as const : /カタカナ|片仮名|全角カナ/.test(outcome.detail) ? "kata" as const : undefined;
           const again = await collectFields(target);
           // どの必須項目が空のまま弾かれたか（次のエラー表示に併記する）
           const emptyRequired = again.filter((f) => f.required && classify(f) !== "ignore" && !f.checked);
           if (again.length) {
-            const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message }, { normalize: true });
-            log.push(`エラー後の自動修正・埋め直し: ${r3.filled.join(",") || "なし"}`);
+            const r3 = await fillFields(target, again, { sender: input.sender, subject: input.subject, message: input.message }, { normalize: true, kana });
+            log.push(`エラー後の自動修正・埋め直し: ${r3.filled.join(",") || "なし"}${kana ? `（フリガナは${kana === "hira" ? "ひらがな" : "カタカナ"}で入力）` : ""}`);
             // それでも空のまま残っている必須項目（判定できなかった質問など）を安全な値で埋める（#6）
             const extra = await fillRequiredLeftovers(target, log);
-            if (r3.filled.length || extra) continue;
+            // 見た目だけの選択肢（Googleフォーム等）で未選択のものに回答する（#119）
+            const aria = await fillAriaChoices(target, log, { requiredOnly: false });
+            if (r3.filled.length || extra || aria) continue;
           }
           if (emptyRequired.length) {
             const names = emptyRequired.map((f) => (f.sig.split(" || ")[0] || f.name || "項目").slice(0, 16)).slice(0, 4);
