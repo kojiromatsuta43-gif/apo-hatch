@@ -87,8 +87,49 @@ export function aiStatusLabel(): string {
   return c.provider === "none" ? "none" : `${c.provider} / ${c.model}`;
 }
 
+// ---- AIの利用量と上限（#66）----
+// 「AIを使うといくらかかるか読めない」のが不安で使われない。使った量を記録し、月の上限を超えたら自動でテンプレに戻す。
+// 料金は1Mトークンあたりの目安（円）。為替や改定で変わるため「目安」として表示する
+const PRICE_JPY: Record<string, { in: number; out: number }> = {
+  "claude-haiku-4-5": { in: 160, out: 800 },
+  "claude-sonnet-5": { in: 480, out: 2400 },
+  "gemini-3.6-flash-lite": { in: 20, out: 60 },
+  "gemini-3.6-flash": { in: 50, out: 150 },
+};
+export type AiUsage = { calls: number; input: number; output: number; jpy: number };
+const usageKey = () => `ai_usage:${new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 7)}`;
+
+export function aiUsageThisMonth(): AiUsage {
+  try {
+    const row = getDb().prepare("SELECT value FROM settings WHERE key=?").get(usageKey()) as { value: string } | undefined;
+    const u = row ? (JSON.parse(row.value) as AiUsage) : null;
+    return u ?? { calls: 0, input: 0, output: 0, jpy: 0 };
+  } catch { return { calls: 0, input: 0, output: 0, jpy: 0 }; }
+}
+export function aiMonthlyLimit(): number {
+  try {
+    const row = getDb().prepare("SELECT value FROM settings WHERE key='ai_monthly_limit_jpy'").get() as { value: string } | undefined;
+    return Math.max(0, Number(row?.value ?? 0) || 0);
+  } catch { return 0; }
+}
+/** 月の上限を超えているか（超えていたらAIを使わず、テンプレで送る） */
+export function aiOverBudget(): boolean {
+  const limit = aiMonthlyLimit();
+  return limit > 0 && aiUsageThisMonth().jpy >= limit;
+}
+function recordUsage(model: string, input: number, output: number) {
+  try {
+    const p = PRICE_JPY[model] ?? { in: 200, out: 1000 };
+    const add = (input / 1_000_000) * p.in + (output / 1_000_000) * p.out;
+    const u = aiUsageThisMonth();
+    const next: AiUsage = { calls: u.calls + 1, input: u.input + input, output: u.output + output, jpy: Math.round((u.jpy + add) * 100) / 100 };
+    getDb().prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(usageKey(), JSON.stringify(next));
+  } catch { /* 記録に失敗しても送信は続ける */ }
+}
+
 export async function llm(system: string, user: string, maxTokens = 600): Promise<string> {
   const c = activeAiConfig();
+  if (aiOverBudget()) throw new Error(`今月のAI利用の上限（${aiMonthlyLimit()}円）に達したため、AIは使いません（テンプレートで送ります）。設定画面で上限を変更できます`);
   if (c.provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -96,7 +137,8 @@ export async function llm(system: string, user: string, maxTokens = 600): Promis
       body: JSON.stringify({ model: c.model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] }),
     });
     if (!res.ok) throw new Error(`anthropic ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const j = (await res.json()) as { content: { type: string; text?: string }[] };
+    const j = (await res.json()) as { content: { type: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } };
+    recordUsage(c.model, j.usage?.input_tokens ?? 0, j.usage?.output_tokens ?? 0);
     return j.content.filter((c2) => c2.type === "text").map((c2) => c2.text ?? "").join("").trim();
   }
   if (c.provider === "gemini") {
@@ -106,7 +148,8 @@ export async function llm(system: string, user: string, maxTokens = 600): Promis
       body: JSON.stringify({ systemInstruction: { parts: [{ text: system }] }, contents: [{ role: "user", parts: [{ text: user }] }], generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 } }),
     });
     if (!res.ok) throw new Error(`gemini ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const j = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number } };
+    recordUsage(c.model, j.usageMetadata?.promptTokenCount ?? 0, j.usageMetadata?.candidatesTokenCount ?? 0);
     return (j.candidates?.[0]?.content?.parts ?? []).map((x) => x.text ?? "").join("").trim();
   }
   throw new Error("AIのAPIキーが設定されていません（設定画面から登録できます）");
@@ -182,28 +225,43 @@ ${campaign.ai_instruction ? `【追加指示】\n${campaign.ai_instruction}` : "
 }
 
 /** キャンペーンのモードに応じて最終文面を作る */
-export async function composeMessage(job: Job, sender: SenderProfile, campaign: Campaign, site: { title: string; text: string }): Promise<{ subject: string; message: string; aiUsed: boolean }> {
+/** A/Bテスト（#64）: 会社ごとに A と B を交互に割り当てる（ID の偶数・奇数。毎回同じ結果になる） */
+export function variantFor(job: Pick<Job, "id">, campaign: Campaign): "A" | "B" {
+  if (!campaign.ab_enabled || !String(campaign.template_b ?? "").trim()) return "A";
+  return job.id % 2 === 0 ? "A" : "B";
+}
+
+/** 件名のローテーション（#65）: 同じ件名を大量に送ると迷惑メール判定されやすいので、登録した複数案を順番に使う */
+export function subjectFor(job: Pick<Job, "id">, campaign: Campaign, variant: "A" | "B"): string {
+  if (variant === "B" && String(campaign.subject_b ?? "").trim()) return campaign.subject_b.trim();
+  const list = [campaign.subject_text || "サービスのご案内", ...String(campaign.subject_alts ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean)];
+  return list[job.id % list.length];
+}
+
+export async function composeMessage(job: Job, sender: SenderProfile, campaign: Campaign, site: { title: string; text: string }): Promise<{ subject: string; message: string; aiUsed: boolean; variant: "A" | "B" }> {
   const vars = buildVars(job, sender);
   vars["資料リンク"] = campaign.material_url || "";
-  const subject = renderTemplate(campaign.subject_text || "サービスのご案内", vars);
+  const variant = variantFor(job, campaign);
+  const template = variant === "B" ? campaign.template_b : campaign.template_text;
+  const subject = renderTemplate(subjectFor(job, campaign, variant), vars);
   let message: string;
   let aiUsed = false;
-  const canAi = activeProvider() !== "none";
+  const canAi = activeProvider() !== "none" && !aiOverBudget();
 
   if (campaign.mode === "ai" && canAi) {
     message = await generateFullMessage(job, sender, campaign, site);
     aiUsed = true;
-  } else if (campaign.mode === "hybrid" && canAi && campaign.template_text.includes("{{AI冒頭}}")) {
+  } else if (campaign.mode === "hybrid" && canAi && template.includes("{{AI冒頭}}")) {
     let opening = "";
     try { opening = await generateOpening(job, sender, campaign, site); } catch { opening = ""; }
     const weak = opening.replace(/\s/g, "").length < 25 || /^(申し訳|すみません|I |As an AI)/.test(opening) || /\{\{/.test(opening);
     if (weak) opening = vars.業種 ? `${vars.業種}の事業を展開されている貴社に、ぜひご案内したいサービスがありご連絡いたしました。` : "貴社のホームページを拝見し、ぜひご案内したいサービスがありご連絡いたしました。";
     else aiUsed = true;
-    message = renderTemplate(campaign.template_text, { ...vars, AI冒頭: opening });
+    message = renderTemplate(template, { ...vars, AI冒頭: opening });
   } else {
-    // テンプレのみ（AI不可の場合のフォールバックも兼ねる）
+    // テンプレのみ（AI不可・AIの上限超過の場合のフォールバックも兼ねる）
     const fallbackOpening = vars.業種 ? `${vars.業種}の事業を展開されている貴社に、ぜひご案内したいサービスがありご連絡いたしました。` : "貴社のホームページを拝見し、ぜひご案内したいサービスがありご連絡いたしました。";
-    message = renderTemplate(campaign.template_text, { ...vars, AI冒頭: fallbackOpening });
+    message = renderTemplate(template, { ...vars, AI冒頭: fallbackOpening });
   }
   message = message.trim();
   // フォーム送信では資料を添付できないので、公開リンクを本文末尾に載せる（メールは添付ファイルで送るため載せない）。
@@ -213,7 +271,7 @@ export async function composeMessage(job: Job, sender: SenderProfile, campaign: 
   if (linkInBody && campaign.material_url && !message.includes(campaign.material_url)) {
     message += `\n\n▼サービス資料はこちらからご覧いただけます\n${campaign.material_url}`;
   }
-  return { subject, message, aiUsed };
+  return { subject, message, aiUsed, variant };
 }
 
 // ---- NGワード ----

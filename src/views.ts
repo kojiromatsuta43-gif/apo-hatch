@@ -1,6 +1,7 @@
 // 画面のHTML。BRIDGE HATCH の配色（honey-400 #FFC62E / hive-900 #1C1710）に合わせてある。
 import { STATUS_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, channelMode, jst, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { AI_MODELS, type Lint } from "./message.js";
+import { TEMPLATE_LIBRARY } from "./templates.js";
 
 export const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
@@ -300,20 +301,35 @@ ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a
 <label>本文テンプレート</label>
 <p class="muted">使える差し込み: {{会社名}} {{代表者}}（無ければ「ご担当者様」） {{業種}} {{都道府県}} {{自社名}} {{担当者}} {{自社メール}} {{自社電話}} {{自社URL}} {{AI冒頭}} {{資料リンク}}</p>
 <div style="margin-bottom:6px"><label class="inline small">例文を挿入:
-<select id="tplpreset" style="width:auto;padding:4px 8px"><option value="">選ぶと本文欄に入ります…</option><option value="standard">標準（サービス案内）</option><option value="hybrid">ハイブリッド用（冒頭AI＋本文）</option><option value="short">短め（要点だけ）</option></select></label>
-<span class="muted small">※ 今の本文がある場合は置き換わります</span></div>
+<select id="tplpreset" style="width:auto;padding:4px 8px;max-width:360px"><option value="">業種・目的から選ぶと、件名と本文に入ります…</option>${TEMPLATE_LIBRARY.map((t) => `<option value="${esc(t.id)}">${esc(t.label)}</option>`).join("")}</select></label>
+<span class="muted small">※ 今の本文がある場合は置き換わります。【 】の中だけ自分の言葉に書き換えてください</span>
+<div id="tplnote" class="muted small" style="margin:4px 0 6px"></div></div>
 <textarea name="template_text" id="tpltext" style="min-height:320px">${d("template_text")}</textarea>
 <script>
 (() => {
-  const T = {
-    standard: "{{会社名}}\\n{{代表者}}\\n\\nはじめてご連絡いたします。{{自社名}}の{{担当者}}と申します。\\n{{業種}}に役立つサービスをご案内できればと存じ、ご連絡しました。\\n\\n（ここに、提供内容・相手にとってのメリットを1〜2行で具体的に）\\n\\nご興味があれば、下記までご返信ください。資料の送付や簡単なご説明も可能です。\\n\\n{{自社名}} {{担当者}}\\nメール: {{自社メール}}\\n電話: {{自社電話}}\\n{{自社URL}}\\n\\n※ ご不要の場合は、お手数ですが本メールにご返信ください。以後のご連絡は控えます。",
-    hybrid: "{{会社名}}\\n{{代表者}}\\n\\n{{AI冒頭}}\\n\\n{{自社名}}の{{担当者}}と申します。（ここに、提供内容・相手にとってのメリットを1〜2行で）\\n\\nご興味があればご返信ください。\\n\\n{{自社名}} {{担当者}}\\nメール: {{自社メール}} / 電話: {{自社電話}}\\n{{自社URL}}\\n\\n※ ご不要の場合はご返信ください。以後の連絡は控えます。",
-    short: "{{会社名}} {{代表者}}\\n\\n{{自社名}}の{{担当者}}と申します。{{業種}}向けの（サービス名）についてご案内です。\\n（要点を1行）\\n\\nご興味があればご返信ください。{{自社メール}} / {{自社電話}}\\n※不要な場合はご返信ください。",
-  };
-  const sel = document.getElementById("tplpreset"), ta = document.getElementById("tpltext");
-  if (sel && ta) sel.addEventListener("change", () => { const v = T[sel.value]; if (v && (!ta.value.trim() || confirm("本文を例文で置き換えますか？（今の内容は消えます）"))) ta.value = v; sel.value = ""; });
+  // 業種別のひな形（#63）。選ぶと件名と本文に入る
+  const T = ${JSON.stringify(Object.fromEntries(TEMPLATE_LIBRARY.map((t) => [t.id, { subject: t.subject, body: t.body, note: t.note }])))};
+  const sel = document.getElementById("tplpreset"), ta = document.getElementById("tpltext"), note = document.getElementById("tplnote");
+  const subj = document.querySelector("[name=subject_text]");
+  if (sel && ta) sel.addEventListener("change", () => {
+    const v = T[sel.value];
+    if (!v) { if (note) note.textContent = ""; return; }
+    if (note) note.textContent = v.note;
+    if (!ta.value.trim() || confirm("件名と本文をひな形で置き換えますか？（今の内容は消えます）")) {
+      ta.value = v.body;
+      if (subj && (!subj.value.trim() || subj.value.indexOf("【ここに") >= 0)) subj.value = v.subject;
+    }
+  });
 })();
 </script>
+<details style="margin:12px 0" ${Number(defaults.ab_enabled ?? 0) ? "open" : ""}><summary style="cursor:pointer;font-weight:700">文面のA/Bテスト・件名の使い分け（任意）</summary>
+<div style="border:1px solid var(--hive-200);border-radius:8px;padding:10px 12px;margin-top:8px">
+<label style="display:flex;align-items:center;gap:8px"><input type="checkbox" name="ab_enabled" value="1" ${Number(defaults.ab_enabled ?? 0) ? "checked" : ""} style="width:auto">2つの文面を半分ずつ送って、反応を比べる（A/Bテスト）</label>
+<p class="muted small" style="margin:4px 0 8px">会社ごとに交互にA・Bを割り当てて送り、キャンペーン画面に「どちらが返信・アポを取れたか」を表示します。文面Bが空のときはAだけを送ります。</p>
+<label>件名（B）</label><input type="text" name="subject_b" value="${d("subject_b")}" placeholder="空ならAと同じ件名を使います">
+<label>本文（B）</label><textarea name="template_b" style="min-height:220px" placeholder="Aとは別の切り口の文面を入れてください">${d("template_b")}</textarea>
+<label>件名の別案（1行に1つ・任意）</label><textarea name="subject_alts" style="min-height:70px" placeholder="同じ件名を大量に送ると迷惑メール扱いされやすくなります。別案を入れると順番に使います">${d("subject_alts")}</textarea>
+</div></details>
 <label>AIへの追加指示（任意）</label><input type="text" name="ai_instruction" value="${d("ai_instruction")}" placeholder="例: 採用課題に寄せる／飲食店向けに集客の話をする">
 <div class="row3"><div><label>1日の上限（フォーム／メール）</label><div class="row"><input type="number" name="daily_limit" value="${d("daily_limit", 300)}" title="フォーム" placeholder="フォーム"><input type="number" name="email_daily_limit" value="${d("email_daily_limit", 100)}" title="メール" placeholder="メール"></div></div><div><label>送信時間帯（開始・終了 時）</label><div class="row"><input type="number" name="send_window_start" value="${d("send_window_start", 9)}" min="0" max="23"><input type="number" name="send_window_end" value="${d("send_window_end", 18)}" min="1" max="24"></div></div><div><label>平日のみ</label><select name="weekdays_only"><option value="1" ${Number(defaults.weekdays_only ?? 1) ? "selected" : ""}>はい</option><option value="0" ${defaults.weekdays_only !== undefined && !Number(defaults.weekdays_only) ? "selected" : ""}>土日も送る</option></select></div></div>
 <div class="small" style="margin:-4px 0 14px;padding:10px 12px;background:var(--honey-50);border:1px solid var(--honey);border-radius:8px;line-height:1.7">
@@ -350,7 +366,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[]; emailHtml?: string } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; sortKey?: string; eta?: string; undo?: { id: number; label: string; rows_count: number } | null; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[]; emailHtml?: string } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; sortKey?: string; eta?: string; ab?: { variant: string; sent: number; replied: number; appo: number }[]; undo?: { id: number; label: string; rows_count: number } | null; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("./csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -534,6 +550,11 @@ ${extra.matched && extra.matched.n > 0 ? (() => {
 <input type="hidden" name="status" value="${esc(extra.statusFilter ?? "")}"><input type="hidden" name="outcome" value="${esc(extra.outcomeFilter ?? "")}"><input type="hidden" name="q" value="${esc(extra.qFilter ?? "")}"><input type="hidden" name="imp" value="${esc(extra.impFilter ?? "")}">
 <button class="btn danger small" ${busy ? "disabled" : ""}>${label}</button>${busy ? ' <span class="muted small">送信中・事前チェック中は削除できません</span>' : ""}</form>`;
   })() : ""}
+${(extra.ab ?? []).length >= 2 ? `<div class="card"><h2 style="margin-top:0">A/Bテストの結果</h2>
+<table><tr><th>文面</th><th>送信</th><th>返信＋アポ</th><th>アポ</th><th>反応率</th></tr>
+${(extra.ab ?? []).map((r) => `<tr><td><b>${esc(r.variant)}</b>${r.variant === "A" ? "（本文）" : "（本文B）"}</td><td>${r.sent}</td><td>${r.replied}</td><td>${r.appo}</td><td>${r.sent ? `${((r.replied / r.sent) * 100).toFixed(1)}%` : "-"}</td></tr>`).join("")}
+</table>
+<p class="muted small" style="margin:8px 0 0">件数が少ないうちは差が出ても偶然のことがあります。目安として、どちらも100件以上送ってから比べてください。</p></div>` : ""}
 <p class="muted">背景が黄色の行は、前回このページを見たあとに状況が更新された会社です。失敗行の橙色ラベルはエラーの種類です。</p>
 ${(() => {
     // 列の見出しから並び替え（#51）。いまの絞り込みは保ったまま sort だけ付け替える
@@ -756,7 +777,18 @@ ${rows.length ? '<a class="btn sub" href="/suppressions/export.csv">除外リス
 <table><tr><th>メール</th><th>理由</th><th>登録</th></tr>${optouts.map((r) => `<tr><td>${esc(r.email)}</td><td>${esc(r.reason)}</td><td class="small">${esc(jst(r.created_at))}</td></tr>`).join("")}</table>`;
 }
 
-export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true) {
+export function settingsView(ngWords: string[], ai: import("./message.js").AiConfig, stats?: { senders: number; campaigns: number; companies: number; sent: number; suppressions: number; optouts: number }, gameEnabled = false, notifyOn = true, aiBudget?: { usage: import("./message.js").AiUsage; limit: number }) {
+  // AIの使用量と上限（#66）。「いくらかかるか読めない」のが不安でAIを使えない、という状態をなくす
+  const budgetCard = aiBudget ? `<div class="card"><h2 style="margin-top:0">AIの利用料と上限</h2>
+<div class="stats"><div class="stat"><span class="muted small">今月の目安</span><b>${Math.round(aiBudget.usage.jpy).toLocaleString("ja-JP")}円</b></div>
+<div class="stat"><span class="muted small">呼び出し回数</span><b>${aiBudget.usage.calls.toLocaleString("ja-JP")}</b></div>
+<div class="stat"><span class="muted small">入力トークン</span><b>${Math.round(aiBudget.usage.input / 1000).toLocaleString("ja-JP")}k</b></div>
+<div class="stat"><span class="muted small">出力トークン</span><b>${Math.round(aiBudget.usage.output / 1000).toLocaleString("ja-JP")}k</b></div></div>
+<form method="post" action="/settings/ai-budget" style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<label style="margin:0">今月の上限（円・0で制限なし）</label>
+<input type="number" name="limit" value="${aiBudget.limit}" min="0" step="100" style="width:140px">
+<button class="btn sub small">保存</button></form>
+<p class="muted small" style="margin:8px 0 0">上限に達すると、AIを使わずテンプレートの文面で送り続けます（送信は止まりません）。金額は1Mトークンあたりの目安単価から計算した<b>概算</b>です。正確な請求額は各社の管理画面でご確認ください。</p></div>` : "";
   const configured = ai.provider !== "none";
   // データの概要: 集計して表示するだけの追加カード。このブロックを消せば丸ごと外せる
   const overview = stats
@@ -766,7 +798,7 @@ export function settingsView(ngWords: string[], ai: import("./message.js").AiCon
     : "";
   const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>
-${overview}
+${overview}${budgetCard}
 <div class="card"><h2 style="margin-top:0">送信が止まったときの通知</h2>
 <p class="muted small">メール送信が一時停止したとき・送信が全部終わったとき・止まっていた送信を自動再開したときに、<b>パソコンの通知</b>（Macは通知センター、Windowsはトースト）でお知らせします。画面を見ていなくても気づけます。</p>
 <form method="post" action="/settings/notify" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select name="notify_desktop" style="width:auto"><option value="1" ${notifyOn ? "selected" : ""}>通知する</option><option value="0" ${notifyOn ? "" : "selected"}>通知しない</option></select><button class="btn sub small">保存</button></form>
@@ -1068,6 +1100,7 @@ export function statsView(
   campaigns: { id: number; name: string }[],
   campaignId: number,
   totals: { total: number; form: number; email: number },
+  analysis?: Analysis,
 ): string {
   const max = Math.max(1, ...rows.map((r) => r.total));
   const label = (p: string) => (mode === "month" ? p.replace("-", "/") : `${Number(p.slice(5, 7))}/${Number(p.slice(8, 10))}`);
@@ -1090,7 +1123,8 @@ ${rows.map((r) => {
 <td class="small">${r.form}</td><td class="small">${r.email}</td><td><b>${r.total}</b></td></tr>`;
   }).join("")}
 </table>
-<p class="muted small" style="margin:8px 0 0"><span style="display:inline-block;width:12px;height:10px;background:var(--honey);vertical-align:-1px"></span> フォーム　<span style="display:inline-block;width:12px;height:10px;background:#4A5387;vertical-align:-1px"></span> メール</p></div>`}`;
+<p class="muted small" style="margin:8px 0 0"><span style="display:inline-block;width:12px;height:10px;background:var(--honey);vertical-align:-1px"></span> フォーム　<span style="display:inline-block;width:12px;height:10px;background:#4A5387;vertical-align:-1px"></span> メール</p></div>`}${analysis ? analysisSection(analysis) : ""}
+`;
 }
 
 export function gameView(sentCount: number): string {
@@ -1643,4 +1677,95 @@ ${step(6, st.sentCount > 0, "事前チェックして、送信を始める", `
   ${st.sentCount ? `<p>送信済み: <b>${st.sentCount}件</b>。おつかれさまでした。あとは<a href="/todo">要対応</a>と<a href="/stats">送信数</a>を見ていけば大丈夫です。</p>` : ""}
   <a class="btn ${st.sentCount ? "sub" : ""}" href="${st.campaignId ? `/campaigns/${st.campaignId}` : "/"}">キャンペーンを開く</a>`)}
 <p><a href="/guide">くわしい使い方（ご利用ガイド）</a> ／ <a href="/health">動作チェック</a></p>`;
+}
+
+// ---- 分析（#71 #72 #73 #75）----
+// 「どのリストが当たりだったか」「何で失敗しているか」を、手で数えなくても分かるようにする。
+export type Analysis = {
+  byIndustry: { key: string; sent: number; replied: number; appo: number }[];
+  byPref: { key: string; sent: number; replied: number; appo: number }[];
+  byChannel: { channel: string; sent: number; failed: number; replied: number; appo: number }[];
+  byHour: { hour: string; sent: number; replied: number }[];
+  failures: { label: string; n: number; hint: string }[];
+  totalTried: number;
+};
+
+function rateTable(title: string, note: string, rows: { key: string; sent: number; replied: number; appo: number }[]): string {
+  if (!rows.length) return "";
+  const max = Math.max(1, ...rows.map((r) => r.sent));
+  return `<div class="card"><h2 style="margin-top:0">${esc(title)}</h2>
+<p class="muted small" style="margin:0 0 8px">${esc(note)}</p>
+<table><tr><th>${esc(title.replace("別の反応", ""))}</th><th style="width:34%">送信数</th><th style="width:70px">返信+アポ</th><th style="width:60px">アポ</th><th style="width:70px">反応率</th></tr>
+${rows.map((r) => `<tr><td>${esc(r.key || "（未設定）")}</td>
+<td><div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:14px;background:#f1efe9;border-radius:3px;overflow:hidden;min-width:80px"><div style="width:${Math.round((r.sent / max) * 100)}%;height:100%;background:var(--honey)"></div></div><span class="small">${r.sent}</span></div></td>
+<td class="small">${r.replied}</td><td class="small"><b>${r.appo}</b></td>
+<td class="small">${r.sent >= 10 ? `${((r.replied / r.sent) * 100).toFixed(1)}%` : `<span class="muted">—</span>`}</td></tr>`).join("")}
+</table>
+<p class="muted small" style="margin:8px 0 0">送信10件未満は、反応率が偶然に左右されるため「—」にしています。</p></div>`;
+}
+
+export function analysisSection(a: Analysis): string {
+  return `
+<h2 id="analysis" style="margin-top:28px">反応の分析</h2>
+<p class="muted">送信済みの会社について、どこからの反応が多いかを集計しています。次に買うリスト・送る時間帯を決める材料にしてください。</p>
+
+${a.byChannel.length ? `<div class="card"><h2 style="margin-top:0">フォームとメールの比較</h2>
+<table><tr><th>送り方</th><th>送信</th><th>失敗・送れず</th><th>返信+アポ</th><th>アポ</th><th>反応率</th></tr>
+${a.byChannel.map((r) => `<tr><td>${r.channel === "email" ? "✉ メール" : "📝 フォーム"}</td><td>${r.sent}</td><td>${r.failed}</td><td>${r.replied}</td><td><b>${r.appo}</b></td><td>${r.sent >= 10 ? `${((r.replied / r.sent) * 100).toFixed(1)}%` : "—"}</td></tr>`).join("")}
+</table></div>` : ""}
+
+${rateTable("業種別の反応", "送信数の多い順。反応率が高い業種に絞ると、同じ手間でアポが増えます。", a.byIndustry)}
+${rateTable("都道府県別の反応", "地域によって反応が変わることがあります。", a.byPref)}
+
+${a.byHour.length ? `<div class="card"><h2 style="margin-top:0">送信した時間帯と反応</h2>
+<table><tr><th style="width:90px">時間帯</th><th>送信数</th><th style="width:90px">返信+アポ</th><th style="width:80px">反応率</th></tr>
+${a.byHour.map((r) => `<tr><td>${esc(r.hour)}時台</td><td>${r.sent}</td><td>${r.replied}</td><td class="small">${r.sent >= 10 ? `${((r.replied / r.sent) * 100).toFixed(1)}%` : "—"}</td></tr>`).join("")}
+</table>
+<p class="muted small" style="margin:8px 0 0">反応率が高い時間帯に送信時間帯（キャンペーンの設定）を寄せると、反応が増えることがあります。</p></div>` : ""}
+
+${a.failures.length ? `<div class="card"><h2 style="margin-top:0">送れなかった理由（多い順）</h2>
+<p class="muted small" style="margin:0 0 8px">全 ${a.totalTried.toLocaleString("ja-JP")}件のうち、送れなかったもの。上から順に手を打つと、送信数が増えます。</p>
+<table><tr><th>理由</th><th style="width:80px">件数</th><th>打てる手</th></tr>
+${a.failures.map((f) => `<tr><td>${esc(f.label)}</td><td><b>${f.n}</b></td><td class="small">${f.hint}</td></tr>`).join("")}
+</table></div>` : ""}
+
+<p><a class="btn sub" href="/report">週次レポートを見る（印刷できます）</a></p>`;
+}
+
+// ---- 週次レポート（#74）----
+export type WeeklyReport = {
+  from: string; to: string;
+  sentForm: number; sentEmail: number; replied: number; appo: number; declined: number;
+  failed: number; captcha: number; noForm: number;
+  prevSent: number;
+  topIndustries: { key: string; sent: number; replied: number; appo: number }[];
+  campaigns: { name: string; sent: number; replied: number; appo: number }[];
+  appointments: { company: string; at: string; note: string }[];
+};
+export function reportView(r: WeeklyReport): string {
+  const sent = r.sentForm + r.sentEmail;
+  const diff = r.prevSent ? Math.round(((sent - r.prevSent) / r.prevSent) * 100) : 0;
+  return `<h1>週次レポート</h1>
+<p class="muted">${esc(r.from)} 〜 ${esc(r.to)}（東京時間）。この画面はそのまま印刷・PDF保存できます（ブラウザの印刷メニュー）。</p>
+<div class="stats">
+  <div class="stat"><span class="muted small">送信</span><b>${sent}</b><span class="muted small">フォーム${r.sentForm}・メール${r.sentEmail}</span></div>
+  <div class="stat"><span class="muted small">前の週と比べて</span><b>${r.prevSent ? `${diff >= 0 ? "+" : ""}${diff}%` : "—"}</b><span class="muted small">前週 ${r.prevSent}件</span></div>
+  <div class="stat"><span class="muted small">アポ</span><b>${r.appo}</b><span class="muted small">返信 ${r.replied}・断り ${r.declined}</span></div>
+  <div class="stat"><span class="muted small">送れなかった</span><b>${r.failed + r.captcha + r.noForm}</b><span class="muted small">失敗${r.failed}・認証${r.captcha}・フォーム無${r.noForm}</span></div>
+</div>
+${r.appointments.length ? `<div class="card"><h2 style="margin-top:0">今週のアポ・前向きな返信</h2>
+<table><tr><th>会社</th><th style="width:120px">日時</th><th>メモ</th></tr>
+${r.appointments.map((a) => `<tr><td><b>${esc(a.company)}</b></td><td class="small">${esc(a.at)}</td><td class="small">${esc(a.note.slice(0, 120))}</td></tr>`).join("")}
+</table></div>` : ""}
+${r.campaigns.length ? `<div class="card"><h2 style="margin-top:0">キャンペーン別</h2>
+<table><tr><th>キャンペーン</th><th style="width:80px">送信</th><th style="width:90px">返信+アポ</th><th style="width:70px">アポ</th></tr>
+${r.campaigns.map((c) => `<tr><td>${esc(c.name)}</td><td>${c.sent}</td><td>${c.replied}</td><td><b>${c.appo}</b></td></tr>`).join("")}
+</table></div>` : ""}
+${r.topIndustries.length ? `<div class="card"><h2 style="margin-top:0">業種別（今週）</h2>
+<table><tr><th>業種</th><th style="width:80px">送信</th><th style="width:90px">返信+アポ</th><th style="width:70px">アポ</th></tr>
+${r.topIndustries.map((c) => `<tr><td>${esc(c.key || "（未設定）")}</td><td>${c.sent}</td><td>${c.replied}</td><td><b>${c.appo}</b></td></tr>`).join("")}
+</table></div>` : ""}
+<p class="muted small">※ 反応（返信・アポ・断り）は、送信用メールの受信箱を読んで自動で記録したものと、手で記録したものの合計です。</p>
+<p><a class="btn sub" href="/stats">送信数の画面に戻る</a></p>
+<style>@media print{header,.btn{display:none!important}main{padding:0}.card{break-inside:avoid}}</style>`;
 }

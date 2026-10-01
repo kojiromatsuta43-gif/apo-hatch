@@ -269,6 +269,13 @@ function migrate(db: Database.Database) {
   )`);
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_reply_rules_phrase ON reply_rules(phrase, outcome)`);
 
+  // 文面のA/Bテスト（#64）と、件名のローテーション（#65）
+  addCol("form_campaigns", "ab_enabled", "INTEGER NOT NULL DEFAULT 0");
+  addCol("form_campaigns", "template_b", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_campaigns", "subject_b", "TEXT NOT NULL DEFAULT ''");
+  addCol("form_campaigns", "subject_alts", "TEXT NOT NULL DEFAULT ''"); // 1行1件名。順番に使う
+  addCol("form_jobs", "variant", "TEXT NOT NULL DEFAULT ''");           // A / B（A/Bテストでどちらの文面を送ったか）
+
   // 削除の取り消し（#60）。消した会社の行をそのまま控えておき、30分以内なら元に戻せるようにする
   db.exec(`CREATE TABLE IF NOT EXISTS deleted_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -371,6 +378,10 @@ export type Campaign = {
   send_only: string;
   email_warmup: number;
   email_sender_ids: string;
+  ab_enabled: number;
+  template_b: string;
+  subject_b: string;
+  subject_alts: string;
 };
 
 // フリーメールはドメインが同じでも別の会社。グループ内の重複判定ではドメインではなくメールアドレスで比べる
@@ -433,6 +444,7 @@ export type Job = {
   prev_result: string;
   pending_questions: string;
   manual_answers: string;
+  variant: string;
 };
 
 export const STATUS_LABEL: Record<JobStatus, string> = {

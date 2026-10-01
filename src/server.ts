@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { getDb, getSetting, setSetting as saveSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, channelMode, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
-import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
+import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage, aiUsageThisMonth, aiMonthlyLimit } from "./message.js";
 import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause, senderEmailOk, buildEmailBody } from "./email.js";
 import { logError, logInfo, recentLogs, clearLogs, logCounts } from "./applog.js";
 import { jpError } from "./jp.js";
@@ -21,7 +21,7 @@ import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "./replies.js";
 import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { esc, layout, lawView, todoView, setupView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
+import { esc, layout, lawView, todoView, setupView, reportView, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -330,8 +330,8 @@ app.post("/campaigns", upload.single("material_file"), (req, res) => {
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, "/campaigns/new", "送信者を選び直してください");
   const materialUrl = String(b.material_url ?? "").trim();
-  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name, material_url_in_email, email_warmup, email_sender_ids)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b));
+  const r = db.prepare(`INSERT INTO form_campaigns(owner_user_id, name, sender_id, mode, subject_text, template_text, ai_instruction, daily_limit, send_window_start, send_window_end, weekdays_only, channel, email_daily_limit, resend_days, ignore_refusal, material_url, group_name, material_url_in_email, email_warmup, email_sender_ids, ab_enabled, template_b, subject_b, subject_alts)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b), b.ab_enabled === "1" ? 1 : 0, String(b.template_b ?? ""), String(b.subject_b ?? ""), String(b.subject_alts ?? ""));
   const cid = Number(r.lastInsertRowid);
   // 資料ファイル（メール添付用）を保存する
   const warn = req.file ? saveMaterial(cid, req.file) : "";
@@ -363,8 +363,8 @@ app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   const b = req.body;
   const channel = ["form_first", "email_first", "email_only", "form_only", "form", "email", "both"].includes(b.channel) ? b.channel : "form_first";
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, `/campaigns/${id}/edit`, "送信者を選び直してください");
-  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=?, material_url_in_email=?, email_warmup=?, email_sender_ids=? WHERE id=?`)
-    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b), id);
+  db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=?, material_url_in_email=?, email_warmup=?, email_sender_ids=?, ab_enabled=?, template_b=?, subject_b=?, subject_alts=? WHERE id=?`)
+    .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, b.email_warmup === "1" ? 1 : 0, extraSenderIds(req, b), b.ab_enabled === "1" ? 1 : 0, String(b.template_b ?? ""), String(b.subject_b ?? ""), String(b.subject_alts ?? ""), id);
   const attachWarn = req.file ? saveMaterial(id, req.file) : "";
   if (req.file) { /* 保存済み。注意文は下の完了メッセージに付ける */ }
   else if (b.remove_attach === "1" && before.attach_path) {
@@ -448,6 +448,12 @@ app.get("/campaigns/:id", (req, res) => {
     FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='sent' AND sent_at IS NOT NULL`).get(id) as { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number };
   // 事前チェックの対象外（メールで送る会社）の件数。事前チェック欄に「なぜ件数に入らないか」を出すため
   const emailQueued = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='queued' AND channel='email'").get(id) as { n: number }).n;
+  // A/Bテストの結果（#64）
+  const ab = db.prepare(`SELECT variant, COUNT(*) sent,
+      SUM(CASE WHEN outcome IN ('replied','appointment') THEN 1 ELSE 0 END) replied,
+      SUM(CASE WHEN outcome='appointment' THEN 1 ELSE 0 END) appo
+    FROM form_jobs WHERE campaign_id=? AND is_test=0 AND status='sent' AND variant<>'' GROUP BY variant ORDER BY variant`).all(id) as { variant: string; sent: number; replied: number; appo: number }[];
+
   // 残り時間の目安（#55）。直近の送信ペースから、いつ終わりそうかを出す
   const pace = db.prepare(`SELECT (julianday(MAX(sent_at)) - julianday(MIN(sent_at))) * 86400 secs, COUNT(*) n
     FROM (SELECT sent_at FROM form_jobs WHERE campaign_id=? AND status='sent' AND is_test=0 AND sent_at IS NOT NULL ORDER BY sent_at DESC LIMIT 50)`).get(id) as { secs: number | null; n: number };
@@ -463,7 +469,7 @@ app.get("/campaigns/:id", (req, res) => {
       ? `本日の上限に達しています。残り ${queuedNow}社は翌営業日の送信時間帯に続きます（1社あたり約${Math.round(perJob)}秒）`
       : `残り ${queuedNow}社 ／ このペース（1社あたり約${Math.round(perJob)}秒）だと、きょう送れる ${doable}社で約${minutes}分（${end.slice(11, 16)}ごろ）${doable < queuedNow ? `。残りの ${queuedNow - doable}社は翌営業日に続きます` : ""}`;
   }
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, ab, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う
@@ -1590,7 +1596,83 @@ app.get("/stats", (req, res) => {
   const campaigns = db.prepare(`SELECT id, name FROM form_campaigns c WHERE ${sc.sql.replace("owner_user_id", "c.owner_user_id")} ORDER BY id DESC`).all(...sc.args) as { id: number; name: string }[];
   // 合計は「いま表示している期間（直近30日／12か月）」の合計にする（全期間と混ざらないように）
   const totals = rows.reduce((a, r) => ({ total: a.total + r.total, form: a.form + r.form, email: a.email + r.email }), { total: 0, form: 0, email: 0 });
-  res.send(layout("送信数", statsView(rows.reverse(), mode, campaigns, campaignId, totals), takeFlash(req), navUser(req), updateReady));
+  // ---- 分析（#71 #72 #73 #75）----
+  const aWhere = [`j.is_test=0`, sc.sql.replace("owner_user_id", "c.owner_user_id")];
+  const aArgs: (string | number)[] = [...sc.args];
+  if (campaignId) { aWhere.push("c.id=?"); aArgs.push(campaignId); }
+  const base = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE ${aWhere.join(" AND ")}`;
+  const REACT = "SUM(CASE WHEN j.outcome IN ('replied','appointment') THEN 1 ELSE 0 END) replied, SUM(CASE WHEN j.outcome='appointment' THEN 1 ELSE 0 END) appo";
+  const byIndustry = db.prepare(`SELECT COALESCE(NULLIF(j.sub_industry,''), j.industry) key, COUNT(*) sent, ${REACT} ${base} AND j.status='sent' GROUP BY key ORDER BY sent DESC LIMIT 15`).all(...aArgs) as { key: string; sent: number; replied: number; appo: number }[];
+  const byPref = db.prepare(`SELECT j.prefecture key, COUNT(*) sent, ${REACT} ${base} AND j.status='sent' AND j.prefecture<>'' GROUP BY key ORDER BY sent DESC LIMIT 15`).all(...aArgs) as { key: string; sent: number; replied: number; appo: number }[];
+  const byChannel = db.prepare(`SELECT j.channel, SUM(CASE WHEN j.status='sent' THEN 1 ELSE 0 END) sent,
+      SUM(CASE WHEN j.status IN ('failed','skip_no_form','skip_captcha') THEN 1 ELSE 0 END) failed,
+      SUM(CASE WHEN j.outcome IN ('replied','appointment') THEN 1 ELSE 0 END) replied,
+      SUM(CASE WHEN j.outcome='appointment' THEN 1 ELSE 0 END) appo
+    ${base} GROUP BY j.channel`).all(...aArgs) as { channel: string; sent: number; failed: number; replied: number; appo: number }[];
+  const byHour = db.prepare(`SELECT strftime('%H', j.sent_at, '+9 hours') hour, COUNT(*) sent,
+      SUM(CASE WHEN j.outcome IN ('replied','appointment') THEN 1 ELSE 0 END) replied
+    ${base} AND j.status='sent' AND j.sent_at IS NOT NULL GROUP BY hour ORDER BY hour`).all(...aArgs) as { hour: string; sent: number; replied: number }[];
+
+  // 送れなかった理由を数えて、打てる手を添える（#72）。これまで手で数えていたもの
+  const failRows = db.prepare(`SELECT j.status, j.result_text ${base} AND j.status IN ('failed','skip_no_form','skip_captcha','skip_refused','skip_suppressed','skip_optout','skip_duplicate') LIMIT 5000`).all(...aArgs) as { status: string; result_text: string }[];
+  const failBucket = new Map<string, { n: number; hint: string }>();
+  const add = (label: string, hint: string) => { const cur = failBucket.get(label) ?? { n: 0, hint }; cur.n++; failBucket.set(label, cur); };
+  for (const f of failRows) {
+    const t = f.result_text || "";
+    if (f.status === "skip_no_form") {
+      if (/アクセスできない|接続|見つかりません|タイムアウト/.test(t)) add("サイトにアクセスできない", "URLの誤り・閉鎖の可能性。メール列があれば自動でメールに回ります（キャンペーンのチャネル設定）");
+      else add("問い合わせフォームが見つからない", "「フォーム無しの会社をもう一度チェックする」で、強化した探し方で再チェックできます");
+    } else if (f.status === "skip_captcha") add("画像認証（CAPTCHA）", "<a href='/todo?kind=captcha'>要対応</a>から、ブラウザを開いて人が送れます");
+    else if (f.status === "skip_refused") add("営業お断りの表示", "送らないのが正解です（クレーム防止）");
+    else if (f.status === "skip_suppressed") add("除外リスト・除外キーワード", "意図どおりなら対応不要です");
+    else if (f.status === "skip_optout") add("配信停止済み", "対応不要です");
+    else if (f.status === "skip_duplicate") add("すでに送信済み・重複", "対応不要です");
+    else if (/メール送信エラー|SMTP|Gmail|ログインを拒否|2段階認証/.test(t)) add("メールの設定・送信エラー", "送信者の画面でアプリパスワードを入れ直し、開始前の接続テストで確認できます");
+    else if (/要確認/.test(t)) add("回答を決められない質問がある", "<a href='/todo?kind=check'>要対応</a>で、質問に答えて再送信できます");
+    else if (/入力エラー|必須/.test(t)) add("フォームの入力エラー（必須項目）", "自動で埋め直して1回だけ再送信します。残る分は要対応から手で送れます");
+    else if (/タイムアウト|timeout|net::|接続/i.test(t)) add("通信エラー・時間切れ", "回線が不安定な可能性。要対応から「待機に戻す」で再送信できます");
+    else if (/送信後の判定不能/.test(t)) add("送信後の判定不能", "送信ボタンは押せています。相手に届いていることが多いので、受付メールの有無を確認してください");
+    else if (/送信ボタンが見つからない|本文欄/.test(t)) add("フォームの作りが特殊", "要対応から「開いて入力」で、人が送れます");
+    else add("その他", "エラーログ・送信一覧の結果欄で内容を確認してください");
+  }
+  const failures = [...failBucket.entries()].map(([label, v]) => ({ label, n: v.n, hint: v.hint })).sort((a2, b2) => b2.n - a2.n);
+  const totalTried = (db.prepare(`SELECT COUNT(*) n ${base}`).get(...aArgs) as { n: number }).n;
+
+  res.send(layout("送信数", statsView(rows.reverse(), mode, campaigns, campaignId, totals, { byIndustry, byPref, byChannel, byHour, failures, totalTried }), takeFlash(req), navUser(req), updateReady));
+});
+
+// ---- 週次レポート（#74）----
+// 週の振り返りを手で作っていたのをやめる。印刷してそのまま報告に使える
+app.get("/report", (req, res) => {
+  const sc = scope(req);
+  const weeksAgo = Math.max(0, Math.min(12, Number(req.query.w) || 0));
+  // 月曜はじまりの週（東京時間）
+  const nowJst = new Date(Date.now() + 9 * 3600_000);
+  const dow = (nowJst.getUTCDay() + 6) % 7; // 月曜=0
+  const end = new Date(nowJst); end.setUTCDate(end.getUTCDate() - dow - weeksAgo * 7); // 今週の月曜
+  const from = end.toISOString().slice(0, 10);
+  const to = new Date(end.getTime() + 6 * 86400_000).toISOString().slice(0, 10);
+  const prevFrom = new Date(end.getTime() - 7 * 86400_000).toISOString().slice(0, 10);
+  const where = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id WHERE j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`;
+  const inWeek = `date(j.sent_at,'+9 hours') BETWEEN ? AND ?`;
+  const n = (sql: string, ...extra: (string | number)[]) => (db.prepare(sql).get(...sc.args, ...extra) as { n: number }).n;
+  const REACT = "SUM(CASE WHEN j.outcome IN ('replied','appointment') THEN 1 ELSE 0 END) replied, SUM(CASE WHEN j.outcome='appointment' THEN 1 ELSE 0 END) appo";
+  const report = {
+    from, to,
+    sentForm: n(`SELECT COUNT(*) n ${where} AND j.status='sent' AND j.channel='form' AND ${inWeek}`, from, to),
+    sentEmail: n(`SELECT COUNT(*) n ${where} AND j.status='sent' AND j.channel='email' AND ${inWeek}`, from, to),
+    replied: n(`SELECT COUNT(*) n ${where} AND j.outcome='replied' AND ${inWeek}`, from, to),
+    appo: n(`SELECT COUNT(*) n ${where} AND j.outcome='appointment' AND ${inWeek}`, from, to),
+    declined: n(`SELECT COUNT(*) n ${where} AND j.outcome='declined' AND ${inWeek}`, from, to),
+    failed: n(`SELECT COUNT(*) n ${where} AND j.status='failed' AND date(j.updated_at,'+9 hours') BETWEEN ? AND ?`, from, to),
+    captcha: n(`SELECT COUNT(*) n ${where} AND j.status='skip_captcha' AND date(j.updated_at,'+9 hours') BETWEEN ? AND ?`, from, to),
+    noForm: n(`SELECT COUNT(*) n ${where} AND j.status='skip_no_form' AND date(j.updated_at,'+9 hours') BETWEEN ? AND ?`, from, to),
+    prevSent: n(`SELECT COUNT(*) n ${where} AND j.status='sent' AND date(j.sent_at,'+9 hours') BETWEEN ? AND ?`, prevFrom, from),
+    topIndustries: db.prepare(`SELECT COALESCE(NULLIF(j.sub_industry,''), j.industry) key, COUNT(*) sent, ${REACT} ${where} AND j.status='sent' AND ${inWeek} GROUP BY key ORDER BY sent DESC LIMIT 8`).all(...sc.args, from, to) as { key: string; sent: number; replied: number; appo: number }[],
+    campaigns: db.prepare(`SELECT c.name, COUNT(*) sent, ${REACT} ${where} AND j.status='sent' AND ${inWeek} GROUP BY c.id ORDER BY sent DESC LIMIT 10`).all(...sc.args, from, to) as { name: string; sent: number; replied: number; appo: number }[],
+    appointments: (db.prepare(`SELECT j.company_name company, j.updated_at at, j.outcome_note note ${where} AND j.outcome='appointment' AND date(j.updated_at,'+9 hours') BETWEEN ? AND ? ORDER BY j.updated_at DESC LIMIT 20`).all(...sc.args, from, to) as { company: string; at: string; note: string }[]).map((a) => ({ ...a, at: jst(a.at) })),
+  };
+  res.send(layout("週次レポート", reportView(report), takeFlash(req), navUser(req), updateReady));
 });
 
 app.get("/guide", (req, res) => {
@@ -1616,7 +1698,7 @@ app.get("/settings", requireAdmin, (req, res) => {
     suppressions: one("SELECT COUNT(*) n FROM form_suppressions"),
     optouts: one("SELECT COUNT(*) n FROM email_optouts"),
   };
-  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1", notifyEnabled()), takeFlash(req), navUser(req), updateReady));
+  res.send(layout("設定", settingsView(loadNgWords(), activeAiConfig(), stats, getSetting("game_enabled", "0") === "1", notifyEnabled(), { usage: aiUsageThisMonth(), limit: aiMonthlyLimit() }), takeFlash(req), navUser(req), updateReady));
 });
 app.post("/settings", requireAdmin, (req, res) => {
   const words = String(req.body.ng_words ?? "").split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
@@ -1645,6 +1727,13 @@ app.post("/settings/ai", requireAdmin, async (req, res) => {
     redirectWith(res, "/settings", `接続テスト成功。AIが使えるようになりました（${provider} / ${validModel}）`);
   }
 });
+// AIの月の上限（#66）
+app.post("/settings/ai-budget", requireAdmin, (req, res) => {
+  const limit = Math.max(0, Math.round(Number(req.body.limit) || 0));
+  saveSetting("ai_monthly_limit_jpy", String(limit));
+  redirectWith(res, "/settings", limit ? `今月のAI利用の上限を ${limit.toLocaleString("ja-JP")}円 にしました（超えたらテンプレートの文面で送り続けます）` : "AI利用の上限を解除しました");
+});
+
 app.post("/settings/ai/delete", requireAdmin, (req, res) => {
   db.prepare("DELETE FROM settings WHERE key IN ('ai_provider','ai_api_key','ai_model')").run();
   redirectWith(res, "/settings", "AI設定を削除しました。テンプレートのみで動きます（AI: none）");

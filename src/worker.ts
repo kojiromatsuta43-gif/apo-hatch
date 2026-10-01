@@ -216,6 +216,8 @@ export async function processJob(browser: Browser, jobId: number, opts: { dryRun
     const composed = await composeMessage(job, sender, campaign, site);
     subject = composed.subject;
     message = composed.message;
+    // A/Bテストでどちらの文面を送ったかを残す（あとで反応を比べるため: #64）
+    if (!job.is_test) db.prepare("UPDATE form_jobs SET variant=? WHERE id=?").run(composed.variant, jobId);
   } catch (e) {
     return finish("failed", `文面生成エラー: ${String((e as Error).message ?? e).slice(0, 150)}`);
   }
