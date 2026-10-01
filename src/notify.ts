@@ -8,6 +8,7 @@
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { S } from "./settings.js";
 import { DATA_DIR, getSetting } from "./db.js";
 
@@ -22,8 +23,12 @@ const appUrl = () => `http://localhost:${Number(process.env.PORT ?? 3210)}`;
 const BEE_PNG = path.resolve(process.cwd(), "assets", "bee.png");
 
 // ---- Mac: 通知専用アプリ ----
-const NOTIFIER_VERSION = "4"; // 中身を変えたら上げる（各PCで作り直される）
-const NOTIFIER_DIR = path.join(DATA_DIR, "notifier");
+const NOTIFIER_VERSION = "5"; // 中身を変えたら上げる（各PCで作り直される）
+// 置き場所はホームの Library の下にする。data/ の下（＝ダウンロードやデスクトップの中のことが多い）に置くと、
+// macOS が「このアプリにダウンロードフォルダを読ませてよいか」を止めてしまい、通知が出なかった
+const NOTIFIER_DIR = process.platform === "darwin"
+  ? path.join(os.homedir(), "Library", "Application Support", "apo-hatch", "notifier")
+  : path.join(DATA_DIR, "notifier");
 const NOTIFIER_APP = path.join(NOTIFIER_DIR, "アポハッチくん.app");
 const PENDING = path.join(NOTIFIER_DIR, "pending.txt");
 const URL_FILE = path.join(NOTIFIER_DIR, "url.txt");
