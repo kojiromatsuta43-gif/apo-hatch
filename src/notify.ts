@@ -12,13 +12,14 @@ export function notifyEnabled(): boolean {
 }
 
 /** パソコンに通知を出す。key が同じ通知は1時間に1回だけ。 */
-export function notify(title: string, body: string, key = title): void {
-  console.log(`[apo-hatch] お知らせ: ${title} — ${body}`);
-  if (!notifyEnabled()) return;
-  if (process.env.FO_NO_NOTIFY === "1") return; // 自動テスト中は、利用者の画面に通知を出さない
+export function notify(title: string, body: string, key = title): boolean {
+  // 同じ内容は1時間に1回まで（画面のログも同じ扱い。以前は通知だけ抑えて、ログには毎分出し続けていた）
   const now = Date.now();
-  if (now - (lastSent.get(key) ?? 0) < 60 * 60_000) return;
+  if (now - (lastSent.get(key) ?? 0) < 60 * 60_000) return false;
   lastSent.set(key, now);
+  console.log(`[apo-hatch] お知らせ: ${title} — ${body}`);
+  if (!notifyEnabled()) return true;
+  if (process.env.FO_NO_NOTIFY === "1") return true; // 自動テスト中は、利用者の画面に通知を出さない
   const t = title.replace(/["'\\]/g, " ").slice(0, 60);
   const b = body.replace(/["'\\]/g, " ").replace(/\s+/g, " ").slice(0, 180);
   try {
@@ -35,4 +36,5 @@ export function notify(title: string, body: string, key = title): void {
   } catch {
     /* 通知が出せなくても送信は続ける */
   }
+  return true;
 }

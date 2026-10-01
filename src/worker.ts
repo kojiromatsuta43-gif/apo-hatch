@@ -146,6 +146,21 @@ export function nextWindowText(c: Pick<Campaign, "send_window_start" | "send_win
   return "";
 }
 
+/** いま送れるものがあるか（時間帯の中・上限に達していない・待機の会社がある）。
+ *  自動再開の前に安く確かめる。これが無いと、上限に達したあとも1分ごとにブラウザを立ち上げては閉じていた */
+export function canSendNow(campaignId: number): boolean {
+  try {
+    const { campaign, sender } = loadCampaign(campaignId);
+    if (!inSendWindow(campaign)) return false;
+    const only = String(campaign.send_only ?? "");
+    const db = getDb();
+    const has = (ch: string) => Boolean(db.prepare("SELECT 1 FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel=? LIMIT 1").get(campaignId, ch));
+    const formOk = only !== "email" && has("form") && sentToday(campaignId, "form") < cappedDailyLimit(campaign.daily_limit).limit;
+    const emailOk = only !== "form" && has("email") && Boolean(pickEmailSender(campaign, sender));
+    return formOk || emailOk;
+  } catch { return false; }
+}
+
 export function sentToday(campaignId: number, channel?: "form" | "email"): number {
   const d = nowJst().toISOString().slice(0, 10);
   const r = getDb()
@@ -349,8 +364,9 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         if (!formOk && !emailOk) {
           reason = only ? `${only === "email" ? "メール" : "フォーム"}の送信が上限または一時停止` : "本日の上限に到達";
           // 「上限に達して止まった」ことに気づけるように通知する（1時間に1回まで）
-          notify("本日の送信上限に達しました", `「${campaign.name}」は今日の上限（フォーム${campaign.daily_limit}・メール${campaign.email_daily_limit}）に達したため止まりました。残りは明日の送信時間帯に自動で続きます`, `limit:${campaignId}`);
-          logInfo("worker", `上限で停止: ${campaign.name}（${reason}）`);
+          if (notify("本日の送信上限に達しました", `「${campaign.name}」は今日の上限（フォーム${campaign.daily_limit}・メール${campaign.email_daily_limit}）に達したため止まりました。残りは明日の送信時間帯に自動で続きます`, `limit:${campaignId}`)) {
+            logInfo("worker", `上限で停止: ${campaign.name}（${reason}）`);
+          }
           return;
         }
         const channels = [formOk && "form", emailOk && "email"].filter(Boolean) as string[];

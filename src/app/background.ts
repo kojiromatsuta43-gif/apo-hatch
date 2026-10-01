@@ -20,7 +20,7 @@ import { autostartEnabled, autostartSupported, enableAutostart, disableAutostart
 import { releaseAwakeAll, AWAKE_NOTE } from "../awake.js";
 import { licenseStatus, setLicenseKey, licenseEnforced } from "../license.js";
 import { syncShare, shareConfigured, APPS_SCRIPT, KEY as SHARE_KEY } from "../share.js";
-import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday, sentTodayBySender, warmupLimit, effectiveEmailLimit, nextWindowText } from "../worker.js";
+import { canSendNow, drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday, sentTodayBySender, warmupLimit, effectiveEmailLimit, nextWindowText } from "../worker.js";
 import { launchBrowser, openAndFill } from "../engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "../replies.js";
 import { notify, notifyEnabled } from "../notify.js";
@@ -109,7 +109,13 @@ setInterval(() => {
     notify("送信が止まっていたので再開します", `キャンペーン #${id} が15分以上動いていなかったため、自動で再開しました`, `stale:${id}`);
   }
   const ids = db.prepare("SELECT id FROM form_campaigns WHERE status='running'").all() as { id: number }[];
-  for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => { console.error(`[campaign ${id}]`, e); logError("worker", `キャンペーン #${id} を再開できませんでした: ${jpError(e)}`); });
+  for (const { id } of ids) {
+    if (isRunning(id)) continue;
+    // 待機の会社がもう無ければ「完了」にする（以前は送信処理を空回しして完了にしていた）
+    const left = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0").get(id) as { n: number }).n;
+    if (left === 0) { db.prepare("UPDATE form_campaigns SET status='done' WHERE id=? AND status='running'").run(id); continue; }
+  }
+  for (const { id } of ids) if (!isRunning(id) && canSendNow(id)) runCampaign(id).catch((e) => { console.error(`[campaign ${id}]`, e); logError("worker", `キャンペーン #${id} を再開できませんでした: ${jpError(e)}`); });
 }, 60000);
 
 setInterval(cleanupSessions, 24 * 60 * 60 * 1000);
