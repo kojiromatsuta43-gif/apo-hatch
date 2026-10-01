@@ -9,7 +9,9 @@ import AdmZip from "adm-zip";
 export const ROOT = path.resolve(process.cwd());
 
 /** 更新で入れ替えてよいもの。data/ と node_modules/ は対象外 */
-const UPDATABLE = ["src", "test", "package.json", "package-lock.json", "tsconfig.json", "README.md", "scripts", "update.json"];
+const UPDATABLE = ["src", "test", "package.json", "package-lock.json", "tsconfig.json", "README.md", "scripts", "update.json",
+  // ダブルクリックで起動するファイル（配布済みのPCにも届くように更新対象に入れる）
+  "アポハッチくん起動.command", "アポハッチくん起動.bat"];
 
 export type Manifest = { version: string; notes?: string; zip?: string; published_at?: string };
 export type UpdateStatus = {
@@ -153,7 +155,11 @@ export async function applyUpdate(): Promise<ApplyResult> {
         fs.rmSync(cur, { recursive: true, force: true });
       }
       if (fs.statSync(next).isDirectory()) copyDir(next, cur);
-      else fs.copyFileSync(next, cur);
+      else {
+        fs.copyFileSync(next, cur);
+        // Mac のダブルクリック起動ファイルは実行できる必要がある（zip経由で権限が落ちることがある）
+        if (name.endsWith(".command")) { try { fs.chmodSync(cur, 0o755); } catch { /* 権限を変えられなくても起動方法は他にもある */ } }
+      }
       log.push(`更新: ${name}`);
     }
 

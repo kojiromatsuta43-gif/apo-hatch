@@ -45,7 +45,7 @@ tr.histrow td{background:#FCFAF4;border-bottom:1px dashed var(--hive-200)}
 @keyframes fo-hop{0%,55%,100%{transform:translateY(0) scaleY(1)}60%{transform:translateY(1px) scaleY(.88)}70%{transform:translateY(-16px) scaleY(1.04)}80%{transform:translateY(-20px)}90%{transform:translateY(1px) scaleY(.9)}95%{transform:translateY(0) scaleY(1)}}
 @keyframes fo-morph{0%{transform:scale(1);filter:brightness(1)}40%{transform:scale(1.35) rotate(10deg);filter:brightness(1.9) drop-shadow(0 0 10px var(--honey))}100%{transform:scale(1);filter:brightness(1)}}
 </style></head><body>
-<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
+<header><a class="logo" href="/"><svg class="hatch" viewBox="0 0 48 48" width="22" height="22" role="img" aria-label="ハッチくん"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/></svg> アポハッチくん</a><span class="brandsub">フォーム＆メール営業</span>${user ? `<a href="/guide">ご利用ガイド</a><a href="/">キャンペーン</a><a href="/stats">送信数</a><a href="/senders">送信者</a><a href="/suppressions">除外リスト</a><a href="/health">動作チェック</a><a href="/settings">設定</a>${user.role === "admin" ? `<a href="/users">ユーザー管理</a>` : ""}${user.gameOn ? `<a href="/game" title="待ち時間の息抜きに">🎰 ゲーム</a>` : ""}${user.role === "admin" && updateReady ? `<a class="upd" href="/update">新しい版があります</a>` : ""}<span class="who">${esc(user.display_name || user.username)}${user.role === "admin" ? "（管理者）" : ""}</span><a class="sub" href="/password">パスワード</a><a class="sub" href="/logout">ログアウト</a>` : ""}</header>
 <main>${flash ? `<div class="flash">${esc(flash)}</div>` : ""}${body}</main>
 <script>
 // 送信系フォームの送信中スピナー＋二重送信防止（既存 .spin スタイルを流用）
@@ -379,7 +379,7 @@ ${list.map((r) => {
 <label>③ または Google スプレッドシートのURL</label>
 <input type="url" name="sheet_url" placeholder="https://docs.google.com/spreadsheets/d/…">
 <p class="muted small">URLで取り込むには、スプレッドシートの共有を「リンクを知っている全員（閲覧可）」にしてください。</p>
-<p><button class="btn">取り込む</button> <a class="small" href="/guide#step-list" target="_blank" rel="noopener">フォーム無し・失敗を減らすには？（AIでリストを整えるプロンプト）</a></p></form>
+<p><button class="btn">取り込む</button> <a class="btn sub small" href="/template.csv">見本のCSVをダウンロード</a> <a class="small" href="/guide#step-list" target="_blank" rel="noopener">フォーム無し・失敗を減らすには？（AIでリストを整えるプロンプト）</a></p></form>
 ${extra.lastImport ? importReport(extra.lastImport) : ""}
 ${(() => {
     // 取り込み履歴。間違えて取り込んだ分を、取り込み1回ぶん丸ごと消せる（一覧は200件までなので、選択削除では消しきれない）
@@ -1287,4 +1287,100 @@ export function gameView(sentCount: number): string {
   }
 })();
 </script>`;
+}
+
+// ---- 動作チェック（#42）----
+// 「動かない」の原因を利用者自身が切り分けられる画面。ここからエラーログ・診断ファイル・バックアップにも行ける
+export type HealthCheck = { level: "ok" | "warn" | "ng"; label: string; detail: string; fix?: string };
+export type HealthState = {
+  autostart: { supported: boolean; enabled: boolean; path: string };
+  autoUpdate: boolean;
+  awakeNote: string;
+  logs: { errors24h: number; total: number };
+  backups: { file: string; label: string }[];
+  backupDir: string;
+  isAdmin: boolean;
+};
+
+export function healthView(checks: HealthCheck[], st: HealthState): string {
+  const mark = (l: HealthCheck["level"]) =>
+    l === "ok" ? `<span class="tag sent">○ 問題なし</span>` : l === "warn" ? `<span class="tag queued">△ 確認</span>` : `<span class="tag failed">× 要対応</span>`;
+  const ng = checks.filter((c) => c.level === "ng").length;
+  const warn = checks.filter((c) => c.level === "warn").length;
+  return `<h1>動作チェック</h1>
+<div class="card">
+  <p>${ng ? `<b style="color:var(--ng)">要対応が ${ng}件</b>あります。` : warn ? `すぐ使えますが、確認した方がよい項目が ${warn}件あります。` : "すべて問題ありません。"}
+  うまく動かないときは、この画面と<a href="/logs">エラーログ</a>を見てください。</p>
+  <p class="muted">解決しない場合は、<a href="/diagnostics.txt">診断ファイルをダウンロード</a>して配布元に送ってください（パスワード・APIキーは入っていません）。</p>
+</div>
+<table>
+  <tr><th style="width:110px">結果</th><th style="width:200px">項目</th><th>状態</th></tr>
+  ${checks.map((c) => `<tr><td>${mark(c.level)}</td><td><b>${esc(c.label)}</b></td><td>${esc(c.detail)}${c.fix ? `<div class="muted">→ ${esc(c.fix)}</div>` : ""}</td></tr>`).join("")}
+</table>
+
+<h2>止まらないようにする設定</h2>
+<div class="card">
+  <form method="post" action="/settings/autostart" class="inline" data-busy>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" name="autostart" value="1" ${st.autostart.enabled ? "checked" : ""} onchange="this.form.submit()" ${st.autostart.supported && st.isAdmin ? "" : "disabled"} style="width:auto">
+      パソコンのログイン時に自動で起動する
+    </label>
+  </form>
+  <p class="muted">オンにすると、パソコンを起動・再起動したあとに自分で立ち上げる必要がなくなります（起動し忘れ・黒い画面を閉じて止まる事故を防げます）。${st.autostart.supported ? "" : "このOSでは対応していません。"}${st.autostart.enabled && st.autostart.path ? `<br>設定ファイル: <code>${esc(st.autostart.path)}</code>` : ""}</p>
+  <p class="muted">スリープ対策: ${esc(st.awakeNote)}</p>
+  <hr style="border:0;border-top:1px solid var(--hive-200);margin:12px 0">
+  <form method="post" action="/settings/auto-update" class="inline" data-busy>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:600">
+      <input type="checkbox" name="auto_update" value="1" ${st.autoUpdate ? "checked" : ""} onchange="this.form.submit()" ${st.isAdmin ? "" : "disabled"} style="width:auto">
+      新しい版が出たら自動で更新する
+    </label>
+  </form>
+  <p class="muted">オンにすると、起動時と6時間ごとに確認して自動で最新にします（送信中の会社は送り終わってから。更新前にバックアップを取ります）。オフの場合は、画面右上の「新しい版があります」を押して更新してください。</p>
+</div>
+
+<h2>バックアップ</h2>
+<div class="card">
+  <p>1日1回、送信履歴やリストを含むデータを自動で複製しています（7世代）。保存先: <code>${esc(st.backupDir)}</code></p>
+  <form method="post" action="/backup/create" class="inline" data-busy data-busytext="作成中…"><button class="btn sub">いますぐバックアップを取る</button></form>
+  <a class="btn sub" href="/backup.json">閲覧用の書き出し（JSON）</a>
+  ${st.backups.length ? `
+  <h2 style="font-size:14px">復元</h2>
+  <form method="post" action="/backup/restore" data-busy data-busytext="復元の準備中…" onsubmit="return confirm('選んだバックアップの内容に戻します。いまのデータは data/backups に退避します。よろしいですか？')">
+    <select name="file">${st.backups.map((b) => `<option value="${esc(b.file)}">${esc(b.label)}</option>`).join("")}</select>
+    <p class="muted">復元すると、いまの送信履歴・リストはバックアップ時点の内容に置き換わります。押すとアプリが再起動します（送信中の会社は送り終わってから）。</p>
+    <button class="btn danger" ${st.isAdmin ? "" : "disabled"}>選んだバックアップから復元する</button>
+    ${st.isAdmin ? "" : `<span class="muted">復元は管理者のみ</span>`}
+  </form>` : `<p class="muted">まだバックアップがありません。</p>`}
+</div>
+
+<h2>困ったときの道具</h2>
+<div class="card">
+  <p><a class="btn sub" href="/logs">エラーログを見る${st.logs.errors24h ? `（24時間で ${st.logs.errors24h}件）` : ""}</a>
+  <a class="btn sub" href="/diagnostics.txt">診断ファイルをダウンロード</a>
+  <a class="btn sub" href="/template.csv">リストの見本CSV</a>
+  <a class="btn sub" href="/guide">ご利用ガイド</a></p>
+  <p class="muted">診断ファイルには、版・OS・設定の有無・直近のエラーが入ります。パスワードやAPIキー、送信先の会社名以外の個人情報は含みません。</p>
+</div>`;
+}
+
+// ---- エラーログ（#33）----
+// これまでは黒い画面を見るしかなく、閉じてしまうと何が起きたか分からなかった
+export type LogRow = { id: number; at: string; kind: string; source: string; company: string; text: string };
+export function logsView(rows: LogRow[], kind: string, counts: { errors24h: number; total: number }): string {
+  const tab = (k: string, label: string) => `<a class="btn ${kind === k ? "" : "sub"}" href="/logs${k ? `?kind=${k}` : ""}">${label}</a>`;
+  const kindTag = (k: string) => k === "error" ? `<span class="tag failed">エラー</span>` : k === "warn" ? `<span class="tag queued">注意</span>` : `<span class="tag">記録</span>`;
+  return `<h1>エラーログ</h1>
+<div class="card">
+  <p>アプリの中で起きたことを、新しい順に最大500件まで残しています（直近24時間のエラー: <b>${counts.errors24h}</b>件）。</p>
+  <p>${tab("", "すべて")} ${tab("error", "エラーだけ")} ${tab("warn", "注意だけ")}
+    <a class="btn sub" href="/health">動作チェックに戻る</a>
+    <a class="btn sub" href="/diagnostics.txt">診断ファイル</a></p>
+  <p class="muted">原因が分からないときは、診断ファイルをダウンロードして配布元に送ってください。ここの内容もその中に入ります。</p>
+</div>
+${rows.length ? `<table>
+  <tr><th style="width:120px">日時</th><th style="width:80px">種類</th><th style="width:90px">場所</th><th>内容</th></tr>
+  ${rows.map((r) => `<tr><td class="small">${esc(jst(r.at))}</td><td>${kindTag(r.kind)}</td><td class="small">${esc(r.source)}</td><td>${r.company ? `<b>${esc(r.company)}</b>: ` : ""}${esc(r.text)}</td></tr>`).join("")}
+</table>
+<form method="post" action="/logs/clear" style="margin-top:12px" onsubmit="return confirm('ログを全部消します。よろしいですか？')"><button class="btn sub small">ログを消す</button></form>`
+  : `<div class="card"><p>まだ記録はありません。問題なく動いています。</p></div>`}`;
 }

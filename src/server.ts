@@ -4,17 +4,24 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { getDb, getSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
+import { getDb, getSetting, setSetting as saveSetting, SCREENSHOT_DIR, MATERIAL_DIR, domainOf, jst, channelMode, STATUS_LABEL, OUTCOME_LABEL, type Campaign, type Job, type SenderProfile } from "./db.js";
 import { parseCompanyCsv, parseCompanyXlsx, importRowsToCampaign, parseSuppressionCsv, parseSuppressionText, importSuppressions, type ImportSummary, type CompanyRow } from "./csv.js";
 import { composeMessage, activeProvider, activeAiConfig, aiStatusLabel, testAiConnection, AI_MODELS, DEFAULT_TEMPLATE, loadNgWords, lintMessage } from "./message.js";
-import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause } from "./email.js";
+import { optOut, testSmtp, explainSmtpError, checkSmtpPassword, emailPause, clearEmailPause, senderEmailOk } from "./email.js";
+import { logError, logInfo, recentLogs, clearLogs, logCounts } from "./applog.js";
+import { jpError } from "./jp.js";
+import { healthChecks, diagnosticsText } from "./health.js";
+import { createBackup, listBackups, requestRestore, autoBackupIfDue, backupLabel, BACKUP_DIR } from "./backup.js";
+import { autostartEnabled, autostartSupported, enableAutostart, disableAutostart, autostartPath } from "./autostart.js";
+import { releaseAwakeAll, AWAKE_NOTE } from "./awake.js";
 import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday } from "./worker.js";
 import { launchBrowser, openAndFill } from "./engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails } from "./replies.js";
 import { notify, notifyEnabled } from "./notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion } from "./update.js";
-import { layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, errKind, type NavUser } from "./views.js";
+import { esc, layout, campaignListView, sendersView, senderForm, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "./views.js";
 import { authMiddleware, renameUser, requireAdmin, startSession, endSession, findUser, verifyPassword, createUser, setPassword, listUsers, ensureFirstAdmin, randomPassword, cleanupSessions, type AuthedRequest } from "./auth.js";
 
 const app = express();
@@ -285,9 +292,9 @@ app.post("/campaigns", upload.single("material_file"), (req, res) => {
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(me(req).id, b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, materialUrl, String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0);
   const cid = Number(r.lastInsertRowid);
   // 資料ファイル（メール添付用）を保存する
-  if (req.file) saveMaterial(cid, req.file);
+  const warn = req.file ? saveMaterial(cid, req.file) : "";
   applyGroupMembers(req, cid, "", b);
-  redirectWith(res, `/campaigns/${cid}`, "キャンペーンを作成しました。CSVを取り込んでください。");
+  redirectWith(res, `/campaigns/${cid}`, `キャンペーンを作成しました。CSVを取り込んでください。${warn ? `／⚠ ${warn}` : ""}`);
 });
 
 // ---- キャンペーン編集 ----
@@ -309,7 +316,8 @@ app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
   if (!ownedSender(req, Number(b.sender_id))) return redirectWith(res, `/campaigns/${id}/edit`, "送信者を選び直してください");
   db.prepare(`UPDATE form_campaigns SET name=?, sender_id=?, mode=?, subject_text=?, template_text=?, ai_instruction=?, daily_limit=?, send_window_start=?, send_window_end=?, weekdays_only=?, channel=?, email_daily_limit=?, resend_days=?, ignore_refusal=?, material_url=?, group_name=?, material_url_in_email=? WHERE id=?`)
     .run(b.name, Number(b.sender_id), b.mode, b.subject_text ?? "", b.template_text ?? "", b.ai_instruction ?? "", Number(b.daily_limit) || 300, Number(b.send_window_start) || 9, Number(b.send_window_end) || 18, Number(b.weekdays_only) ? 1 : 0, channel, Number(b.email_daily_limit) || 100, Math.max(0, Number(b.resend_days ?? 90) || 0), Number(b.ignore_refusal) ? 1 : 0, String(b.material_url ?? "").trim(), String(b.group_name ?? "").trim(), b.material_url_in_email === "1" ? 1 : 0, id);
-  if (req.file) saveMaterial(id, req.file);
+  const attachWarn = req.file ? saveMaterial(id, req.file) : "";
+  if (req.file) { /* 保存済み。注意文は下の完了メッセージに付ける */ }
   else if (b.remove_attach === "1" && before.attach_path) {
     // 添付を外す。複製したキャンペーンは同じファイルを指していることがあるので、他に使っていなければファイルも消す
     db.prepare("UPDATE form_campaigns SET attach_path='', attach_name='' WHERE id=?").run(id);
@@ -318,16 +326,28 @@ app.post("/campaigns/:id/edit", upload.single("material_file"), (req, res) => {
     return redirectWith(res, `/campaigns/${id}/edit`, `添付ファイル「${before.attach_name}」を削除しました（メールは添付なしで送られます）`);
   }
   applyGroupMembers(req, id, prevGroupName, b);
-  redirectWith(res, `/campaigns/${id}`, "キャンペーンを保存しました");
+  redirectWith(res, `/campaigns/${id}`, `キャンペーンを保存しました${attachWarn ? `／⚠ ${attachWarn}` : ""}`);
 });
 
-// 資料ファイルを DATA_DIR/materials に保存し、キャンペーンに紐づける
-function saveMaterial(campaignId: number, file: Express.Multer.File) {
+// 添付ファイルの大きさの目安。重い添付はGmail側で止まる（実例: 13MBの添付で送信が止まった）
+const ATTACH_WARN_MB = 5;
+const ATTACH_MAX_MB = 10;
+
+// 資料ファイルを DATA_DIR/materials に保存し、キャンペーンに紐づける。
+// 戻り値は利用者に見せる注意文（問題なければ空文字）
+function saveMaterial(campaignId: number, file: Express.Multer.File): string {
+  const mb = file.size / 1024 / 1024;
+  if (mb > ATTACH_MAX_MB) {
+    return `添付ファイル（${mb.toFixed(1)}MB）が大きすぎるため登録しませんでした。${ATTACH_MAX_MB}MB以下にしてください（重い添付はメールが送れなくなります）。資料は公開リンクで送る方法もおすすめです`;
+  }
   const safeExt = path.extname(file.originalname).replace(/[^.\w]/g, "").slice(0, 10) || ".pdf";
   const dest = path.join(MATERIAL_DIR, `campaign-${campaignId}${safeExt}`);
   fs.writeFileSync(dest, file.buffer);
   const name = Buffer.from(file.originalname, "latin1").toString("utf8"); // multer は元名を latin1 で持つ
   db.prepare("UPDATE form_campaigns SET attach_path=?, attach_name=? WHERE id=?").run(dest, name || `資料${safeExt}`, campaignId);
+  return mb > ATTACH_WARN_MB
+    ? `添付ファイルは ${mb.toFixed(1)}MB です。${ATTACH_WARN_MB}MBを超える添付は届かないことがあるため、できれば圧縮するか、公開リンクで送ることをおすすめします`
+    : "";
 }
 
 /** 資料ファイルを、どのキャンペーンからも使われていなければ消す（アプリの資料フォルダ内のものだけ） */
@@ -529,14 +549,42 @@ app.post("/campaigns/:id/test", async (req, res) => {
   }
 });
 
-app.post("/campaigns/:id/start", (req, res) => {
+app.post("/campaigns/:id/start", async (req, res) => {
   const id = Number(req.params.id);
-  if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
+  const camp = ownedCampaign(req, id);
+  if (!camp) return res.status(403).send(DENIED);
   if (isRunning(id)) return redirectWith(res, `/campaigns/${id}`, "すでに実行中です");
   const only = ["email", "form"].includes(String(req.body.only)) ? String(req.body.only) : "";
+
+  // 開始前に、送信用メールの設定を1回だけ確かめる。
+  // 以前は設定不備のまま走り出し、メールの会社を次々と失敗にしていた（実例: 「2段階認証が必要」で180件が失敗）。
+  // フォームだけ送る場合は確認しない（メールを使わないので）
+  const willSendEmail = only !== "form" && channelMode(camp.channel) !== "form_only";
+  if (willSendEmail) {
+    const sender = db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(camp.sender_id) as SenderProfile | undefined;
+    if (!sender) return redirectWith(res, `/campaigns/${id}`, "送信者が見つかりません");
+    const chk = senderEmailOk(sender);
+    if (!chk.ok) {
+      logError("start", `開始前チェックで中止: ${chk.reason}`);
+      return redirectWith(res, `/campaigns/${id}`, `メールの設定が足りないため開始していません: ${chk.reason}／「送信者」の画面で登録してから開始してください（フォームだけ送るなら「対象: フォームの会社だけ」で開始できます）`);
+    }
+    try {
+      // 返ってこない環境で画面が固まらないよう20秒で見切る
+      await Promise.race([
+        testSmtp(sender),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("ETIMEDOUT 接続の確認が20秒で終わりませんでした")), 20_000)),
+      ]);
+      clearEmailPause(sender); // 設定し直して通ったのなら、前の一時停止は解除する
+    } catch (e) {
+      const why = explainSmtpError(e, sender);
+      const hint = checkSmtpPassword(sender);
+      logError("start", `開始前のメール接続テストに失敗: ${why}`);
+      return redirectWith(res, `/campaigns/${id}`, `メールを送れない状態のため開始していません: ${why}${hint ? `／${hint}` : ""}（フォームだけ送るなら「対象: フォームの会社だけ」で開始できます）`);
+    }
+  }
   db.prepare("UPDATE form_campaigns SET status='running', send_only=? WHERE id=?").run(only, id);
   const ignoreWindow = req.body.ignore_window === "1";
-  runCampaign(id, { ignoreWindow }).then((r) => console.log(`[campaign ${id}] ${r.processed}件処理 (${r.reason})`)).catch((e) => console.error(e));
+  runCampaign(id, { ignoreWindow }).then((r) => console.log(`[campaign ${id}] ${r.processed}件処理 (${r.reason})`)).catch((e) => { console.error(e); logError("worker", `送信を開始できませんでした: ${jpError(e)}`); });
   const onlyLabel = only === "email" ? "メールの会社だけ" : only === "form" ? "フォームの会社だけ" : "すべて";
   redirectWith(res, `/campaigns/${id}`, `送信を開始しました（対象: ${onlyLabel}${ignoreWindow ? "・時間帯を無視" : ""}）${ignoreWindow ? "" : "。送信時間帯外の場合は時間になると自動で始まります"}`);
 });
@@ -545,7 +593,7 @@ app.post("/campaigns/:id/scan", (req, res) => {
   const id = Number(req.params.id);
   if (!ownedCampaign(req, id)) return res.status(403).send(DENIED);
   if (isRunning(id) || isScanning(id)) return redirectWith(res, `/campaigns/${id}`, "実行中です");
-  scanCampaign(id).then((r) => console.log(`[scan ${id}] ${r.scanned}件 (${r.reason})`)).catch((e) => console.error(e));
+  scanCampaign(id).then((r) => console.log(`[scan ${id}] ${r.scanned}件 (${r.reason})`)).catch((e) => { console.error(e); logError("scan", `事前チェックを開始できませんでした: ${jpError(e)}`); });
   redirectWith(res, `/campaigns/${id}`, "事前チェックを始めました（1社5〜10秒）");
 });
 app.post("/campaigns/:id/stop-scan", (req, res) => {
@@ -1194,6 +1242,90 @@ app.post("/settings/game", requireAdmin, (req, res) => {
   redirectWith(res, "/settings", on ? "おまけのゲームを表示します（共有用URLでは表示されません）" : "おまけのゲームを非表示にしました");
 });
 
+// ---- 動作チェック・エラーログ・診断ファイル・バックアップ ----
+// 「動かない」の原因を、聞き出すやり取りなしで利用者自身が切り分けられるようにするための画面。
+app.get("/health", (req, res) => {
+  const checks = healthChecks();
+  const backups = listBackups();
+  const state = {
+    autostart: { supported: autostartSupported(), enabled: autostartEnabled(), path: autostartPath() },
+    autoUpdate: getSetting("auto_update", "0") === "1",
+    awakeNote: AWAKE_NOTE,
+    logs: logCounts(),
+    backups: backups.slice(0, 10).map((b) => ({ file: b.file, label: backupLabel(b) })),
+    backupDir: BACKUP_DIR,
+    isAdmin: me(req).role === "admin",
+  };
+  res.send(layout("動作チェック", healthView(checks, state), takeFlash(req), navUser(req), updateReady));
+});
+
+app.get("/logs", (req, res) => {
+  const kind = ["error", "warn", "info"].includes(String(req.query.kind)) ? String(req.query.kind) : "";
+  res.send(layout("エラーログ", logsView(recentLogs(200, kind), kind, logCounts()), takeFlash(req), navUser(req), updateReady));
+});
+app.post("/logs/clear", (req, res) => {
+  const n = clearLogs();
+  redirectWith(res, "/logs", `${n}件のログを消しました`);
+});
+
+// サポートに送ってもらう1ファイル（パスワード・APIキーは入っていない）
+app.get("/diagnostics.txt", (req, res) => {
+  const stamp = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  res.setHeader("content-type", "text/plain; charset=utf-8");
+  res.setHeader("content-disposition", `attachment; filename=apo-hatch-shindan-${stamp}.txt`);
+  res.send(diagnosticsText());
+});
+
+// 取り込み用CSVの見本（列名で迷わないように）
+app.get("/template.csv", (req, res) => {
+  const rows = [
+    ["企業名", "企業URL", "問い合わせフォーム", "メール", "業界", "都道府県", "代表者名"],
+    ["株式会社サンプル商事", "https://example.co.jp/", "https://example.co.jp/contact/", "info@example.co.jp", "製造", "東京都", "山田 太郎"],
+    ["サンプル工業株式会社", "https://example2.co.jp/", "", "", "建設", "大阪府", ""],
+  ];
+  // Excelでそのまま開けるように BOM 付きUTF-8で返す
+  const csv = "﻿" + rows.map((r) => r.map((c) => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(",")).join("\r\n") + "\r\n";
+  res.setHeader("content-type", "text/csv; charset=utf-8");
+  res.setHeader("content-disposition", "attachment; filename=apo-hatch-list-template.csv");
+  res.send(csv);
+});
+
+app.post("/backup/create", async (req, res) => {
+  try {
+    const b = await createBackup("manual");
+    redirectWith(res, "/health", `バックアップを作りました（${backupLabel(b)}）。保存先: ${BACKUP_DIR}`);
+  } catch (e) {
+    logError("backup", `手動バックアップに失敗: ${jpError(e)}`);
+    redirectWith(res, "/health", `バックアップに失敗しました: ${jpError(e, 160)}`);
+  }
+});
+
+// 復元は「予約 → 再起動時に入れ替え」。動いている最中にDBファイルを差し替えると壊れるため
+app.post("/backup/restore", requireAdmin, async (req, res) => {
+  const file = String(req.body.file ?? "");
+  const r = requestRestore(file);
+  if (!r.ok) return redirectWith(res, "/health", r.error ?? "復元できませんでした");
+  logInfo("backup", `復元を予約: ${file}`);
+  res.send(layout("復元します", `<div class="card"><h1>バックアップから復元します</h1>
+    <p>「${esc(file)}」の内容に戻します。いまのデータは念のため <code>data/backups</code> に退避します。</p>
+    <p class="muted">送信中の会社があれば、送り終わるのを待ってから再起動します（最大2分）。再起動後、この画面をもう一度開いてください。</p>
+    <p><a class="btn" href="/">画面に戻る（30秒ほど待ってから）</a></p></div>`, "", navUser(req), updateReady));
+  await drainForShutdown();
+  requestRestart();
+});
+
+app.post("/settings/autostart", requireAdmin, (req, res) => {
+  const on = req.body.autostart === "1";
+  const r = on ? enableAutostart() : disableAutostart();
+  redirectWith(res, "/health", r.message);
+});
+
+app.post("/settings/auto-update", requireAdmin, (req, res) => {
+  const on = req.body.auto_update === "1";
+  saveSetting("auto_update", on ? "1" : "0");
+  redirectWith(res, "/health", on ? "新しい版が出たら、起動時に自動で更新します（送信中は送り終わってから）" : "自動更新をオフにしました（「新しい版があります」を押して更新してください）");
+});
+
 // ---- 送信数（日別・月別） ----
 // 「今日は何件送ったか」「今月はどれくらいか」を見るための画面。日時は東京時間で数える（DBは世界標準時）
 app.get("/stats", (req, res) => {
@@ -1325,17 +1457,60 @@ for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
     if (stopping) return;
     stopping = Date.now();
     console.log("\n[apo-hatch] 送信中の会社があれば終わるまで待ってから終了します（すぐ止めるにはもう一度 Ctrl+C）");
-    drainForShutdown().finally(() => process.exit(0));
+    drainForShutdown().finally(() => { releaseAwakeAll(); process.exit(0); });
   });
 }
 
+// ---- 自動バックアップ: 起動から1分後に1回、以後は1日1回 ----
+// フォルダを消してデータが無くなった実例があるため、DBファイルを data/backups に複製しておく（7世代）
+setTimeout(() => { autoBackupIfDue().catch((e) => logError("backup", jpError(e))); }, 60_000);
+setInterval(() => { autoBackupIfDue().catch((e) => logError("backup", jpError(e))); }, 6 * 60 * 60_000);
+
+// ---- 自動更新（設定でオンにしたときだけ）----
+// 起動から3分後と、以後6時間ごとに確認する。更新前にバックアップを取り、送信中の会社は送り終わってから再起動する
+async function autoUpdateIfEnabled() {
+  if (getSetting("auto_update", "0") !== "1") return;
+  try {
+    const st = await checkUpdate(true);
+    if (!st.available) return;
+    logInfo("update", `自動更新を開始: v${st.current} → v${st.latest}`);
+    await autoBackupIfDue();
+    const r = await applyUpdate();
+    if (!r.ok) {
+      logError("update", `自動更新に失敗: ${r.error ?? "原因不明"}`);
+      notify("自動更新に失敗しました", `${r.error ?? "原因不明"}（アプリはそのまま使えます。画面右上の「新しい版があります」から手動で更新できます）`, "autoupdate-fail");
+      return;
+    }
+    notify("新しい版に更新しました", `v${r.version} に更新し、再起動します`, `autoupdate:${r.version}`);
+    logInfo("update", `自動更新 完了: v${r.version}`);
+    await drainForShutdown();
+    requestRestart();
+  } catch (e) {
+    logError("update", `自動更新の確認に失敗: ${jpError(e)}`);
+  }
+}
+setTimeout(() => { autoUpdateIfEnabled().catch(() => {}); }, 3 * 60_000);
+setInterval(() => { autoUpdateIfEnabled().catch(() => {}); }, 6 * 60 * 60_000);
+
+// ---- 想定外のエラーもログに残す（黒い画面を閉じていても後から追えるように）----
+process.on("uncaughtException", (e) => {
+  console.error("[apo-hatch] 想定外のエラー:", e);
+  logError("app", `想定外のエラー: ${jpError(e, 400)}`);
+});
+process.on("unhandledRejection", (e) => {
+  console.error("[apo-hatch] 処理されなかったエラー:", e);
+  logError("app", `処理されなかったエラー: ${jpError(e, 400)}`);
+});
+
 // ---- 返信の自動確認: 送信用メールの受信箱を15分ごとに見て、反応（返信／アポ／断り）を記録 ----
-setTimeout(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 60_000);
-setInterval(() => { checkReplies().catch((e) => console.error("[replies]", e)); }, 15 * 60_000);
+const onReplyErr = (e: unknown) => { console.error("[replies]", e); logError("replies", `受信箱の読み取りに失敗: ${jpError(e)}`); };
+setTimeout(() => { checkReplies().catch(onReplyErr); }, 60_000);
+setInterval(() => { checkReplies().catch(onReplyErr); }, 15 * 60_000);
 
 // ---- 共有の除外リスト（スプレッドシート）を1日1回取り込む ----
-setTimeout(() => { syncAllSuppressions().catch((e) => console.error("[supp-sync]", e)); }, 120_000);
-setInterval(() => { syncAllSuppressions().catch((e) => console.error("[supp-sync]", e)); }, 24 * 60 * 60_000);
+const onSuppErr = (e: unknown) => { console.error("[supp-sync]", e); logError("supp-sync", `共有の除外リストの取り込みに失敗: ${jpError(e)}`); };
+setTimeout(() => { syncAllSuppressions().catch(onSuppErr); }, 120_000);
+setInterval(() => { syncAllSuppressions().catch(onSuppErr); }, 24 * 60 * 60_000);
 
 // ---- 簡易スケジューラ: running のキャンペーンを送信時間帯に自動再開 ----
 setInterval(() => {
@@ -1345,7 +1520,7 @@ setInterval(() => {
     notify("送信が止まっていたので再開します", `キャンペーン #${id} が15分以上動いていなかったため、自動で再開しました`, `stale:${id}`);
   }
   const ids = db.prepare("SELECT id FROM form_campaigns WHERE status='running'").all() as { id: number }[];
-  for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => console.error(`[campaign ${id}]`, e));
+  for (const { id } of ids) if (!isRunning(id)) runCampaign(id).catch((e) => { console.error(`[campaign ${id}]`, e); logError("worker", `キャンペーン #${id} を再開できませんでした: ${jpError(e)}`); });
 }, 60000);
 
 setInterval(cleanupSessions, 24 * 60 * 60 * 1000);
@@ -1364,6 +1539,14 @@ app.listen(PORT, () => {
     console.log("============================================================\n");
   }
   console.log(`【フォーム＆メール】アポハッチくん v${currentVersion()}: http://localhost:${PORT}  (AI: ${activeProvider()}, data: ${path.resolve(process.env.DATA_DIR ?? "data")})`);
+  // ダブルクリック起動（アポハッチくん起動.command / .bat）のときは、ブラウザも開く。
+  // 「起動したのに、どこを開けばいいか分からない」をなくすため
+  if (process.env.FO_OPEN === "1") {
+    const url = `http://localhost:${PORT}`;
+    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+    const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+    try { spawn(cmd, args, { stdio: "ignore", detached: true }).unref(); } catch { /* 開けなくても起動は続ける */ }
+  }
 });
 
 // 共有用（おまけゲームを表示しない）URL。同じアプリ・同じデータ・同じログインで、別ポートから配信する。

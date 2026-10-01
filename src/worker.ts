@@ -5,6 +5,9 @@ import type { Browser } from "playwright";
 import { getDb, allowsEmailFallback, findGroupDuplicate, FREE_MAIL_DOMAINS, type Campaign, type Job, type SenderProfile, type JobStatus } from "./db.js";
 import { launchBrowser, submitToCompany, fetchSiteText, scanCompany } from "./engine.js";
 import { notify } from "./notify.js";
+import { keepAwake } from "./awake.js";
+import { logError, logWarn, logInfo } from "./applog.js";
+import { jpError } from "./jp.js";
 import { composeMessage, findNgWords, activeProvider, lintMessage } from "./message.js";
 import { hasEntity, extractLegalName, findLegalNameFromSite } from "./company.js";
 import { buildEmailBody, isOptedOut, sendEmail, senderEmailOk, explainSmtpError, emailPause, setEmailPause, smtpPauseMinutes } from "./email.js";
@@ -215,8 +218,14 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
   } catch (e) {
     running.delete(campaignId);
     console.error(`[campaign ${campaignId}] ブラウザを起動できませんでした:`, e);
+    logError("worker", `ブラウザを起動できませんでした: ${jpError(e)}`);
+    notify("送信を始められませんでした", jpError(e), `launch:${campaignId}`);
     throw e;
   }
+  // 送信中はパソコンをスリープさせない（スリープで止まる問い合わせが最も多かった）
+  const releaseAwake = keepAwake();
+  // 続けて失敗しているときに気づけるようにする（設定ミス・サイト側の変化・ネットワーク断）
+  let failStreak = 0;
   try {
     const worker = async () => {
       while (!state.stop) {
@@ -228,7 +237,13 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
         const formOk = only !== "email" && sentToday(campaignId, "form") < campaign.daily_limit;
         // メール送信が一時停止中（ログイン拒否・上限・通信障害）ならメールの会社には手を付けない
         const emailOk = only !== "form" && sentToday(campaignId, "email") < campaign.email_daily_limit && !emailPause(sender);
-        if (!formOk && !emailOk) { reason = only ? `${only === "email" ? "メール" : "フォーム"}の送信が上限または一時停止` : "本日の上限に到達"; return; }
+        if (!formOk && !emailOk) {
+          reason = only ? `${only === "email" ? "メール" : "フォーム"}の送信が上限または一時停止` : "本日の上限に到達";
+          // 「上限に達して止まった」ことに気づけるように通知する（1時間に1回まで）
+          notify("本日の送信上限に達しました", `「${campaign.name}」は今日の上限（フォーム${campaign.daily_limit}・メール${campaign.email_daily_limit}）に達したため止まりました。残りは明日の送信時間帯に自動で続きます`, `limit:${campaignId}`);
+          logInfo("worker", `上限で停止: ${campaign.name}（${reason}）`);
+          return;
+        }
         const channels = [formOk && "form", emailOk && "email"].filter(Boolean) as string[];
         const next = db.prepare(`SELECT id, channel FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0 AND channel IN (${channels.map(() => "?").join(",")}) ORDER BY id LIMIT 1`).get(campaignId, ...channels) as { id: number; channel: string } | undefined;
         if (!next) { reason = "queue empty or 本日の上限"; return; }
@@ -241,13 +256,23 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
           const j = await processJob(browser, next.id);
           processed++;
           opts.onProgress?.(j);
+          // 続けて失敗していないか見る（10件続いたら知らせる。設定ミスや回線不調に早く気づけるように）
+          if (j.status === "failed") {
+            failStreak++;
+            logWarn("worker", `失敗: ${j.result_text.split("\n")[0]}`, j.company_name);
+            if (failStreak === 10) {
+              notify("送信が続けて失敗しています", `「${campaign.name}」で10件続けて失敗しました。エラーログ画面で内容を確認してください（最後の理由: ${j.result_text.split("\n")[0].slice(0, 60)}）`, `streak:${campaignId}`);
+              logError("worker", `10件続けて失敗（最後の理由: ${j.result_text.split("\n")[0].slice(0, 120)}）`);
+            }
+          } else if (j.status === "sent") failStreak = 0;
           // 自動再試行は「送信前の通信エラー」だけ。「送信後の判定不能」は送信ボタンを押し済みで、
           // 実際には届いていることが多い（例: 完了文言を知らなかっただけ）。再試行すると同じ会社に二重送信になるため除外する
           if (j.status === "failed" && j.attempts < 2 && !/送信後の判定不能/.test(j.result_text) && /(例外|timeout|Timeout|net::|ECONN|socket|接続)/.test(j.result_text)) {
             db.prepare("UPDATE form_jobs SET status='queued', result_text=? WHERE id=?").run(`再試行待ち: ${j.result_text.split("\n")[0]}`, j.id);
           }
         } catch (e) {
-          db.prepare("UPDATE form_jobs SET status='failed', result_text=? WHERE id=?").run(`例外: ${String(e).slice(0, 150)}`, next.id);
+          db.prepare("UPDATE form_jobs SET status='failed', result_text=? WHERE id=?").run(`エラー: ${jpError(e, 150)}`, next.id);
+          logError("worker", `送信中のエラー: ${jpError(e)}`);
         } finally {
           inFlight--;
         }
@@ -260,6 +285,7 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   } finally {
     await browser.close().catch(() => {});
+    releaseAwake();
     running.delete(campaignId);
     const left = (db.prepare("SELECT COUNT(*) n FROM form_jobs WHERE campaign_id=? AND status='queued' AND is_test=0").get(campaignId) as { n: number }).n;
     // 時間帯外・上限で止まった場合は running のまま残し、スケジューラが再開する
@@ -281,6 +307,7 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
   const db = getDb();
   let scanned = 0;
   let browser: Browser | null = null;
+  const releaseAwake = keepAwake(); // 事前チェック中もスリープさせない
   try {
     const { campaign } = loadCampaign(campaignId);
     browser = await launchBrowser();
@@ -314,11 +341,18 @@ export async function scanCampaign(campaignId: number): Promise<{ scanned: numbe
         .run(status, channel, email, r.formUrl ?? job.form_url, note, status === "queued" ? `事前チェック: ${note}` : note, job.id);
       await new Promise((r) => setTimeout(r, 1000 + Math.random() * 1500));
     }
+    if (scanned && !state.stop) {
+      const name = (db.prepare("SELECT name FROM form_campaigns WHERE id=?").get(campaignId) as { name: string } | undefined)?.name ?? `#${campaignId}`;
+      notify("事前チェックが終わりました", `「${name}」の ${scanned}件を調べ終わりました（結果はキャンペーン画面で確認できます）`, `scandone:${campaignId}`);
+    }
     return { scanned, reason: state.stop ? "停止" : "done" };
   } catch (e) {
-    return { scanned, reason: `エラー: ${String((e as Error).message ?? e).slice(0, 120)}` };
+    logError("scan", `事前チェックが途中で止まりました: ${jpError(e)}`);
+    notify("事前チェックが止まりました", jpError(e, 120), `scanerr:${campaignId}`);
+    return { scanned, reason: `エラー: ${jpError(e, 120)}` };
   } finally {
     await browser?.close().catch(() => {});
+    releaseAwake();
     running.delete(key);
   }
 }

@@ -10,10 +10,40 @@ export const MATERIAL_DIR = path.join(DATA_DIR, "materials");
 
 let _db: Database.Database | null = null;
 
+/** 復元の予約（設定画面で選んだバックアップ）があれば、DBを開く前に入れ替える。
+ *  動いている最中にファイルを差し替えると壊れるため、必ず起動時のこのタイミングで行う。
+ *  いまのDBは backups に退避するので、復元してみて違っていたら戻せる */
+function applyPendingRestore(): void {
+  const marker = path.join(DATA_DIR, "restore-pending.txt");
+  const dbFile = path.join(DATA_DIR, "form-outreach.db");
+  const backups = path.join(DATA_DIR, "backups");
+  let name = "";
+  try { name = fs.existsSync(marker) ? fs.readFileSync(marker, "utf8").trim() : ""; } catch { return; }
+  if (!name) return;
+  try {
+    const src = path.join(backups, path.basename(name));
+    if (fs.existsSync(src)) {
+      if (fs.existsSync(dbFile)) {
+        const t = new Date(Date.now() + 9 * 3600_000).toISOString();
+        fs.mkdirSync(backups, { recursive: true });
+        fs.copyFileSync(dbFile, path.join(backups, `apo-hatch-${t.slice(0, 10)}_${t.slice(11, 13)}${t.slice(14, 16)}-before-restore.db`));
+      }
+      for (const suffix of ["-wal", "-shm"]) { const f = dbFile + suffix; if (fs.existsSync(f)) fs.rmSync(f); }
+      fs.copyFileSync(src, dbFile);
+      console.log(`[apo-hatch] バックアップ「${path.basename(name)}」から復元しました`);
+    }
+  } catch (e) {
+    console.error("[apo-hatch] 復元に失敗しました:", e);
+  } finally {
+    try { fs.rmSync(marker); } catch { /* 無ければ何もしない */ }
+  }
+}
+
 export function getDb(): Database.Database {
   if (_db) return _db;
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
   fs.mkdirSync(MATERIAL_DIR, { recursive: true });
+  applyPendingRestore();
   _db = new Database(path.join(DATA_DIR, "form-outreach.db"));
   _db.pragma("journal_mode = WAL");
   _db.pragma("foreign_keys = ON");
@@ -219,6 +249,18 @@ function migrate(db: Database.Database) {
     const used = (db.prepare("SELECT COUNT(*) n FROM form_campaigns").get() as { n: number }).n > 0;
     db.prepare("INSERT INTO settings(key,value) VALUES('game_enabled',?)").run(used ? "1" : "0");
   }
+
+  // 画面で見られるエラーログ。これまでは黒い画面（ターミナル）を見るしかなく、閉じると何も分からなかった。
+  // 直近500件だけ残す（applog.ts 側で間引く）
+  db.exec(`CREATE TABLE IF NOT EXISTS app_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    at TEXT DEFAULT (datetime('now')),
+    kind TEXT NOT NULL DEFAULT 'error',   -- error | warn | info
+    source TEXT NOT NULL DEFAULT '',      -- どこで起きたか（worker / email / update 等）
+    company TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT ''
+  )`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_app_logs_kind ON app_logs(kind, id)`);
 
   // v0.3.51 で「送信後の判定不能」を一律「送信済み（完了画面を確認できず・要確認）」に書き換えたが、
   // 届いたかは会社によって違うため取り消した。その書き換えを元の「失敗（送信後の判定不能）」に戻す。
