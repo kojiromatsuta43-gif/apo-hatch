@@ -23,7 +23,7 @@ import { syncShare, shareConfigured, APPS_SCRIPT, KEY as SHARE_KEY } from "../sh
 import { drainForShutdown, clearStaleRuns, runCampaign, requestStop, isRunning, isScanning, scanCampaign, processJob, inSendWindow, sentToday, sentTodayBySender, warmupLimit, effectiveEmailLimit, nextWindowText } from "../worker.js";
 import { launchBrowser, openAndFill } from "../engine.js";
 import { checkReplies, isCheckingReplies, replyScanStatus, verifyInterruptedEmails, learnFromCorrection, loadReplyRules, clearReplyRulesCache } from "../replies.js";
-import { notify, notifyEnabled } from "../notify.js";
+import { notify, notifyEnabled, pollEvents } from "../notify.js";
 import { checkUpdate, applyUpdate, requestRestart, currentVersion, updateChannel } from "../update.js";
 import { errorPage } from "../ui/layout.js";
 import { esc, layout, lawView, todoView, todoRunView, setupView, checklistView, reportView, campaignListView, sendersView, type SenderExtra, campaignForm, campaignView, jobView, suppressionsView, settingsView, loginPage, passwordView, usersView, updateView, testView, gameView, guideView, statsView, importPreviewView, logsView, healthView, errKind, type NavUser } from "../views.js";
@@ -32,6 +32,12 @@ import { app, db, redirectWith, takeFlash, me, appState, gameOnFor, navUser, sco
 
 /** この画面の経路を登録する。server.ts から、ログイン確認などの共通処理のあとに呼ばれる */
 export function register(): void {
+// 開いているページが、新しいお知らせを取りに来る（数秒ごと）。通知はページ側が出す
+app.get("/events", (req, res) => {
+  res.setHeader("cache-control", "no-store");
+  res.json(pollEvents(Number(req.query.since) || 0));
+});
+
 app.get("/setup", (req, res) => {
   res.send(layout("はじめの設定", setupView(setupState(req)), takeFlash(req), navUser(req), appState.updateReady));
 });

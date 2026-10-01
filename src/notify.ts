@@ -157,6 +157,29 @@ export function ensureNotifierApp(): boolean {
   return notifierReady;
 }
 
+// ---- 開いているアポハッチくんのページから出す通知 ----
+// OSの通知（上のアプリ経由）は、macOSの設定や状況（画面の共有・録画中、集中モードなど）で出ないことがあり、
+// 「1回目は来たが2回目は来ない」が起きた。そこで、ブラウザで開いているアポハッチくんのページ自身に通知を出させる。
+//  ・ページが数秒ごとに /events を見に来て、新しいお知らせがあればブラウザの通知とページ内の帯で知らせる
+//  ・通知を押すと、そのタブが前に出る（探して切り替える必要がない）
+//  ・ページを開いていないときだけ、OSの通知（上のアプリ）を使う
+export type WebEvent = { id: number; title: string; body: string; at: number };
+const webEvents: WebEvent[] = [];
+let nextEventId = Date.now(); // 起動のたびに重ならない番号にする（ブラウザ側は「この番号より後」を取りに来る）
+let lastClientPoll = 0;
+
+/** ページからの確認（/events）。since より後のお知らせを返す */
+export function pollEvents(since: number): { events: WebEvent[]; last: number } {
+  lastClientPoll = Date.now();
+  // 初めて来たページには、過去のお知らせをまとめて出さない（いまの番号だけ教える）
+  const events = since > 0 ? webEvents.filter((e) => e.id > since) : [];
+  return { events, last: webEvents.length ? webEvents[webEvents.length - 1].id : nextEventId };
+}
+/** いまブラウザでページが開いているか（裏のタブは確認の間隔が1分ほどに延びるので、長めに見る） */
+function webClientAlive(): boolean {
+  return Date.now() - lastClientPoll < 90_000;
+}
+
 /** パソコンに通知を出す。key が同じ通知は1時間に1回だけ。出した（または出そうとした）ら true */
 export function notify(title: string, body: string, key = title): boolean {
   // 同じ内容は1時間に1回まで（画面のログも同じ扱い。以前は通知だけ抑えて、ログには毎分出し続けていた）
@@ -166,6 +189,11 @@ export function notify(title: string, body: string, key = title): boolean {
   console.log(`[apo-hatch] お知らせ: ${title} — ${body}`);
   if (!notifyEnabled()) return true;
   if (process.env.FO_NO_NOTIFY === "1") return true; // 自動テスト中は、利用者の画面に通知を出さない
+  // 開いているページ向けに積んでおく（直近50件）
+  webEvents.push({ id: ++nextEventId, title: title.slice(0, 60), body: body.replace(/\s+/g, " ").slice(0, 180), at: now });
+  if (webEvents.length > 50) webEvents.shift();
+  // ページが開いていれば、通知はページに任せる（OSの通知と二重に出さない）
+  if (webClientAlive()) return true;
   const t = title.replace(/["'\\\n]/g, " ").slice(0, 60);
   const b = body.replace(/["'\\]/g, " ").replace(/\s+/g, " ").slice(0, 180);
   try {

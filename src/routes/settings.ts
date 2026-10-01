@@ -55,8 +55,8 @@ app.post("/settings/notify", (req, res) => {
 
 // 通知の見え方を確認する
 app.post("/settings/notify-test", (req, res) => {
-  notify("テスト通知", "この通知が出れば設定はOKです（送信が止まったときにも同じように出ます）", `test:${Date.now()}`);
-  redirectWith(res, "/settings", "テスト通知を送りました（画面の右上などに出ます。出ない場合はOS側の通知設定をご確認ください）");
+  notify("テスト通知", `この通知が出れば設定はOKです（${new Date().toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" })} に送信）`, `test:${Date.now()}`);
+  redirectWith(res, "/settings", "テスト通知を送りました。数秒以内に、このページの右上と、パソコンの通知に出ます");
 });
 
 // 一覧と要対応の設定（#103 #115）

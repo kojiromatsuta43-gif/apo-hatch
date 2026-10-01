@@ -122,6 +122,63 @@ f.addEventListener("submit",()=>{clearTimeout(t);try{localStorage.removeItem(key
   });
 })();
 </script>
+${user ? `<script>
+// 開いているこのページから通知を出す。
+// OSの通知は状況によって出ないことがあるので、ページ自身が数秒ごとに新しいお知らせを見に行き、
+// ブラウザの通知（押すとこのタブが前に出る・絵は蜂）と、ページ右上の帯の両方で知らせる。
+(()=>{
+  const K="fo-last-event";
+  const get=()=>{try{return Number(localStorage.getItem(K)||0)}catch(e){return 0}};
+  const set=(v)=>{try{localStorage.setItem(K,String(v))}catch(e){}};
+  function toast(title,body){
+    let box=document.getElementById("fo-toasts");
+    if(!box){box=document.createElement("div");box.id="fo-toasts";box.style.cssText="position:fixed;top:14px;right:14px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:min(380px,calc(100vw - 28px))";document.body.appendChild(box);}
+    const el=document.createElement("div");
+    el.style.cssText="background:#fff;border:1px solid var(--c-line-strong);border-left:4px solid var(--c-brand);border-radius:10px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:flex;gap:10px;align-items:flex-start;cursor:pointer";
+    const img=document.createElement("img");img.src="/assets/bee.png";img.width=32;img.height=32;img.alt="";img.onerror=()=>img.remove();
+    const tx=document.createElement("div");const b=document.createElement("b");b.textContent=title;const p=document.createElement("div");p.className="small";p.textContent=body;tx.appendChild(b);tx.appendChild(p);
+    el.appendChild(img);el.appendChild(tx);el.title="クリックで閉じる";el.onclick=()=>el.remove();
+    box.appendChild(el);setTimeout(()=>el.remove(),20000);
+  }
+  function show(e){
+    toast(e.title,e.body);
+    try{
+      if("Notification" in window&&Notification.permission==="granted"){
+        const n=new Notification("アポハッチくん: "+e.title,{body:e.body,icon:"/assets/bee.png",tag:"fo-"+e.id});
+        n.onclick=()=>{window.focus();n.close();};
+      }
+    }catch(err){}
+  }
+  async function poll(){
+    try{
+      const since=get();
+      const r=await fetch("/events?since="+since,{cache:"no-store"});
+      if(!r.ok)return;
+      const j=await r.json();
+      for(const e of j.events){ if(e.id<=get())continue; set(e.id); show(e); }
+      if(!since||(!j.events.length&&j.last>get()))set(j.last);
+    }catch(err){}
+  }
+  // タブを複数開いていても、同じお知らせを二重に出さない（同時に確認するのは1つのタブだけ）
+  const run=()=>{ if(navigator.locks&&navigator.locks.request) navigator.locks.request("fo-events",{ifAvailable:true},(lock)=>lock?poll():null); else poll(); };
+  setInterval(run,5000); run();
+
+  // 通知の許可をまだ聞いていなければ、上に小さく案内を出す（押したときだけブラウザが許可を聞く）
+  try{
+    const snooze=Number(localStorage.getItem("fo-notify-later")||0);
+    if("Notification" in window&&Notification.permission==="default"&&Date.now()-snooze>7*864e5){
+      const bar=document.createElement("div");bar.className="flash";bar.style.cssText="display:flex;gap:10px;align-items:center;flex-wrap:wrap";
+      bar.innerHTML='<span>🐝 通知をオンにすると、送信が止まったとき・アポの返信が来たときに、このパソコンに知らせます。</span>';
+      const yes=document.createElement("button");yes.className="btn small primary";yes.textContent="通知をオンにする";
+      const no=document.createElement("button");no.className="btn small";no.textContent="あとで";
+      yes.onclick=()=>{Notification.requestPermission().then((p)=>{bar.remove();if(p==="granted")show({id:0,title:"通知をオンにしました",body:"送信が止まったときやアポの返信が来たときに、このように知らせます"});});};
+      no.onclick=()=>{try{localStorage.setItem("fo-notify-later",String(Date.now()))}catch(e){};bar.remove();};
+      bar.appendChild(yes);bar.appendChild(no);
+      const main=document.querySelector("main");if(main)main.prepend(bar);
+    }
+  }catch(err){}
+})();
+</script>` : ""}
 ${user?.effects ? `<div id="fo-chara" aria-hidden="true">
 <div class="icon">
 <svg class="bee on" viewBox="0 0 48 48"><path d="M20 14C18.5 9 16 7.5 13.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M28 14C29.5 9 32 7.5 34.5 7" stroke="#1C1710" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="12.8" cy="6.4" r="2.4" fill="#1C1710"/><circle cx="35.2" cy="6.4" r="2.4" fill="#1C1710"/><ellipse cx="9.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(-24 9.5 20)"/><ellipse cx="38.5" cy="20" rx="8" ry="5.6" fill="#fff" stroke="#1C1710" stroke-width="1.6" transform="rotate(24 38.5 20)"/><rect x="13" y="13" width="22" height="29" rx="11" fill="#FFC62E" stroke="#1C1710" stroke-width="2"/><rect x="13" y="27.5" width="22" height="4.6" fill="#1C1710"/><rect x="13" y="36" width="22" height="4.6" fill="#1C1710"/><circle cx="19.6" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="28.4" cy="21.5" r="2.3" fill="#1C1710"/><circle cx="20.4" cy="20.7" r=".8" fill="#fff"/><circle cx="29.2" cy="20.7" r=".8" fill="#fff"/><circle cx="16.8" cy="24.6" r="1.5" fill="#F4A7A3"/><circle cx="31.2" cy="24.6" r="1.5" fill="#F4A7A3"/><path d="M21.5 25.8Q24 27.6 26.5 25.8" stroke="#1C1710" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
