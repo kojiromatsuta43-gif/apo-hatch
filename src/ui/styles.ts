@@ -1,4 +1,4 @@
-// 画面の見た目（#144 デザイントークン／#100 文字サイズ／#111 色の意味／#112 主ボタン／#136 配色）。
+// 画面の見た目（#144 デザイントークン／#111 色の意味／#112 主ボタン／#136 配色）。
 // 色・余白・文字サイズはここだけで決める。各画面のHTMLには、できるだけ色を直接書かない。
 //
 // 色の意味（どの画面でも同じ）:
@@ -21,7 +21,7 @@ export const CSS = `
   --c-warn:#B45309; --c-warn-bg:#FFF1E0;
   --c-link:#1A4FB4;
   /* ---- 文字 ---- */
-  --fs-base:16px; --fs-sm:14px; --fs-xs:13px; --fs-h1:24px; --fs-h2:18px; --lh:1.7;
+  --fs-base:14px; --fs-sm:12px; --fs-xs:12px; --fs-h1:20px; --fs-h2:16px; --lh:1.6;
   /* ---- 余白・角 ---- */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --radius:10px; --radius-sm:8px;
   /* ---- 以前の名前（各画面のHTMLが使っている）。意味を保ったまま新しい色に対応させる ---- */
@@ -57,30 +57,30 @@ header.top a.upd{background:var(--c-brand);color:var(--c-brand-ink);font-weight:
 
 /* ---- 本文 ---- */
 main{max-width:1120px;margin:0 auto;padding:24px 20px 80px}
-h1{font-size:var(--fs-h1);margin:0 0 16px;line-height:1.4}
-h2{font-size:var(--fs-h2);margin:26px 0 10px;line-height:1.5}
-.card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+h1{font-size:var(--fs-h1);margin:0 0 14px;line-height:1.4}
+h2{font-size:var(--fs-h2);margin:22px 0 8px;line-height:1.5}
+.card{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--radius);padding:16px;margin-bottom:16px}
 .card.note{background:var(--c-warn-bg);border-color:#F1D3A8}
 .card.testcard{background:var(--c-surface-2)}
 label{display:block;font-weight:600;margin:12px 0 4px}
-input[type=text],input[type=number],input[type=url],input[type=email],input[type=password],textarea,select{width:100%;padding:10px;border:1px solid var(--c-line-strong);border-radius:var(--radius-sm);font:inherit;background:#fff;color:var(--c-ink)}
+input[type=text],input[type=number],input[type=url],input[type=email],input[type=password],textarea,select{width:100%;padding:8px;border:1px solid var(--c-line-strong);border-radius:var(--radius-sm);font:inherit;background:#fff;color:var(--c-ink)}
 input:focus,textarea:focus,select:focus{outline:2px solid var(--c-brand);outline-offset:1px}
 textarea{min-height:140px}
 .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
 .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 
 /* ---- ボタン：黄色は「その画面でいちばん押してほしい1つ」だけ（#112）---- */
-.btn{display:inline-block;background:#fff;color:var(--c-ink);border:1px solid var(--c-line-strong);padding:9px 16px;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;text-decoration:none;font:inherit;font-weight:700;line-height:1.4}
+.btn{display:inline-block;background:#fff;color:var(--c-ink);border:1px solid var(--c-line-strong);padding:8px 14px;border-radius:var(--radius-sm);font-weight:700;cursor:pointer;text-decoration:none;font:inherit;font-weight:700;line-height:1.4}
 .btn:hover{border-color:var(--c-ink-3)}
 .btn.primary{background:var(--c-brand);border-color:var(--c-brand);color:var(--c-brand-ink)}
 .btn.sub{font-weight:600}
 .btn.danger{border-color:var(--c-ng);color:var(--c-ng)}
-.btn.small{padding:6px 11px;font-size:var(--fs-sm)}
+.btn.small{padding:5px 10px;font-size:var(--fs-sm)}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 
 /* ---- 表 ---- */
 table{width:100%;border-collapse:collapse;background:var(--c-surface)}
-th,td{border-bottom:1px solid var(--c-line);padding:10px;text-align:left;vertical-align:top}
+th,td{border-bottom:1px solid var(--c-line);padding:7px 8px;text-align:left;vertical-align:top}
 th{background:var(--c-surface-2);font-size:var(--fs-xs);color:var(--c-ink-2);font-weight:700}
 th a{color:inherit}
 tr.hl td{background:#FFFBEA}tr.hl td:first-child{box-shadow:inset 3px 0 0 var(--c-brand)}
@@ -100,7 +100,7 @@ tr.histrow td{background:var(--c-surface-2);border-bottom:1px dashed var(--c-lin
 /* ---- 数字のタイル ---- */
 .stats{display:flex;gap:10px;flex-wrap:wrap}
 .stat{background:var(--c-surface);border:1px solid var(--c-line);border-radius:var(--radius);padding:12px 16px;min-width:120px}
-.stat b{display:block;font-size:26px;line-height:1.3;font-variant-numeric:tabular-nums}
+.stat b{display:block;font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums}
 .stat .unit{font-size:var(--fs-xs);font-weight:400;margin-left:2px}
 
 /* ---- お知らせ・補足 ---- */

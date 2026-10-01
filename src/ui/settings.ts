@@ -213,7 +213,6 @@ ${issued ? `<div class="card" style="border-color:var(--honey);background:var(--
 <table style="margin-top:8px"><tr><th>ログインID</th><td><code style="font-size:15px">${esc(issued.username)}</code></td></tr>
 <tr><th>初期パスワード</th><td><code style="font-size:15px">${esc(issued.password)}</code></td></tr></table>
 <p class="muted">初回ログイン時に本人がパスワードを変更する画面になります。</p></div>` : ""}
-${shareUrlsCard(shareUrls)}
 <div class="card"><h2 style="margin-top:0">＋ アカウントを発行する</h2>
 <div class="muted small" style="background:var(--honey-50);border:1px solid var(--honey);border-radius:8px;padding:10px 12px;margin-bottom:12px">
 <b>権限の違い</b><br>

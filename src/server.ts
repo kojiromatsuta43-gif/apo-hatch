@@ -97,8 +97,6 @@ app.listen(PORT, () => {
 if (process.env.GAME !== "0" && process.env.GAME !== "off" && CLEAN_PORT !== PORT) {
   const clean = app.listen(CLEAN_PORT, () => {
     console.log(`  ├ 共有用（ゲーム非表示）URL: http://localhost:${CLEAN_PORT}`);
-    const lan = shareUrls();
-    if (lan.length) console.log(`  ├ 他の人のPCから（同じWi-Fi・社内LAN）: ${lan.join("  /  ")}`);
   });
   clean.on("error", (e: NodeJS.ErrnoException) => {
     console.log(`  ※ 共有用URL(${CLEAN_PORT})は開けませんでした（${e.code}）。メインURLはそのまま使えます。`);
