@@ -1,6 +1,14 @@
 {
-  "version": "0.3.90",
-  "notes": "初回の管理者IDをパソコンのユーザー名から作るように（全員adminを回避）／ユーザー管理でログインIDを変更できるように",
+  "version": "0.3.91",
+  "notes": "他社に渡せるようにする大型更新：ダブルクリック起動・動作チェック・要対応画面・自動バックアップ・フォーム探索の強化・メールのウォームアップ・分析と週次レポート",
   "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
-  "published_at": "2026-09-30T19:24:03.572Z"
+  "published_at": "2026-10-01T02:30:29.120Z",
+  "channels": {
+    "stable": {
+      "version": "0.3.91",
+      "notes": "他社に渡せるようにする大型更新：ダブルクリック起動・動作チェック・要対応画面・自動バックアップ・フォーム探索の強化・メールのウォームアップ・分析と週次レポート",
+      "zip": "https://github.com/kojiromatsuta43-gif/apo-hatch/archive/refs/heads/main.zip",
+      "published_at": "2026-10-01T02:30:29.120Z"
+    }
+  }
 }
