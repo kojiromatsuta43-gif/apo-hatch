@@ -53,6 +53,9 @@ export const CAMPAIGN_STATUS_LABEL: Record<string, string> = { draft: "準備中
 export const MODE_LABEL: Record<string, string> = { template: "テンプレート", ai: "全文AI", hybrid: "冒頭だけAI", tpl_ai: "テンプレート＋AI回答" };
 
 export function campaignStatusTag(status: string, running = false): string {
+  // 「開始」を押したあとでも、送信時間帯の外や1日の上限に達している間は実際には送っていない。
+  // 以前はその間もずっと「送信中」と出ていて、動いているのか止まっているのか分からなかった
+  if (status === "running" && !running) return `<span class="tag queued" title="開始済みです。送信時間帯になるか、1日の上限が戻ると自動で送ります">時間待ち</span>`;
   const cls = running || status === "running" ? "sending" : status === "done" ? "sent" : status === "paused" ? "queued" : "skip";
   // 実際に送っている間は、事前チェックと同じ「クルクル」を付ける（動いているのが一目で分かるように）
   return `<span class="tag ${cls}">${running ? '<span class="spin"></span>' : ""}${esc(running ? "送信中" : CAMPAIGN_STATUS_LABEL[status] ?? status)}</span>`;

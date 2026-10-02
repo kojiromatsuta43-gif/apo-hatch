@@ -132,18 +132,7 @@ ${overview}${budgetCard}${licenseCard}
 <form method="post" action="/settings/lists" class="row">
 <div><label>要対応を「見送り」に移すまでの日数</label><input type="number" name="todo_hide_days" value="${opts?.todoHideDays ?? 30}" min="1" max="365"></div>
 <div><label>送信一覧の1ページの件数</label><select name="list_page_size">${[50, 100, 200].map((v) => `<option value="${v}" ${(opts?.listPageSize ?? 100) === v ? "selected" : ""}>${v}件</option>`).join("")}</select></div>
-<div style="grid-column:1/-1"><label>フォーム送信の間隔（1社送ってから次の会社までの待ち時間）</label><select name="send_pace" style="max-width:420px">
-<option value="slow" ${(opts?.sendPace ?? "slow") === "slow" ? "selected" : ""}>ゆっくり（8〜15秒・これまでどおり）</option>
-<option value="normal" ${opts?.sendPace === "normal" ? "selected" : ""}>ふつう（5〜9秒）</option>
-<option value="fast" ${opts?.sendPace === "fast" ? "selected" : ""}>速い（3〜5秒）</option></select>
-<p class="muted">間隔を短くすると1日に送れる数が増えます。送り先はそれぞれ別の会社のサイトなので相手への負荷は変わりませんが、回線やパソコンが遅い場合は「ゆっくり」のままにしてください。</p></div>
 <p style="grid-column:1/-1;margin:0"><button class="btn small">保存</button></p></form></div>
-<div class="card"><h2 style="margin-top:0">画面の演出</h2>
-<p class="muted">右下で動くキャラクター（ハッチくん・バッタくん）と、おまけのゲームの表示です。他社の方に使っていただく場合は、どちらも「表示しない」がおすすめです。</p>
-<form method="post" action="/settings/effects" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><span style="min-width:150px">キャラクター</span><select name="effects_enabled" style="width:auto"><option value="0" ${opts?.effects ? "" : "selected"}>表示しない</option><option value="1" ${opts?.effects ? "selected" : ""}>表示する</option></select><button class="btn small">保存</button></form>
-<div hidden><h2>おまけのゲーム</h2>
-<p class="muted small">送信の待ち時間用のスロットゲームです。上のメニューに「🎰 ゲーム」を出すかどうかを選べます（人に画面を見せるときは共有用URLを使えば、オンでも表示されません）。</p>
-</div><form method="post" action="/settings/game" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="min-width:150px">おまけのゲーム</span><select name="game_enabled" style="width:auto"><option value="0" ${gameEnabled ? "" : "selected"}>表示しない</option><option value="1" ${gameEnabled ? "selected" : ""}>表示する</option></select><button class="btn sub small">保存</button></form></div>
 <div class="card"><h2 style="margin-top:0">AIモード設定</h2>
 <p>現在: ${configured ? `<span class="tag sent">設定済み</span> <b>${ai.provider === "anthropic" ? "Claude" : "Gemini"} / ${esc(ai.model)}</b>${ai.source === "env" ? ' <span class="muted small">（環境変数から読み込み）</span>' : ""}` : '<span class="tag">未設定（AI: none）</span> <span class="muted">テンプレートのみで動いています。AIを使わなくても送信はできます。</span>'}</p>
 

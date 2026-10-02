@@ -73,7 +73,8 @@ export const GAME_PORT = Number(process.env.PORT ?? 3210);
 export const CLEAN_PORT = Number(process.env.CLEAN_PORT ?? GAME_PORT + 1);
 
 export function gameOnFor(req: express.Request): boolean {
-  if (process.env.GAME === "0" || process.env.GAME === "off") return false; // 完全に無効化したいとき
+  // ゲームとキャラクターは使わないので、設定画面の項目ごと無くした。環境変数 GAME=1 を付けて起動したときだけ出す
+  if (process.env.GAME !== "1") return false;
   if (getSetting(S.gameEnabled, "0") !== "1") return false; // 設定画面でオンにしたときだけ（新しく入れたPCは最初オフ）
   return req.socket.localPort !== CLEAN_PORT; // CLEAN_PORT 以外（＝メイン）ではON
 }
@@ -95,7 +96,7 @@ export function navUser(req: express.Request): NavUser {
     appo = (db.prepare(`SELECT COUNT(*) n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
       WHERE j.is_test=0 AND j.outcome='appointment' AND j.appo_seen_at IS NULL AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`).get(...sc.args) as { n: number }).n;
   } catch { /* 起動直後など */ }
-  return { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req), todo, appo, path: req.path, effects: settingOn(S.effectsEnabled) && req.socket.localPort !== CLEAN_PORT };
+  return { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req), todo, appo, path: req.path, effects: process.env.GAME === "1" && settingOn(S.effectsEnabled) && req.socket.localPort !== CLEAN_PORT };
 }
 
 /** 管理者は全部、一般ユーザーは自分のものだけ */

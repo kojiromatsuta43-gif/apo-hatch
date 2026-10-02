@@ -63,7 +63,6 @@ app.post("/settings/notify-test", (req, res) => {
 app.post("/settings/lists", requireAdmin, (req, res) => {
   saveSettingValue(S.todoHideDays, Math.min(365, Math.max(1, Math.round(Number(req.body.todo_hide_days) || 30))));
   saveSettingValue(S.listPageSize, [50, 100, 200].includes(Number(req.body.list_page_size)) ? Number(req.body.list_page_size) : 100);
-  saveSettingValue(S.sendPace, ["slow", "normal", "fast"].includes(String(req.body.send_pace)) ? String(req.body.send_pace) : "slow");
   redirectWith(res, "/settings", "保存しました");
 });
 

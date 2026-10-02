@@ -402,9 +402,9 @@ export async function runCampaign(campaignId: number, opts: { ignoreWindow?: boo
           inFlight--;
         }
         if (shuttingDown || state.stop) break;
-        // フォーム送信の間隔は設定で選べる（既定はこれまでどおり 8〜15秒）。環境変数で指定されていればそちらを優先
-        const pace = setting(S.sendPace);
-        const [lo, hi] = process.env.FO_MIN_WAIT_MS ? [MIN_WAIT, MAX_WAIT] : pace === "fast" ? [3000, 5000] : pace === "normal" ? [5000, 9000] : [MIN_WAIT, MAX_WAIT];
+        // フォーム送信の間隔は 3〜5秒に固定（以前は設定で 8〜15秒なども選べたが、選ぶ必要が無いので設定ごと無くした）。
+        // 環境変数で指定されていればそちらを優先（テスト用）
+        const [lo, hi] = process.env.FO_MIN_WAIT_MS ? [MIN_WAIT, MAX_WAIT] : [3000, 5000];
         const wait = next.channel === "email" ? 2000 + Math.random() * 3000 : lo + Math.random() * (hi - lo);
         await new Promise((r) => setTimeout(r, wait));
       }
