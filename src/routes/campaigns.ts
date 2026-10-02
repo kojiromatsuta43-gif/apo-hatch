@@ -68,7 +68,7 @@ app.get("/", (req, res) => {
     setupDone: setup.done,
     setupTotal: setup.total,
     perCampaign: [] as import("../ui/home.js").CampaignHome[],
-    newAppointments: db.prepare(`SELECT j.id, j.company_name company, j.updated_at at ${jobsWhere} AND j.outcome='appointment' AND j.updated_at > datetime('now','-3 days') ORDER BY j.updated_at DESC LIMIT 3`).all(...sc2.args) as { id: number; company: string; at: string }[],
+    newAppointments: db.prepare(`SELECT j.id, j.company_name company, j.updated_at at ${jobsWhere} AND j.outcome='appointment' AND j.appo_seen_at IS NULL AND j.updated_at > datetime('now','-3 days') ORDER BY j.updated_at DESC LIMIT 3`).all(...sc2.args) as { id: number; company: string; at: string }[],
   };
   for (const r of rows) r.is_running = isRunning(r.id);
   // キャンペーンごとの進み具合と数字（ホームに1件ずつカードで出す）

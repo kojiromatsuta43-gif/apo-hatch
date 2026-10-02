@@ -309,6 +309,7 @@ function migrate(db: Database.Database) {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_form_jobs_sent_at ON form_jobs(sent_at)`);
   // 要対応を「見送り」にした日時（#115）。NULL=見送っていない
   addCol("form_jobs", "dismissed_at", "TEXT");
+  addCol("form_jobs", "appo_seen_at", "TEXT");                           // アポを「確認した」日時。空＝未確認（メニューの数字に数える）
 
   // 画面で見られるエラーログ。これまでは黒い画面（ターミナル）を見るしかなく、閉じると何も分からなかった。
   // 直近500件だけ残す（applog.ts 側で間引く）

@@ -93,7 +93,7 @@ export function navUser(req: express.Request): NavUser {
   try {
     const sc = scope(req);
     appo = (db.prepare(`SELECT COUNT(*) n FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id
-      WHERE j.is_test=0 AND j.outcome='appointment' AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`).get(...sc.args) as { n: number }).n;
+      WHERE j.is_test=0 AND j.outcome='appointment' AND j.appo_seen_at IS NULL AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}`).get(...sc.args) as { n: number }).n;
   } catch { /* 起動直後など */ }
   return { username: u.username, display_name: u.display_name, role: u.role, gameOn: gameOnFor(req), todo, appo, path: req.path, effects: settingOn(S.effectsEnabled) && req.socket.localPort !== CLEAN_PORT };
 }

@@ -204,7 +204,7 @@ function recordReply(mailbox: string, m: IncomingMail, job: SentJob, unsubscribe
   if (!auto || RANK[v.outcome] <= (RANK[job.outcome] ?? 0)) return null;
   // 一覧で「どこを見て判定したか」が分かるよう、判定に使った言葉の前後の本文を残す（時刻は東京時間）
   const note = `自動判定（キーワード: ${v.reason}）${jst(at)} 件名「${m.subject.slice(0, 50)}」 本文「…${v.excerpt.slice(0, 90)}…」`.slice(0, 300);
-  db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, updated_at=datetime('now') WHERE id=?").run(v.outcome, note, job.id);
+  db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, appo_seen_at=NULL, updated_at=datetime('now') WHERE id=?").run(v.outcome, note, job.id);
   // アポ・返信が来たら、すぐ知らせる（#134）。受信箱は15分ごとに読んでいるのに、これまでは画面を開くまで分からなかった
   if (v.outcome !== "declined" && settingOn(S.notifyReply)) {
     notify(v.outcome === "appointment" ? "アポの返信が来ました" : "返信が来ました", `${job.company_name}: ${v.excerpt.slice(0, 60)}`, `reply:${job.id}:${v.outcome}`);

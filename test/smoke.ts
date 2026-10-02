@@ -139,6 +139,16 @@ try {
     // 続けて処理する画面（#118）
     const run = await (await get("/todo/run?kind=captcha")).text();
     if (!run.includes("認証株式会社") || !run.includes("送信済みにして次へ")) ng("「続けて処理する」画面に会社が出ていません");
+    // アポの「確認した」: 押すとメニューの数字（未確認の数）が減り、確認済みに移る。戻せる
+    const badge = (html: string) => /href="\/appointments"[^>]*>アポ<span class="badge"/.test(html);
+    let ap = await (await get("/appointments")).text();
+    const appoId = ap.match(/\/jobs\/(\d+)\/appo-seen/)?.[1] ?? "0";
+    if (!ap.includes("確認した") || !badge(ap)) ng("未確認のアポに「確認した」ボタン・メニューの数字がありません");
+    if ((await post(`/jobs/${appoId}/appo-seen`, "")).status !== 302) ng("/jobs/:id/appo-seen が通りません");
+    ap = await (await get("/appointments")).text();
+    if (!ap.includes("確認済み（1社）") || badge(ap)) ng("確認したのに、メニューの数字が減っていません");
+    await post(`/jobs/${appoId}/appo-seen`, "seen=0");
+    if (!badge(await (await get("/appointments")).text())) ng("未確認に戻したのに、メニューの数字が戻りません");
   }
   // ---- キャンペーンの3タブと一覧（#98 #103）----
   {

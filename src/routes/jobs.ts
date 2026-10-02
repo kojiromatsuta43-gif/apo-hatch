@@ -40,6 +40,16 @@ app.get("/screenshots/:file", (req, res) => {
   res.sendFile(path.join(SCREENSHOT_DIR, file));
 });
 
+// アポを「確認した」にする／未確認に戻す。メニューの「アポ」の数字は未確認の数だけにする
+// （確認しても数字が減らないと、新しいアポが来たのかどうか分からなかった）。並び順が変わらないよう updated_at は触らない
+app.post("/jobs/:id/appo-seen", (req, res) => {
+  const id = Number(req.params.id);
+  if (!ownedJob(req, id)) return notFound(req, res);
+  const seen = String(req.body.seen ?? "1") !== "0";
+  db.prepare(`UPDATE form_jobs SET appo_seen_at=${seen ? "datetime('now')" : "NULL"} WHERE id=? AND outcome='appointment'`).run(id);
+  redirectWith(res, "/appointments", seen ? "確認済みにしました" : "未確認に戻しました");
+});
+
 app.post("/jobs/:id/outcome", (req, res) => {
   const id = Number(req.params.id);
   const j = ownedJob(req, id);
@@ -51,7 +61,8 @@ app.post("/jobs/:id/outcome", (req, res) => {
     const body = (j.outcome_note.match(/本文「…([\s\S]*?)…」/)?.[1] ?? "").trim();
     if (body) learned = learnFromCorrection(body, outcome as "replied" | "appointment" | "declined", j.company_name);
   }
-  db.prepare("UPDATE form_jobs SET outcome=?, outcome_note=?, updated_at=datetime('now') WHERE id=?").run(outcome, String(req.body.note ?? "").slice(0, 300), id);
+  // 反応が変わったら「確認済み」は外す（新しくアポになったものは、もう一度メニューの数字に出す）
+  db.prepare(`UPDATE form_jobs SET outcome=?, outcome_note=?, ${outcome !== j.outcome ? "appo_seen_at=NULL, " : ""}updated_at=datetime('now') WHERE id=?`).run(outcome, String(req.body.note ?? "").slice(0, 300), id);
   if (outcome === "declined") {
     if (j.domain) db.prepare("INSERT OR IGNORE INTO form_suppressions(domain, reason) VALUES(?,?)").run(j.domain, `断り（${j.company_name}）`);
     if (j.email) optOut(j.email, `断り（${j.company_name}）`, me(req).id);

@@ -38,7 +38,7 @@ app.get("/appointments", (req, res) => {
   const campaignId = Number(req.query.campaign) || 0;
   const where = `j.is_test=0 AND ${sc.sql.replace("owner_user_id", "c.owner_user_id")}${campaignId ? " AND c.id=?" : ""}`;
   const args = [...sc.args, ...(campaignId ? [campaignId] : [])];
-  const cols = `j.id, j.company_name, j.domain, j.email, j.channel, j.outcome, j.outcome_note, j.updated_at, j.sent_at, c.id campaign_id, c.name campaign_name, lower(s.smtp_user) mailbox`;
+  const cols = `j.id, j.company_name, j.domain, j.email, j.channel, j.outcome, j.outcome_note, j.updated_at, j.sent_at, j.appo_seen_at, c.id campaign_id, c.name campaign_name, lower(s.smtp_user) mailbox`;
   const from = `FROM form_jobs j JOIN form_campaigns c ON c.id=j.campaign_id JOIN sender_profiles s ON s.id=c.sender_id`;
   const appos = db.prepare(`SELECT ${cols} ${from} WHERE ${where} AND j.outcome='appointment' ORDER BY j.updated_at DESC`).all(...args) as import("../views.js").AppoRow[];
   const replies = db.prepare(`SELECT ${cols} ${from} WHERE ${where} AND j.outcome='replied' ORDER BY j.updated_at DESC LIMIT 50`).all(...args) as import("../views.js").AppoRow[];
