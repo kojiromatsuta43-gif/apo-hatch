@@ -54,7 +54,8 @@ export const MODE_LABEL: Record<string, string> = { template: "テンプレー�
 
 export function campaignStatusTag(status: string, running = false): string {
   const cls = running || status === "running" ? "sending" : status === "done" ? "sent" : status === "paused" ? "queued" : "skip";
-  return `<span class="tag ${cls}">${esc(running ? "送信中" : CAMPAIGN_STATUS_LABEL[status] ?? status)}</span>`;
+  // 実際に送っている間は、事前チェックと同じ「クルクル」を付ける（動いているのが一目で分かるように）
+  return `<span class="tag ${cls}">${running ? '<span class="spin"></span>' : ""}${esc(running ? "送信中" : CAMPAIGN_STATUS_LABEL[status] ?? status)}</span>`;
 }
 
 /** 色の意味の凡例（#111）。どの画面でも同じ意味で使う */
