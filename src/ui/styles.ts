@@ -103,6 +103,49 @@ tr.histrow td{background:var(--c-surface-2);border-bottom:1px dashed var(--c-lin
 .stat b{display:block;font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums}
 .stat .unit{font-size:var(--fs-xs);font-weight:400;margin-left:2px}
 
+/* ---- キャンペーンの概要（進み具合・返信・ペース）----
+   以前は同じ大きさの枠が10個並び、どれが大事か分からなかった。大きい数字は3つだけにして、内訳は小さく出す */
+.meta{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px;font-size:var(--fs-sm);color:var(--c-ink-2)}
+.meta>span{background:var(--c-surface);border:1px solid var(--c-line);border-radius:999px;padding:2px 10px;white-space:nowrap}
+.meta>span.warn{background:var(--c-warn-bg);border-color:#F1D3A8;color:var(--c-warn);font-weight:700}
+.ov{padding:14px 18px;margin-bottom:12px}
+.ovhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ovhead b{font-size:var(--fs-base)}
+.ovhead a,.ovhead .muted{font-size:var(--fs-sm)}
+.ovbar{display:flex;gap:2px;height:14px;border-radius:999px;overflow:hidden;background:var(--c-off-bg);margin-bottom:12px}
+.ovbar i{display:block;min-width:3px}
+.ovbar .ok{background:var(--c-ok)}.ovbar .wait{background:var(--c-brand)}.ovbar .off{background:var(--c-line-strong)}
+.ovnums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ovnum{display:block;text-decoration:none;color:inherit;border-radius:var(--radius-sm);padding:4px 8px;margin:-4px -8px}
+.ovnum:hover{background:var(--c-surface-2)}
+.ovnum .lbl{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--c-ink-2)}
+.ovnum .lbl i{width:10px;height:10px;border-radius:50%;flex:none}
+.ovnum.ok .lbl i{background:var(--c-ok)}.ovnum.wait .lbl i{background:var(--c-brand)}.ovnum.off .lbl i{background:var(--c-line-strong)}
+.ovnum b{display:block;font-size:26px;line-height:1.3;font-variant-numeric:tabular-nums}
+.ovnum.ok b{color:var(--c-ok)}
+.ovnum .unit,.ovmini .unit{font-size:var(--fs-xs);font-weight:400;margin-left:2px}
+.ovnum .pct{font-size:var(--fs-sm);color:var(--c-ink-3)}
+.ovwhy{display:flex;gap:6px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--c-line);margin-top:12px;padding-top:10px}
+.ovwhy .muted{margin-right:4px}
+.chip{display:inline-block;background:var(--c-off-bg);color:var(--c-ink-2);border-radius:999px;padding:2px 10px;font-size:var(--fs-sm);text-decoration:none;white-space:nowrap}
+.chip:hover{background:var(--c-line)}
+.chip.ng{background:var(--c-ng-bg);color:var(--c-ng)}
+/* 要対応の行: ボタンが4つ同じ重さで並んでいたので、最初の1つ（いちばん効く操作）だけ濃く、残りは控えめにする */
+.todoacts>form:not(:first-child) .btn,.todoacts>a.btn:not(:first-child){border-color:transparent;background:transparent;color:var(--c-ink-2);font-weight:400;padding-left:6px;padding-right:6px;text-decoration:underline}
+.todoacts>form:first-child .btn,.todoacts>a.btn:first-child{border-color:var(--c-ink-2);font-weight:700}
+.actrow{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-top:12px}
+.more[open]{flex:1 1 100%}
+.more>summary{display:inline-block;list-style:none;cursor:pointer}
+.more>summary::-webkit-details-marker{display:none}
+.more>summary::after{content:" ▾"}
+.more[open]>summary::after{content:" ▴"}
+.morebody{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;padding:10px;border:1px solid var(--c-line);border-radius:var(--radius-sm);background:var(--c-surface-2)}
+.ovgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.ovminis{display:flex;gap:8px 28px;flex-wrap:wrap}
+.ovmini>span{display:block;font-size:var(--fs-sm);color:var(--c-ink-2)}
+.ovmini b{display:block;font-size:22px;line-height:1.3;font-variant-numeric:tabular-nums}
+.ovmini small{display:block;font-size:var(--fs-sm);color:var(--c-ink-3)}
+
 /* ---- お知らせ・補足 ---- */
 .flash{background:var(--c-info-bg);border:1px solid #C6DAF2;color:#0F3E73;padding:12px 16px;border-radius:var(--radius-sm);margin-bottom:16px}
 .muted{color:var(--c-ink-3);font-size:var(--fs-sm)}

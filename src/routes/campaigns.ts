@@ -193,6 +193,15 @@ app.get("/campaigns/:id", (req, res) => {
   // 会社（ドメイン）単位で重複を除いた実数と、試行回数の合計を状態ごとに集計する
   const attempts: Record<string, number> = {};
   for (const r of db.prepare("SELECT status, COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n, SUM(attempts) a FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY status").all(id) as { status: string; n: number; a: number }[]) { counts[r.status] = r.n; attempts[r.status] = r.a ?? 0; }
+  // 画面上部の「進み具合」用: 1社を1つの状態だけで数える（足すと必ず「全体」と一致する）。
+  // 状態ごとに数えると、送り直しで状態が複数ある会社（例: 画像認証で止まった後、メールで送れた）を両方で数えてしまい、
+  // 枠を足しても全体と合わなかった。送れた会社は「送信済み」、まだ送る予定があれば「これから送る」を優先する
+  const STATUS_RANK = ["sent", "sending", "queued", "failed", "skip_captcha", "skip_no_form", "skip_refused", "skip_suppressed", "skip_optout", "skip_duplicate", "skip_cancelled"];
+  const rankSql = `CASE status ${STATUS_RANK.map((s, i) => `WHEN '${s}' THEN ${i}`).join(" ")} ELSE ${STATUS_RANK.length} END`;
+  const companyCounts: Record<string, number> = {};
+  for (const r of db.prepare(`SELECT r, COUNT(*) n FROM (SELECT MIN(${rankSql}) r FROM form_jobs WHERE campaign_id=? AND is_test=0 GROUP BY COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) GROUP BY r`).all(id) as { r: number; n: number }[]) {
+    companyCounts[STATUS_RANK[r.r] ?? "other"] = r.n;
+  }
   const preview = previews.get(id) ?? null;
   previews.delete(id);
   const consumedImport = lastImports.get(id) ?? null;
@@ -233,7 +242,7 @@ app.get("/campaigns/:id", (req, res) => {
       ? `本日の上限に達しています。残り ${queuedNow}社は翌営業日の送信時間帯に続きます（1社あたり約${Math.round(perJob)}秒）`
       : `残り ${queuedNow}社 ／ このペース（1社あたり約${Math.round(perJob)}秒）だと、きょう送れる ${doable}社で約${minutes}分（${end.slice(11, 16)}ごろ）${doable < queuedNow ? `。残りの ${queuedNow - doable}社は翌営業日に続きます` : ""}`;
   }
-  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, ab, tab, page, pageSize, total: rowTotal, companyTotal, companyAll: (db.prepare("SELECT COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n FROM form_jobs WHERE campaign_id=? AND is_test=0").get(id) as { n: number }).n, warmup: channelMode(c.channel) !== "form_only" ? { sent: sentTodayBySender(c.sender_id), ...effectiveEmailLimit(c, c.sender_id) } : null, undo: recentUndo(id, me(req).id), matched, attempts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), appState.updateReady));
+  res.send(layout(c.name, campaignView(c, jobs, counts, isRunning(id), aiStatusLabel(), { preview, windowOk: inSendWindow(c), sentToday: sentToday(id, "form"), emailSentToday: sentToday(id, "email"), scanning: isScanning(id), unscanned, scanned, statusFilter, qFilter, outcomeFilter, impFilter, sortKey, eta, ab, tab, page, pageSize, total: rowTotal, companyTotal, companyAll: (db.prepare("SELECT COUNT(DISTINCT COALESCE(NULLIF(domain,''), CAST(id AS TEXT))) n FROM form_jobs WHERE campaign_id=? AND is_test=0").get(id) as { n: number }).n, warmup: channelMode(c.channel) !== "form_only" ? { sent: sentTodayBySender(c.sender_id), ...effectiveEmailLimit(c, c.sender_id) } : null, undo: recentUndo(id, me(req).id), matched, attempts, companyCounts, outcomes, lastImport: consumedImport, retryTargets, emailQueued, period, emailPaused: emailPause(c.sender), imports: importHistory(id), reactions: db.prepare("SELECT id, company_name, domain, email, channel, outcome, outcome_note, updated_at FROM form_jobs WHERE campaign_id=? AND is_test=0 AND outcome<>'' ORDER BY updated_at DESC").all(id) as ReactionRow[], replyScan: { ...replyScanStatus(db.prepare("SELECT * FROM sender_profiles WHERE id=?").get(c.sender_id) as SenderProfile | undefined), checking: isCheckingReplies() } }), takeFlash(req), navUser(req), appState.updateReady));
 });
 
 // 実行中の画面が2.5秒ごとに見る進捗API。バーの更新と「終わったら自動でページ更新」に使う

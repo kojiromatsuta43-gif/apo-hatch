@@ -14,7 +14,7 @@ ${editId ? `<p><a href="/campaigns/${editId}">← キャンペーンに戻る</a
 ${editId ? "" : `<div id="stepbar" class="tabs" style="margin-top:0"><a class="on" data-go="1">① 名前と送り方</a><a data-go="2">② 文面</a><a data-go="3">③ 上限と時間帯</a></div>`}
 <div data-step="1"><h2 style="margin-top:0">① 名前と送り方</h2>
 <label>グループ（任意）</label><input type="text" name="group_name" value="${d("group_name")}" list="fo-groups" placeholder="例：福岡 飲食 9月（空欄なら自動で決めます）" style="max-width:420px"><datalist id="fo-groups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist>
-<p class="muted small" style="margin:4px 0 6px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・CAPTCHA</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
+<p class="muted small" style="margin:4px 0 6px">同じグループのキャンペーン同士では、<b>同じ会社に重ねて送りません</b>（フォーム用とメール用に分けたときなど）。別のキャンペーンで<b>待機中・送信済み</b>の会社は取り込み時に除外し、送信直前にも確認します。<b>フォーム無し・失敗・画像認証</b>だった会社は連絡できていないので、同じグループの別キャンペーンで送れます。</p>
 ${(() => {
     const list = others.filter((o) => o.id !== editId);
     if (!list.length) return "";
@@ -43,7 +43,7 @@ ${(() => {
 <b>全文AI生成:</b> 企業ごとに全文を書き、「ご予算」「何で知りましたか」など想定外の質問欄にもAIが回答するため、送信が成功しやすくなります。料金は1件あたり約0.5〜0.8円（Haiku）。月1,000件で約400〜800円。<br>
 <b>テンプレ＋質問だけAI（おすすめ）:</b> 文面はテンプレ（0円）のまま、想定外の質問欄が出たときだけAIが回答します。全文生成をしないぶん<b>全文AIの1/5〜1/10の費用</b>で、成功率はテンプレのみより大きく上がります（AIを呼ぶのは想定外の質問が出た一部の会社だけ）。<br>
 <b>ハイブリッド:</b> 冒頭1〜2文だけAIが書くので安い（約0.2円/件）ぶん、想定外の質問欄には対応できず、そのフォームは失敗になりやすくなります。<br>
-※ チェック欄・選択肢はどのモードでも自動対応します。CAPTCHAはどのモードでも突破しません。</p>
+※ チェック欄・選択肢はどのモードでも自動対応します。画像認証（CAPTCHA）はどのモードでも突破しません。</p>
 ${provider === "none" ? '<p class="muted">⚠ AIを使うモードは、先に<a href="/settings"><b>設定画面でAPIキーの登録</b></a>が必要です（管理者のみ）。料金の目安や取得手順も設定画面に書いてあります。未設定のままではテンプレートのみで送られます。</p>' : ""}
 </div><div data-step="2"><h2>② 文面</h2>
 <label>件名（件名欄があるフォーム用）</label><input type="text" name="subject_text" value="${d("subject_text", "【ここに件名】のご案内")}">
@@ -138,7 +138,7 @@ ${skipped.map((x) => `<tr><td>${esc(x.company)}</td><td class="small">${esc(x.re
 </table></details>` : ""}`;
 }
 
-export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[]; emailHtml?: string } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; sortKey?: string; eta?: string; tab?: "prep" | "send" | "result"; page?: number; pageSize?: number; total?: number; companyTotal?: number; companyAll?: number; warmup?: { sent: number; limit: number; note: string } | null; ab?: { variant: string; sent: number; replied: number; appo: number }[]; undo?: { id: number; label: string; rows_count: number } | null; matched?: { n: number; sent: number }; attempts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("../csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
+export function campaignView(c: Campaign & { sender: SenderProfile }, jobs: Job[], counts: Record<string, number>, running: boolean, provider: string, extra: { preview?: { job: Job; subject: string; message: string; aiUsed: boolean; lint?: Lint[]; emailHtml?: string } | null; windowOk: boolean; sentToday: number; emailSentToday: number; scanning: boolean; unscanned: number; scanned: number; statusFilter?: string; qFilter?: string; outcomeFilter?: string; impFilter?: string; sortKey?: string; eta?: string; tab?: "prep" | "send" | "result"; page?: number; pageSize?: number; total?: number; companyTotal?: number; companyAll?: number; warmup?: { sent: number; limit: number; note: string } | null; ab?: { variant: string; sent: number; replied: number; appo: number }[]; undo?: { id: number; label: string; rows_count: number } | null; matched?: { n: number; sent: number }; attempts?: Record<string, number>; companyCounts?: Record<string, number>; outcomes: Record<string, number>; lastImport?: import("../csv.js").ImportSummary | null; retryTargets?: { id: number; company_name: string; status: string; result_text: string }[]; emailQueued?: number; period?: { todayForm: number; todayEmail: number; monthForm: number; monthEmail: number }; emailPaused?: { until: number; reason: string } | null; reactions?: { id: number; company_name: string; domain: string; email: string; channel: string; outcome: string; outcome_note: string; updated_at: string }[]; imports?: { key: string; label: string; at: string; total: number; sent: number; queued: number }[]; replyScan?: { enabled: boolean; checkedAt: string | null; error: string; checking: boolean } }) {
   // 「反応」欄の下に出す、返信の自動確認の状態（送信用メールの受信箱を15分ごとに読んで反応を自動記録している）
   const replyScanLine = () => {
     const r = extra.replyScan;
@@ -189,36 +189,55 @@ ${sorted.map((r) => {
 <p class="muted small" style="margin:6px 0 0">まちがえて消した場合は30分以内にここから戻せます（スクリーンショットの画像は戻りません）。</p></div>` : ""}
 <p style="margin:0 0 6px"><a href="/campaigns">← キャンペーン一覧</a></p>
 <h1>${esc(c.name)} ${campaignStatusTag(c.status, running)} <a class="btn small" href="/campaigns/${c.id}/edit" style="vertical-align:middle">設定を変える</a></h1>
-<p class="muted">${c.group_name ? `グループ: <b>${esc(c.group_name)}</b>（同じグループの別キャンペーンと送り先が重ならないようにしています） / ` : ""}送信者: ${esc(c.sender.company)} ${esc(c.sender.person)} / チャネル: ${CHANNEL_LABEL[channelMode(c.channel)]} / 文面: ${esc(MODE_LABEL[c.mode] ?? c.mode)} / AI: ${esc(provider)} / 時間帯 ${c.send_window_start}〜${c.send_window_end}時${c.weekdays_only ? "（平日）" : ""} / 上限 フォーム${c.daily_limit}・メール${c.email_daily_limit}/日（本日 ${extra.sentToday}・${extra.emailSentToday}） ${extra.windowOk ? "" : "<b style='color:var(--warn)'>いまは送信時間帯外</b>"}</p>
+<div class="meta" data-nohelp>${[
+    `送信者 <b>${esc(c.sender.person || c.sender.company)}</b>`,
+    `<b>${CHANNEL_LABEL[channelMode(c.channel)]}</b>`,
+    `文面 <b>${esc(MODE_LABEL[c.mode] ?? c.mode)}</b>`,
+    `<b>${c.send_window_start}〜${c.send_window_end}時</b>${c.weekdays_only ? "（平日）" : ""}`,
+    `1日の上限 <b>フォーム${n(c.daily_limit)}・メール${n(c.email_daily_limit)}</b>`,
+    c.group_name ? `<span title="同じグループの別キャンペーンと送り先が重ならないようにしています">グループ <b>${esc(c.group_name)}</b></span>` : "",
+  ].filter(Boolean).map((x) => `<span>${x}</span>`).join("")}${extra.windowOk ? "" : `<span class="warn">いまは送信時間帯外</span>`}</div>
 ${(() => {
     const att = extra.attempts ?? {};
-    // 「確定件数（会社の重複を除いた実数）」を大きく、試行回数が上回るときだけ「試行 N回」を併記する
-    // 件数は会社（ドメイン）単位の重複を除いた実数＝「社」、送信の試行は「回」で併記する
-    // タイルを押すと、その状態で絞り込んだ一覧（結果タブ）に飛ぶ
-    const tile = (label: string, keys: string[], color = "") => {
-      const num = keys.reduce((a, k) => a + cnt(k), 0);
-      const a = keys.reduce((s, k) => s + (att[k] ?? 0), 0);
-      const sub = a > num ? `<span class="muted" data-nohelp>送り直し含め ${n(a)}回</span>` : "";
-      return `<a href="/campaigns/${c.id}?tab=result&status=${keys[0]}" style="text-decoration:none;color:inherit"><div class="stat"><span class="muted" data-nohelp>${label}</span><b${color ? ` style="color:${color}"` : ""}>${n(num)}<span class="unit">社</span></b>${sub}</div></a>`;
-    };
-    return `<div class="stats"><a href="/campaigns/${c.id}?tab=result" style="text-decoration:none;color:inherit"><div class="stat"><span class="muted" data-nohelp>全体</span><b>${n(total)}<span class="unit">社</span></b></div></a>${tile("待機", ["queued"])}${tile("送信済", ["sent"], "var(--ok)")}${tile("失敗", ["failed"], "var(--ng)")}${tile("フォーム無し", ["skip_no_form"])}${tile("お断り", ["skip_refused"])}${tile("CAPTCHA", ["skip_captcha"])}${tile("除外/重複", ["skip_suppressed", "skip_duplicate", "skip_optout"])}${(() => {
-      // 「返信0／アポ1」だと、アポも返信の一種なのに別々に見えて分かりにくかった。合計と内訳で出す
-      const app = extra.outcomes.appointment ?? 0, dec = extra.outcomes.declined ?? 0, other = extra.outcomes.replied ?? 0;
-      const all = app + dec + other;
-      const sent = cnt("sent");
-      const rate = sent ? (all / sent) * 100 : 0;
-      const rateText = !sent ? "" : all === 0 ? "返信率 0%" : rate < 0.1 ? "返信率 0.1%未満" : `返信率 ${rate.toFixed(1)}%`;
-      // アポと断りが一番知りたい数字なので大きく出す（合計と返信率は下に小さく）
-      return `<div class="stat"><a href="/campaigns/${c.id}?tab=result#reactions" style="color:inherit">反応</a><b style="font-size:24px;line-height:1.25">アポ <span style="color:var(--ok)">${app}</span><span style="font-weight:400;color:#bbb">／</span>断り <span style="color:var(--ng)">${dec}</span></b><span class="muted small">返信 合計${all}社（その他${other}）${rateText ? `／${rateText}` : ""}</span></div>`;
-    })()}</div>
-${(() => {
-      // 今日・今月の送信数。ペースを把握して上限に当たる前に気づけるように（詳しい推移は「送信数」画面へ）
-      const p = extra.period;
-      if (!p) return "";
-      const box = (label: string, form: number, email: number) => `<div class="stat"><span class="muted" data-nohelp>${label}の送信</span><b>${n(form + email)}<span class="unit">社</span></b><span class="muted" data-nohelp>フォーム${n(form)}・メール${n(email)}</span></div>`;
-      return `<div class="stats" style="margin-top:0">${box("今日", p.todayForm, p.todayEmail)}${box("今月", p.monthForm, p.monthEmail)}</div>
-<p class="small" style="margin:6px 0 0"><a href="/stats?campaign=${c.id}">日別・月別の推移を見る →</a></p>`;
-    })()}${replyScanLine()}`;
+    // 1社を1つの状態だけで数えた数（足すと「全体」と一致する）。経路側で用意が無ければ、状態ごとの数で代用する
+    const cc = extra.companyCounts ?? counts;
+    const cOf = (keys: string[]) => keys.reduce((a, k) => a + (cc[k] ?? 0), 0);
+    const sentN = cOf(["sent"]);
+    const waitN = cOf(["queued", "sending"]);
+    const whyDefs: { label: string; keys: string[]; ng?: boolean; tip: string }[] = [
+      { label: "画像認証", keys: ["skip_captcha"], tip: "画像認証（CAPTCHA）があり、自動では送れなかった会社。「要対応」から手作業で送れます" },
+      { label: "営業お断りのサイト", keys: ["skip_refused"], tip: "サイトに「営業お断り」と書かれていたため、送らなかった会社" },
+      { label: "除外・重複", keys: ["skip_suppressed", "skip_duplicate", "skip_optout", "skip_cancelled"], tip: "除外リスト・配信停止・再送を止める期間内・キャンセルで送らなかった会社" },
+      { label: "フォーム無し", keys: ["skip_no_form"], tip: "問い合わせフォームもメールアドレスも見つからなかった会社" },
+      { label: "失敗", keys: ["failed"], ng: true, tip: "送信の途中でエラーになった会社。送り直せます" },
+    ];
+    const whys = whyDefs.map((w) => ({ ...w, num: cOf(w.keys) })).filter((w) => w.num > 0);
+    const ngN = Math.max(0, total - sentN - waitN);
+    const pct = (x: number) => (total ? (x / total) * 100 : 0);
+    const pctText = (x: number) => { const p = pct(x); return !total ? "" : x > 0 && p < 1 ? "1%未満" : `${Math.round(p)}%`; };
+    const link = (status: string) => `/campaigns/${c.id}?tab=result&status=${status}`;
+    const sentTries = att.sent ?? 0;
+    const big = (cls: string, label: string, num: number, href: string, tip = "") => `<a class="ovnum ${cls}" href="${href}"${tip ? ` title="${esc(tip)}"` : ""}><span class="lbl"><i></i>${label}</span><b>${n(num)}<span class="unit">社</span></b><span class="pct">${pctText(num)}</span></a>`;
+    // 反応。「アポ」と「返信で断られた」が一番知りたい数字。「営業お断りのサイト」（送らなかった理由）と混ざらないよう言い分ける
+    const app = extra.outcomes.appointment ?? 0, dec = extra.outcomes.declined ?? 0, other = extra.outcomes.replied ?? 0;
+    const all = app + dec + other;
+    const sentAll = cnt("sent");
+    const rate = sentAll ? (all / sentAll) * 100 : 0;
+    const rateText = !sentAll ? "" : all === 0 ? "返信率 0%" : rate < 0.1 ? "返信率 0.1%未満" : `返信率 ${rate.toFixed(1)}%`;
+    const p = extra.period;
+    const mini = (label: string, value: string, color = "", sub = "") => `<div class="ovmini"><span>${label}</span><b${color ? ` style="color:${color}"` : ""}>${value}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
+    return `<div class="card ov" data-nohelp>
+<div class="ovhead"><b>送信の進み具合</b><a href="/campaigns/${c.id}?tab=result">全体 ${n(total)}社</a></div>
+<div class="ovbar" role="img" aria-label="送信済み ${n(sentN)}社・待機 ${n(waitN)}社・送れなかった ${n(ngN)}社">${sentN ? `<i class="ok" style="width:${pct(sentN).toFixed(2)}%"></i>` : ""}${waitN ? `<i class="wait" style="width:${pct(waitN).toFixed(2)}%"></i>` : ""}${ngN ? `<i class="off" style="width:${pct(ngN).toFixed(2)}%"></i>` : ""}</div>
+<div class="ovnums">${big("ok", "送信済み", sentN, link("sent"), sentTries > sentN ? `送り直しを含めた送信の回数: ${n(sentTries)}回` : "")}${big("wait", "待機（これから送る）", waitN, link("queued"))}${big("off", "送れなかった", ngN, `/campaigns/${c.id}?tab=result`, "下の「理由」を押すと、その会社の一覧が開きます")}</div>
+${whys.length ? `<div class="ovwhy"><span class="muted">送れなかった理由</span>${whys.map((w) => `<a class="chip${w.ng ? " ng" : ""}" href="${link(w.keys[0])}" title="${esc(w.tip)}">${w.label} <b>${n(w.num)}</b></a>`).join("")}</div>` : ""}
+</div>
+<div class="ovgrid" data-nohelp>
+<div class="card ov"><div class="ovhead"><b><a href="/campaigns/${c.id}?tab=result#reactions" style="color:inherit">返信</a></b><span class="muted">${all ? `${n(all)}社` : "まだありません"}${rateText ? `・${rateText}` : ""}</span></div>
+<div class="ovminis">${mini("アポ", n(app), app ? "var(--ok)" : "")}${mini("返信で断られた", n(dec), dec ? "var(--ng)" : "")}${mini("その他の返信", n(other))}</div></div>
+${p ? `<div class="card ov"><div class="ovhead"><b>送信ペース</b><a href="/stats?campaign=${c.id}">日別・月別の推移 →</a></div>
+<div class="ovminis">${mini("今日", `${n(p.todayForm + p.todayEmail)}<span class="unit">社</span>`, "", `フォーム${n(p.todayForm)}・メール${n(p.todayEmail)}`)}${mini("今月", `${n(p.monthForm + p.monthEmail)}<span class="unit">社</span>`, "", `フォーム${n(p.monthForm)}・メール${n(p.monthEmail)}`)}</div></div>` : ""}
+</div>${replyScanLine()}`;
   })()}
 
 ${tabsNav}
@@ -252,14 +271,14 @@ ${(() => {
     return `<p style="margin:14px 0 0"><a class="btn sub small" href="/campaigns/${c.id}?imp=${encodeURIComponent(list[0].key)}#list">前回の取り込み（${when(list[0].at)}・${list[0].total}件）を一覧で見る・まとめて削除</a></p>
 <details style="margin-top:10px" ${list.length ? "open" : ""}><summary style="cursor:pointer;font-weight:700">取り込み履歴（${list.length}回・${allTotal}件）</summary>
 <p class="muted small" style="margin:6px 0">間違えて取り込んだ場合は、その回の「全件削除」で、その取り込みで入った会社をまとめて消せます（送信一覧・全件の数からも消えます）。${busy ? "<b>送信中・事前チェック中は削除できません。先に止めてください。</b>" : ""}</p>
-<div style="overflow-x:auto"><table><tr><th>取り込んだ日時</th><th>取り込み元</th><th>件数</th><th>送信済</th><th>待機</th><th></th></tr>
+<div style="overflow-x:auto"><table><tr><th>取り込んだ日時</th><th>取り込み元</th><th>件数</th><th>送信済み</th><th>待機</th><th></th></tr>
 ${list.map((b) => `<tr><td class="small">${when(b.at)}</td><td class="small">${esc(b.label)}</td><td>${b.total}</td><td>${b.sent}</td><td>${b.queued}</td><td><a class="btn sub small" href="/campaigns/${c.id}?imp=${encodeURIComponent(b.key)}#list">一覧を見る</a> <form method="post" action="/campaigns/${c.id}/imports/delete" class="inline" onsubmit="return confirm('${when(b.at)} に取り込んだ ${b.total}件を全件削除します（取り消せません）。${warnSent(b.sent)}\\n\\nよろしいですか？')"><input type="hidden" name="key" value="${esc(b.key)}"><button class="btn danger small" ${busy ? "disabled" : ""}>全件削除</button></form></td></tr>`).join("")}
 </table></div>
 <form method="post" action="/campaigns/${c.id}/jobs/delete-all" style="margin-top:8px" onsubmit="return confirm('このキャンペーンの会社 ${allTotal}件をすべて削除します（キャンペーンの設定・文面は残ります。取り消せません）。${warnSent(allSent)}\\n\\nよろしいですか？')"><button class="btn sub small" ${busy ? "disabled" : ""}>このキャンペーンの会社を全件削除（${allTotal}件）</button></form></details>`;
   })()}</div>
 
 <div class="card"><h2 style="margin-top:0">② 事前チェック（送る前に連絡先を確認）${extra.scanning ? '<span class="tag sending"><span class="spin"></span>チェック中</span>' : extra.unscanned === 0 && extra.scanned > 0 ? '<span class="tag sent">チェック完了</span>' : ""}</h2>
-<p class="muted">送らずに各社のサイトを見て、フォームの有無・営業お断り・CAPTCHAを先に判定し、サイトのメールアドレスを拾います。フォームが無い会社はメールに自動で切り替わります（チャネルが「フォーム優先＋メール」のとき）。1社5〜10秒。</p>
+<p class="muted">送らずに各社のサイトを見て、フォームの有無・営業お断り・画像認証を先に判定し、サイトのメールアドレスを拾います。フォームが無い会社はメールに自動で切り替わります（チャネルが「フォーム優先＋メール」のとき）。1社5〜10秒。</p>
 ${extra.emailQueued ? `<p class="small" style="margin:6px 0 10px;padding:8px 10px;background:var(--honey-50);border-radius:8px">✉ <b>メールで送る会社 ${extra.emailQueued}社</b>は事前チェックの対象外です（フォームを探す機能のため、下の件数には含まれません）。メールはそのまま「送信」タブの「開始」で送れます。1日に送る数は「1日の上限（メール）」までです。</p>` : ""}
 ${scanTotal > 0 ? `<div class="bar"><i id="scanfill" style="width:${scanPct}%"></i></div><div class="small muted" id="scantext">${extra.scanned} / ${scanTotal} 社チェック済み（${scanPct}%）</div>` : ""}
 ${extra.scanning ? `<form method="post" action="/campaigns/${c.id}/stop-scan" class="inline"><button class="btn danger">チェックを止める</button></form>` : `<form method="post" action="/campaigns/${c.id}/scan" class="inline"><button class="btn sub" ${extra.unscanned === 0 || running ? "disabled" : ""}>事前チェックを実行（未チェック ${extra.unscanned}社）</button></form>`}
@@ -300,16 +319,22 @@ ${extra.warmup ? `<div class="card"><b>メールの上限（今日）: ${n(extra
 <div class="card"><h2 style="margin-top:0">送信する${c.send_only ? ` <span class="tag">対象: ${c.send_only === "email" ? "メールの会社だけ" : "フォームの会社だけ"}</span>` : ""}</h2>
 ${extra.emailPaused ? `<div class="flash" style="border-color:var(--ng);margin:0 0 12px"><b>⏸ メール送信を一時停止中</b>（${esc(new Date(extra.emailPaused.until).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }))} に自動で再開）<br><span class="small">${esc(extra.emailPaused.reason)}</span><br><span class="small muted">この送信者のメールの会社は「待機」のまま残しています（失敗にはしていません）。フォームの送信は続きます。原因を直したら「今すぐ再開」を押してください。Gmailが一時停止されている場合は、解除されるまで待ってから再開してください。</span>
 <form method="post" action="/campaigns/${c.id}/email-resume" style="margin-top:6px"><button class="btn sub small">今すぐ再開</button></form></div>` : ""}
-${total > 0 ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>${extra.eta ? `<div class="small muted">${esc(extra.eta)}</div>` : ""}` : ""}
+${total > 0 && running ? `<div class="bar"><i id="sendfill" style="width:${sendPct}%"></i></div><div class="small muted" id="sendtext">処理済み ${processed} / ${total} 社（${sendPct}%）</div>` : ""}${total > 0 && extra.eta ? `<div class="small muted" style="margin-bottom:8px">${esc(extra.eta)}</div>` : ""}
 ${running ? `<form method="post" action="/campaigns/${c.id}/pause" class="inline"><button class="btn danger">一時停止</button></form>` : `<form method="post" action="/campaigns/${c.id}/start" class="inline" data-busy><button class="btn primary" data-busytext="送信を開始しています…">開始する（${n(cnt("queued"))}社）</button> <label class="inline small">対象: <select name="only" style="width:auto;padding:4px 8px"><option value="" ${c.send_only ? "" : "selected"}>すべて（フォーム＋メール）</option><option value="email" ${c.send_only === "email" ? "selected" : ""}>メールの会社だけ</option><option value="form" ${c.send_only === "form" ? "selected" : ""}>フォームの会社だけ</option></select></label> <label class="inline small"><input type="checkbox" name="ignore_window" value="1"> 時間帯を無視して今すぐ送る</label></form>
 <p class="muted small" style="margin:6px 0 0">フォームは「準備」タブの事前チェックを済ませてから送ると、フォーム無しの会社に無駄な時間を使いません。<b>メールだけ先に送りたいときは「対象: メールの会社だけ」</b>を選んでください（この設定は次に開始し直すまで続きます）。</p>`}
-${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した会社を再送信（${nRetry}社）</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 件をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中を一括キャンセル（${cnt("queued")}件）</button></form> ` : ""}<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button> <a class="btn sub" href="/campaigns/${c.id}/export.json" title="別のPCのアポハッチくんで、同じ文面・設定のキャンペーンを作れます">設定をファイルに書き出す</a> <a class="btn sub" href="/campaigns/${c.id}/manual.csv">手動送信リスト（CAPTCHA・失敗分をURL＋文面つきで）</a>
-<p class="muted">実行中は進捗バーが自動で動き、終わると自動でページが切り替わります。</p></div>
+<div class="actrow">${nRetry > 0 ? `<form method="post" action="/campaigns/${c.id}/requeue-failed" class="inline" onsubmit="return confirm('失敗・フォーム無しの ${nRetry} 社を待機中に戻します（会社ごとに最新の結果が失敗のものだけ）。このあと「開始」で再送信できます。よろしいですか？')"><button class="btn sub">失敗した${n(nRetry)}社を送り直す</button></form> ${extra.retryTargets && extra.retryTargets.length ? `<details class="small" style="display:inline-block;vertical-align:middle;margin-right:8px"><summary style="cursor:pointer;color:var(--ng)">対象の会社を見る（${extra.retryTargets.length}社）</summary><ul style="margin:6px 0 0;padding-left:1.2em;max-height:220px;overflow:auto;text-align:left">${extra.retryTargets.map((t) => `<li><a href="/jobs/${t.id}">${esc(t.company_name)}</a> <span class="muted">${(STATUS_LABEL as Record<string, string>)[t.status] ?? t.status}：${esc((t.result_text || "").split("\n")[0].slice(0, 50))}</span></li>`).join("")}</ul></details>` : ""}` : ""}<details class="more"><summary class="btn sub">その他の操作</summary><div class="morebody">
+<button class="btn sub" id="csvbtn" onclick="foExportCsv()">結果をCSVで書き出す</button>
+<a class="btn sub" href="/campaigns/${c.id}/manual.csv" title="画像認証・失敗で送れなかった会社を、URLと文面つきで書き出します">手作業で送る会社のリストを書き出す</a>
+<a class="btn sub" href="/campaigns/${c.id}/export.json" title="別のPCのアポハッチくんで、同じ文面・設定のキャンペーンを作れます">設定をファイルに書き出す</a>
+${cnt("queued") > 0 ? `<form method="post" action="/campaigns/${c.id}/cancel-queued" class="inline" onsubmit="return confirm('待機中の ${cnt("queued")} 社をすべてキャンセルします。よろしいですか？（送信済みには影響しません）')"><button class="btn danger">待機中の${n(cnt("queued"))}社をすべてキャンセル</button></form>` : ""}
+</div></details></div>
+${running ? `<p class="muted" data-nohelp>送信中は進み具合が自動で更新され、終わると自動でページが切り替わります。</p>` : ""}</div>
 
 </div>
 <div data-tab="result"${show("result")}>
 ${reactionsBlock}
-<h2 id="list">送信一覧（${n(extra.companyTotal ?? jobs.length)}社${(extra.total ?? 0) > (extra.companyTotal ?? 0) ? `・送り直しの履歴を含めると ${n(extra.total)}件` : ""}）</h2>
+<h2 id="list">送信一覧（${n(extra.companyTotal ?? jobs.length)}社）</h2>
+${(extra.total ?? 0) > (extra.companyTotal ?? 0) ? `<p class="muted" data-nohelp style="margin:-6px 0 8px">送り直した会社は、送るたびに1行ずつ残るので、一覧は ${n(extra.total)}行あります。</p>` : ""}
 ${STATUS_LEGEND}
 <form method="get" action="/campaigns/${c.id}" class="inline" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><input type="hidden" name="tab" value="result">
 <label class="inline small">状態:

@@ -114,7 +114,7 @@ f.addEventListener("submit",()=>{clearTimeout(t);try{localStorage.removeItem(key
     const btn=document.createElement("button");
     btn.type="button"; btn.className="helpbtn"; btn.textContent="？";
     btn.setAttribute("aria-controls",id); btn.setAttribute("aria-expanded",String(openAll)); btn.title="説明を表示";
-    const lab=document.createElement("span"); lab.className="helplabel"; lab.textContent=text.slice(0,22)+"…";
+    const lab=document.createElement("span"); lab.className="helplabel"; const first=text.split(/[。\\n]/)[0].trim(); lab.textContent=first.length<=30?first:"説明を見る";
     const wrap=document.createElement("div"); wrap.className="helpbody"; wrap.id=id; wrap.hidden=!openAll;
     el.parentNode.insertBefore(btn,el); el.parentNode.insertBefore(lab,el); el.parentNode.insertBefore(wrap,el); wrap.appendChild(el);
     lab.hidden=openAll;

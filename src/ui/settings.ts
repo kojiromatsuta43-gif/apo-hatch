@@ -102,9 +102,9 @@ export function settingsView(ngWords: string[], ai: import("../message.js").AiCo
   // AIの使用量と上限（#66）。「いくらかかるか読めない」のが不安でAIを使えない、という状態をなくす
   const budgetCard = aiBudget ? `<div class="card"><h2 style="margin-top:0">AIの利用料と上限</h2>
 <div class="stats"><div class="stat"><span class="muted small">今月の目安</span><b>${Math.round(aiBudget.usage.jpy).toLocaleString("ja-JP")}円</b></div>
-<div class="stat"><span class="muted small">呼び出し回数</span><b>${aiBudget.usage.calls.toLocaleString("ja-JP")}</b></div>
-<div class="stat"><span class="muted small">入力トークン</span><b>${Math.round(aiBudget.usage.input / 1000).toLocaleString("ja-JP")}k</b></div>
-<div class="stat"><span class="muted small">出力トークン</span><b>${Math.round(aiBudget.usage.output / 1000).toLocaleString("ja-JP")}k</b></div></div>
+<div class="stat"><span class="muted small">AIを使った回数</span><b>${aiBudget.usage.calls.toLocaleString("ja-JP")}<span class="unit">回</span></b></div>
+</div>
+<details class="small" style="margin-top:6px"><summary style="cursor:pointer;color:var(--c-ink-3)">内訳（AIに送った文字量）</summary><p class="small" style="margin:6px 0 0">AIに渡した量: ${Math.round(aiBudget.usage.input / 1000).toLocaleString("ja-JP")}千トークン／AIが書いた量: ${Math.round(aiBudget.usage.output / 1000).toLocaleString("ja-JP")}千トークン（トークン＝AIの料金を数える単位。日本語ではおよそ1文字）</p></details>
 <form method="post" action="/settings/ai-budget" style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
 <label style="margin:0">今月の上限（円・0で制限なし）</label>
 <input type="number" name="limit" value="${aiBudget.limit}" min="0" step="100" style="width:140px">
@@ -115,7 +115,7 @@ export function settingsView(ngWords: string[], ai: import("../message.js").AiCo
   const overview = stats
     ? `<div class="card"><h2 style="margin-top:0">データの概要</h2>
 <p class="muted">このPCに保存されている件数のまとめです（あなたが見られる範囲）。</p>
-<div class="stats"><div class="stat">送信者<b>${stats.senders}</b></div><div class="stat">キャンペーン<b>${stats.campaigns}</b></div><div class="stat">登録企業<b>${stats.companies}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">送信済<b style="color:var(--ok)">${stats.sent}</b></div><div class="stat">除外リスト<b>${stats.suppressions}</b></div><div class="stat">配信停止<b>${stats.optouts}</b></div></div></div>`
+<div class="stats"><div class="stat">送信者<b>${stats.senders}</b></div><div class="stat">キャンペーン<b>${stats.campaigns}</b></div><div class="stat">登録企業<b>${stats.companies}<span style="font-size:12px;font-weight:400">社</span></b></div><div class="stat">送信済み<b style="color:var(--ok)">${stats.sent}</b></div><div class="stat">除外リスト<b>${stats.suppressions}</b></div><div class="stat">配信停止<b>${stats.optouts}</b></div></div></div>`
     : "";
   const models = (p: "anthropic" | "gemini") => AI_MODELS[p].map((m) => `<option value="${m.id}" data-p="${p}" ${ai.model === m.id ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   return `<h1>設定</h1>

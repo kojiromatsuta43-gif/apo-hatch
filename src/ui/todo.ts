@@ -39,6 +39,8 @@ export function todoActions(j: TodoRow, back: string): string {
   const dismiss = post(`/jobs/${j.id}/dismiss`, "見送る", b);
   const toEmail = j.email ? post(`/jobs/${j.id}/to-email`, "メールで送る", b) : "";
   const fix = `<a class="btn small" href="/jobs/${j.id}#fix">URLを直す</a>`;
+  return `<span class="todoacts">${pick()}</span>`;
+  function pick(): string {
   switch (todoReason(j)) {
     case "captcha": return `${open} ${sent} ${toEmail} ${dismiss}`;
     case "check": return `<a class="btn small" href="/jobs/${j.id}#answer">質問に答える</a> ${dismiss}`;
@@ -50,12 +52,13 @@ export function todoActions(j: TodoRow, back: string): string {
     case "network": return `${requeue} ${dismiss}`;
     default: return `${requeue} ${sent} ${dismiss}`;
   }
+  }
 }
 
 export const REASON_LABEL: Record<string, string> = { captcha: "画像認証", check: "質問への回答待ち", mailconfig: "メールの設定", input: "入力エラー", unreachable: "サイトを開けない", noform: "フォームが無い", network: "通信エラー", unsure: "届いたか不明", other: "その他" };
 
 export function todoView(rows: TodoRow[], kind: TodoKind, counts: Record<string, number>, opts: { today: TodoRow[]; groups: TodoGroup[]; hideDays: number; page: number; pageSize: number; total: number }): string {
-  const KINDS: [TodoKind, string][] = [["", "すべて"], ["captcha", "画像認証"], ["check", "回答待ち"], ["failed", "失敗"], ["noform", "フォーム無し"], ["dismissed", "見送り"]];
+  const KINDS: [TodoKind, string][] = [["", "すべて"], ["failed", "失敗"], ["check", "回答待ち"], ["captcha", "画像認証"], ["noform", "フォーム無し"], ["dismissed", "見送り"]];
   const back = `/todo${kind ? `?kind=${kind}` : ""}`;
   const tab = (k: TodoKind, label: string) => `<a class="${kind === k ? "on" : ""}" href="/todo${k ? `?kind=${k}` : ""}">${label}<span class="cnt">${n(counts[k || "all"] ?? 0)}</span></a>`;
   const row = (j: TodoRow) => `<tr>

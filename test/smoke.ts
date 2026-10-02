@@ -74,7 +74,7 @@ try {
     ["/appointments", "送信済み商事"],
     ["/todo?kind=captcha", "認証株式会社"],
     ["/todo?kind=failed", "失敗サービス"],
-    ["/stats", "送信数"],
+    ["/stats", "成果"],
     ["/report", "週次レポート"],
     ["/health", "動作チェック"],
     ["/logs", "エラーログ"],

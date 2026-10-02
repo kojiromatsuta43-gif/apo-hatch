@@ -35,7 +35,7 @@ export function homeCard(h: HomeSummary): string {
   const next = !h.senders ? { t: "はじめの設定（6ステップ）から始めましょう", b: "はじめの設定を開く", href: "/setup" }
     : !h.campaigns ? { t: "キャンペーンを作って、会社リストを取り込みましょう", b: "はじめの設定を開く", href: "/setup" }
     : h.newAppointments.length ? { t: `アポ・前向きな返信が ${h.newAppointments.length}件あります: ${h.newAppointments.map((a) => a.company).join("、")}`, b: "内容を見る", href: `/jobs/${h.newAppointments[0].id}` }
-    : h.queued > 0 && !h.runningNames.length ? { t: `送信待ちが ${n(h.queued)}社あります。開始すると送信時間帯に自動で送ります`, b: "キャンペーンを開く", href: "/campaigns" }
+    : h.queued > 0 && !h.runningNames.length ? { t: `待機中の会社が ${n(h.queued)}社あります。開始すると送信時間帯に自動で送ります`, b: "キャンペーンを開く", href: "/campaigns" }
     : h.todo > 0 ? { t: `自動で送れなかった会社が ${n(h.todo)}社あります。まず「今日やる10件」から`, b: "要対応を見る", href: "/todo" }
     : h.runningNames.length ? { t: `送信中: ${h.runningNames.join("、")}`, b: "", href: "" }
     : { t: "いまやることはありません。お疲れさまでした", b: "", href: "" };
@@ -43,7 +43,7 @@ export function homeCard(h: HomeSummary): string {
   // 上は「次にやること」と全体の合計だけ。進み具合と数字は、下にキャンペーンごとに出す
   return `<div class="card">
   <p style="margin:0 0 10px;font-size:16px"><b>${esc(next.t)}</b>${next.b ? ` <a class="btn primary small" href="${next.href}" style="margin-left:8px">${esc(next.b)}</a>` : ""}</p>
-  <p class="small" style="margin:0">${total("全体の今日の送信", `${n(h.todayForm + h.todayEmail)}件`)}${total("今月", `${n(h.monthForm + h.monthEmail)}件`)}${total("アポ", `${n(h.appointments)}件`)}${total("送信待ち", `${n(h.queued)}社`)}${h.todo ? `<a href="/todo" style="color:var(--c-ng)">${total("要対応", `${n(h.todo)}社`)}</a>` : ""}</p>
+  <p class="small" style="margin:0">${total("今日の送信（全体）", `${n(h.todayForm + h.todayEmail)}社`)}${total("今月", `${n(h.monthForm + h.monthEmail)}社`)}${total("アポ", `${n(h.appointments)}社`)}${total("待機", `${n(h.queued)}社`)}${h.todo ? `<a href="/todo" style="color:var(--c-ng)">${total("要対応", `${n(h.todo)}社`)}</a>` : ""}</p>
   ${h.setupDone < h.setupTotal ? `<p class="small" style="margin:10px 0 0">はじめの設定: <b>${h.setupDone} / ${h.setupTotal}</b> 完了　<a href="/setup">続きを進める</a></p>` : ""}
 </div>
 ${h.perCampaign.map(campaignHomeCard).join("")}`;
@@ -58,7 +58,11 @@ function campaignHomeCard(c: CampaignHome): string {
   };
   const sentToday = c.todayForm + c.todayEmail;
   const cap = c.capForm + c.capEmail;
-  const pct = cap ? Math.min(100, Math.round((sentToday / cap) * 100)) : 0;
+  // 今日の目標 = 「1日の上限」と「今日送れる会社の数（送った分＋待機）」の小さい方。
+  // 上限を大きくしていると（例: 10,000）、上限を分母にした帯はいつもほぼ0%で、何も伝わらなかった
+  const goal = Math.min(cap, sentToday + c.queued);
+  const pct = goal ? Math.min(100, Math.round((sentToday / goal) * 100)) : 0;
+  const todoOther = Math.max(0, c.todo - c.todoCaptcha);
   const stateText = c.status === "done" ? "すべて送り終わりました"
     : c.running ? "送信中です"
     : c.status !== "running" ? (c.queued ? "止まっています（「開始」を押すと送ります）" : "送信待ちの会社はありません")
@@ -70,15 +74,16 @@ function campaignHomeCard(c: CampaignHome): string {
     <h2 style="margin:0"><a href="${url}" style="color:inherit;text-decoration:none">${esc(c.name)}</a> ${campaignStatusTag(c.status, c.running)}</h2>
     <a class="btn small" href="${url}">開く</a>
   </div>
-  <div style="margin:0 0 12px"><div style="display:flex;justify-content:space-between;max-width:620px" class="small"><span><b>今日の進み具合</b>　${n(sentToday)} / ${n(cap)}件</span><span class="muted" data-nohelp>${pct}%</span></div>
-  <div class="bar"><i style="width:${pct}%"></i></div>
-  <div class="muted" data-nohelp>${esc(stateText)}</div></div>
+  <div style="margin:0 0 12px"><div style="display:flex;justify-content:space-between;max-width:620px" class="small"><span><b>今日の進み具合</b>　${goal ? `${n(sentToday)} / ${n(goal)}社` : "今日送る会社はありません"}</span>${goal ? `<span class="muted" data-nohelp>${pct}%</span>` : ""}</div>
+  ${goal ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ""}
+  <div class="muted" data-nohelp>${esc(stateText)}${goal && cap < sentToday + c.queued ? `（1日の上限 ${n(cap)}社）` : ""}</div></div>
   <div class="stats">
-    ${stat("今日の送信", n(sentToday), `フォーム${n(c.todayForm)}・メール${n(c.todayEmail)}`, `/stats?campaign=${c.id}`)}
-    ${stat("今月の送信", n(c.monthForm + c.monthEmail), `フォーム${n(c.monthForm)}・メール${n(c.monthEmail)}`, `/stats?mode=month&campaign=${c.id}`)}
-    ${stat("アポ", n(c.appointments), `返信${n(c.replies)}・断り${n(c.declines)}`, `${url}?tab=result#reactions`, c.appointments ? "var(--c-ok)" : "")}
-    ${stat("送信待ち", n(c.queued), "社", `${url}?tab=send`)}
-    ${stat("要対応", n(c.todo), c.todoCaptcha ? `うち画像認証 ${n(c.todoCaptcha)}` : "社", "/todo", c.todo ? "var(--c-ng)" : "")}
+    ${stat("今日の送信", `${n(sentToday)}<span class="unit">社</span>`, `フォーム${n(c.todayForm)}・メール${n(c.todayEmail)}`, `/stats?campaign=${c.id}`)}
+    ${stat("今月の送信", `${n(c.monthForm + c.monthEmail)}<span class="unit">社</span>`, `フォーム${n(c.monthForm)}・メール${n(c.monthEmail)}`, `/stats?mode=month&campaign=${c.id}`)}
+    ${stat("アポ", `${n(c.appointments)}<span class="unit">社</span>`, `返信で断られた ${n(c.declines)}・その他の返信 ${n(c.replies)}`, `${url}?tab=result#reactions`, c.appointments ? "var(--c-ok)" : "")}
+    ${stat("待機", `${n(c.queued)}<span class="unit">社</span>`, "これから送る会社", `${url}?tab=send`)}
+    ${stat("要対応", `${n(todoOther)}<span class="unit">社</span>`, "失敗など。送り直せます", "/todo", todoOther ? "var(--c-ng)" : "")}
+    ${c.todoCaptcha ? stat("画像認証", `${n(c.todoCaptcha)}<span class="unit">社</span>`, "手作業で送る場合だけ", "/todo?kind=captcha") : ""}
   </div>
   ${c.paused ? `<p class="small" style="margin:10px 0 0;color:var(--ng)">⚠ メール送信を一時停止中: ${esc(c.paused)}</p>` : ""}
 </div>`;

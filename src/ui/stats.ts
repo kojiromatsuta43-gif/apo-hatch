@@ -17,7 +17,8 @@ export function statsView(
   const label = (p: string) => (mode === "month" ? p.replace("-", "/") : `${Number(p.slice(5, 7))}/${Number(p.slice(8, 10))}`);
   const weekday = (p: string) => (mode === "day" ? ["日", "月", "火", "水", "木", "金", "土"][new Date(`${p}T00:00:00+09:00`).getDay()] : "");
   const q = (m: string, c: number) => `/stats?mode=${m}${c ? `&campaign=${c}` : ""}`;
-  return `<h1>送信数</h1>
+  return `<h1>成果</h1>
+<h2 style="margin-top:0">送信数</h2>
 <p class="muted">送信できた件数を、東京時間の日付で数えています（フォームとメールの合計）。</p>
 <form method="get" action="/stats" class="inline" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
 <label class="inline small">表示: <select name="mode" onchange="this.form.submit()" style="width:auto;padding:4px 8px"><option value="day" ${mode === "day" ? "selected" : ""}>日別（直近30日）</option><option value="month" ${mode === "month" ? "selected" : ""}>月別（直近12か月）</option></select></label>

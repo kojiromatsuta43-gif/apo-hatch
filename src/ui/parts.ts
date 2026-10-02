@@ -34,7 +34,7 @@ export function scoreTag(j: Job): string {
   const n = (j as Job & { scan_score?: number }).scan_score ?? -1;
   if (n < 0 || j.status === "sent") return "";
   const color = n >= 70 ? "var(--ok)" : n >= 40 ? "var(--warn)" : "var(--hive-600)";
-  return `<br><span class="muted" style="color:${color}" title="事前チェックの結果から出した、送れる見込み（フォームの有無・メールの有無・CAPTCHA）">送れそう度 ${n}</span>`;
+  return `<br><span class="muted" style="color:${color}" title="事前チェックの結果から出した、送れる見込み（フォームの有無・メールの有無・画像認証）">送れそう度 ${n}</span>`;
 }
 
 /** 一覧の状態セル。リトライで送信済みになった会社は、過去の失敗をグレーアウトし ↓ で「N回目で送信済み」を見せる */

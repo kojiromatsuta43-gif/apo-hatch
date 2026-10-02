@@ -482,7 +482,7 @@ export const STATUS_LABEL: Record<JobStatus, string> = {
   sent: "送信済み",
   skip_no_form: "フォーム無し",
   skip_refused: "営業お断り",
-  skip_captcha: "CAPTCHA",
+  skip_captcha: "画像認証",
   skip_suppressed: "除外リスト",
   skip_duplicate: "90日以内に送信済",
   skip_optout: "配信停止済",

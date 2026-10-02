@@ -133,7 +133,7 @@ app.get("/stats", (req, res) => {
   const failures = [...failBucket.entries()].map(([label, v]) => ({ label, n: v.n, hint: v.hint })).sort((a2, b2) => b2.n - a2.n);
   const totalTried = (db.prepare(`SELECT COUNT(*) n ${base}`).get(...aArgs) as { n: number }).n;
 
-  res.send(layout("送信数", statsView(rows.reverse(), mode, campaigns, campaignId, totals, { byIndustry, byPref, byChannel, byHour, failures, totalTried }), takeFlash(req), navUser(req), appState.updateReady));
+  res.send(layout("成果", statsView(rows.reverse(), mode, campaigns, campaignId, totals, { byIndustry, byPref, byChannel, byHour, failures, totalTried }), takeFlash(req), navUser(req), appState.updateReady));
 });
 
 // ---- 週次レポート（#74）----
